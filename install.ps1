@@ -1,14 +1,14 @@
 # CSES Agent - One-line installer for Windows
-# Usage: irm https://raw.githubusercontent.com/YOUR_ORG/cses_agentic/main/install.ps1 | iex
+# Usage: irm https://raw.githubusercontent.com/aseimel/cses_agentic/main/install.ps1 | iex
 # Or: powershell -ExecutionPolicy Bypass -File install.ps1
 
 $ErrorActionPreference = "Stop"
 
 Write-Host ""
-Write-Host "╔══════════════════════════════════════════════════════════════╗" -ForegroundColor Cyan
-Write-Host "║           CSES Data Harmonization Agent                      ║" -ForegroundColor Cyan
-Write-Host "║           Windows Installation                               ║" -ForegroundColor Cyan
-Write-Host "╚══════════════════════════════════════════════════════════════╝" -ForegroundColor Cyan
+Write-Host "======================================================================" -ForegroundColor Cyan
+Write-Host "           CSES Data Harmonization Agent                              " -ForegroundColor Cyan
+Write-Host "           Windows Installation                                       " -ForegroundColor Cyan
+Write-Host "======================================================================" -ForegroundColor Cyan
 Write-Host ""
 
 # Installation paths (no admin needed - user directory)
@@ -17,17 +17,22 @@ $RepoUrl = "https://github.com/aseimel/cses_agentic/archive/refs/heads/main.zip"
 
 # Check Python (3.10, 3.11, 3.12, 3.13 all work)
 function Test-Python {
-    # Try different python commands
-    $pythonCmds = @("python", "python3", "py -3")
+    $pythonCmds = @("python", "python3", "py -3", "py")
 
     foreach ($cmd in $pythonCmds) {
         try {
-            $version = & $cmd.Split()[0] $cmd.Split()[1..99] --version 2>&1
+            $cmdParts = $cmd.Split()
+            $version = & $cmdParts[0] $cmdParts[1..99] --version 2>&1
             if ($version -match "Python 3\.(\d+)") {
                 $minor = [int]$Matches[1]
                 if ($minor -ge 10) {
                     Write-Host "[OK] $version" -ForegroundColor Green
-                    $script:PythonCmd = $cmd.Split()[0]
+                    $script:PythonCmd = $cmdParts[0]
+                    if ($cmdParts.Length -gt 1) {
+                        $script:PythonArgs = $cmdParts[1..99]
+                    } else {
+                        $script:PythonArgs = @()
+                    }
                     return $true
                 }
             }
@@ -44,51 +49,65 @@ function Test-Python {
 }
 
 $script:PythonCmd = "python"
-
-# Check Claude CLI (optional)
-function Test-Claude {
-    try {
-        $null = Get-Command claude -ErrorAction Stop
-        Write-Host "[OK] Claude CLI found" -ForegroundColor Green
-        return $true
-    } catch {
-        Write-Host "[!] Claude CLI not found (optional)" -ForegroundColor Yellow
-        Write-Host "    For Claude Max subscription support, install Node.js and run:" -ForegroundColor Gray
-        Write-Host "    npm install -g @anthropic-ai/claude-code" -ForegroundColor Gray
-        Write-Host "    claude login" -ForegroundColor Gray
-        return $false
-    }
-}
+$script:PythonArgs = @()
 
 Write-Host "Checking requirements..." -ForegroundColor Cyan
 if (-not (Test-Python)) {
+    Read-Host "Press Enter to exit"
     exit 1
 }
-Test-Claude
 Write-Host ""
 
-# Remove old installation
+# Check for existing installation and preserve .env
+$ExistingEnv = $null
+$IsUpdate = $false
 if (Test-Path $InstallDir) {
-    Write-Host "Removing old installation..." -ForegroundColor Yellow
+    $IsUpdate = $true
+    Write-Host "Existing installation found - updating..." -ForegroundColor Yellow
+
+    # Preserve .env file
+    if (Test-Path "$InstallDir\.env") {
+        Write-Host "Preserving your configuration..." -ForegroundColor Cyan
+        $ExistingEnv = Get-Content "$InstallDir\.env" -Raw
+    }
+
+    # Remove old installation
     Remove-Item -Recurse -Force $InstallDir
 }
 
 # Download and extract
 Write-Host "Downloading CSES Agent..." -ForegroundColor Cyan
 $ZipFile = "$env:TEMP\cses_agentic.zip"
-Invoke-WebRequest -Uri $RepoUrl -OutFile $ZipFile
+try {
+    Invoke-WebRequest -Uri $RepoUrl -OutFile $ZipFile -UseBasicParsing
+} catch {
+    Write-Host "[X] Download failed: $_" -ForegroundColor Red
+    Read-Host "Press Enter to exit"
+    exit 1
+}
 
 Write-Host "Extracting..." -ForegroundColor Cyan
 Expand-Archive -Path $ZipFile -DestinationPath $env:TEMP -Force
 Move-Item "$env:TEMP\cses_agentic-main" $InstallDir
 Remove-Item $ZipFile
 
+# Restore .env if it existed
+if ($ExistingEnv) {
+    Write-Host "Restoring your configuration..." -ForegroundColor Cyan
+    Set-Content -Path "$InstallDir\.env" -Value $ExistingEnv
+}
+
 # Create virtual environment
 Write-Host "Setting up Python environment..." -ForegroundColor Cyan
 Set-Location $InstallDir
-& $script:PythonCmd -m venv .venv
 
-# Activate and install
+if ($script:PythonArgs.Length -gt 0) {
+    & $script:PythonCmd $script:PythonArgs -m venv .venv
+} else {
+    & $script:PythonCmd -m venv .venv
+}
+
+# Install dependencies
 Write-Host "Installing dependencies (this may take a few minutes)..." -ForegroundColor Cyan
 & "$InstallDir\.venv\Scripts\python.exe" -m pip install --upgrade pip 2>&1 | Out-Null
 & "$InstallDir\.venv\Scripts\python.exe" -m pip install -r requirements.txt
@@ -114,26 +133,30 @@ if ($UserPath -notlike "*$BinDir*") {
     [Environment]::SetEnvironmentVariable("Path", "$BinDir;$UserPath", "User")
 }
 
-# Copy default .env if not exists
-if (-not (Test-Path "$InstallDir\.env")) {
-    if (Test-Path "$InstallDir\.env.example") {
-        Copy-Item "$InstallDir\.env.example" "$InstallDir\.env"
-    }
+Write-Host ""
+Write-Host "======================================================================" -ForegroundColor Green
+if ($IsUpdate) {
+    Write-Host "           Update Complete!                                           " -ForegroundColor Green
+} else {
+    Write-Host "           Installation Complete!                                     " -ForegroundColor Green
 }
+Write-Host "======================================================================" -ForegroundColor Green
+Write-Host ""
 
+if ($IsUpdate) {
+    Write-Host "Your configuration has been preserved." -ForegroundColor Cyan
+    Write-Host ""
+    Write-Host "To use: Open a new PowerShell and run 'cses'" -ForegroundColor White
+} else {
+    Write-Host "NEXT STEPS:" -ForegroundColor Cyan
+    Write-Host ""
+    Write-Host "  1. CLOSE and REOPEN PowerShell" -ForegroundColor White
+    Write-Host ""
+    Write-Host "  2. Run 'cses' to start the setup wizard" -ForegroundColor White
+    Write-Host "     (It will ask for your GESIS API key and Stata path)" -ForegroundColor Gray
+    Write-Host ""
+    Write-Host "  3. Navigate to a folder with collaborator files and run 'cses'" -ForegroundColor White
+}
 Write-Host ""
-Write-Host "╔══════════════════════════════════════════════════════════════╗" -ForegroundColor Green
-Write-Host "║           Installation Complete!                             ║" -ForegroundColor Green
-Write-Host "╚══════════════════════════════════════════════════════════════╝" -ForegroundColor Green
-Write-Host ""
-Write-Host "To get started:" -ForegroundColor Cyan
-Write-Host "  1. CLOSE and REOPEN your terminal/PowerShell" -ForegroundColor White
-Write-Host "  2. Navigate to a folder with collaborator files" -ForegroundColor White
-Write-Host "  3. Run: cses" -ForegroundColor White
-Write-Host ""
-Write-Host "Configuration file:" -ForegroundColor Cyan
-Write-Host "  $InstallDir\.env" -ForegroundColor White
-Write-Host ""
-Write-Host "To configure API keys, edit the .env file or run:" -ForegroundColor Cyan
-Write-Host "  notepad $InstallDir\.env" -ForegroundColor White
+Write-Host "To reconfigure later: cses setup --force" -ForegroundColor Gray
 Write-Host ""
