@@ -57,7 +57,7 @@ def get_install_dir() -> Path:
     return install_dir
 
 
-def first_run_setup() -> bool:
+def first_run_setup(force: bool = False) -> bool:
     """
     First-run setup wizard for GESIS infrastructure.
 
@@ -65,17 +65,20 @@ def first_run_setup() -> bool:
     - GESIS API key
     - Stata executable path
 
+    Args:
+        force: If True, run setup even if already configured
+
     Returns:
         True if setup completed, False if user cancelled
     """
     install_dir = get_install_dir()
     env_file = install_dir / ".env"
 
-    # Check if already configured via setup wizard
-    if env_file.exists():
+    # Check if already configured via setup wizard (unless forced)
+    if not force and env_file.exists():
         from dotenv import dotenv_values
         config = dotenv_values(env_file)
-        # Check for setup wizard marker or valid API key
+        # Check for setup wizard marker
         if config.get("CSES_SETUP_COMPLETE") == "true":
             return True  # Setup wizard was completed
         if config.get("OPENAI_API_KEY") and config.get("OPENAI_API_KEY") not in ["your-key-here", ""]:
@@ -749,7 +752,6 @@ You can also type natural language and I'll try to help!
 
 def cmd_setup(args):
     """Re-run the setup wizard."""
-    # Force setup by temporarily removing the check
     install_dir = get_install_dir()
     env_file = install_dir / ".env"
 
@@ -758,8 +760,8 @@ def cmd_setup(args):
         print("Use 'cses setup --force' to reconfigure.")
         return
 
-    # Run setup (it will overwrite)
-    first_run_setup()
+    # Run setup with force flag
+    first_run_setup(force=True)
 
 
 def main():
