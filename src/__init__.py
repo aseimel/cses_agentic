@@ -2,6 +2,7 @@
 
 from . import ingest
 from . import matching
-from . import ui
+from . import workflow
+from . import agent
 
-__all__ = ["ingest", "matching", "ui"]
+__all__ = ["ingest", "matching", "workflow", "agent"]
