@@ -12,7 +12,7 @@ echo ""
 
 # Installation directory (no admin needed)
 INSTALL_DIR="$HOME/.cses-agent"
-REPO_URL="https://github.com/YOUR_ORG/cses_agentic.git"
+REPO_URL="https://github.com/aseimel/cses_agentic.git"
 
 # Check for Python 3.10+
 check_python() {

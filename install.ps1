@@ -13,7 +13,7 @@ Write-Host ""
 
 # Installation paths (no admin needed - user directory)
 $InstallDir = "$env:USERPROFILE\.cses-agent"
-$RepoUrl = "https://github.com/YOUR_ORG/cses_agentic/archive/refs/heads/main.zip"
+$RepoUrl = "https://github.com/aseimel/cses_agentic/archive/refs/heads/main.zip"
 
 # Check Python (3.10, 3.11, 3.12, 3.13 all work)
 function Test-Python {

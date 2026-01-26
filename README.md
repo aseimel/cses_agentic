@@ -27,7 +27,7 @@ A command-line tool that helps process CSES (Comparative Study of Electoral Syst
 Open **PowerShell** and run:
 
 ```powershell
-irm https://raw.githubusercontent.com/YOUR_ORG/cses_agentic/main/install.ps1 | iex
+irm https://raw.githubusercontent.com/aseimel/cses_agentic/main/install.ps1 | iex
 ```
 
 Or download `install.ps1` and run:
@@ -39,7 +39,7 @@ powershell -ExecutionPolicy Bypass -File install.ps1
 
 ```powershell
 # Clone repository
-git clone https://github.com/YOUR_ORG/cses_agentic.git
+git clone https://github.com/aseimel/cses_agentic.git
 cd cses_agentic
 
 # Create virtual environment
