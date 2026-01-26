@@ -34,6 +34,7 @@ from src.workflow.state import (
 from src.workflow.organizer import FileOrganizer, detect_and_summarize, detect_questionnaire_language
 from src.workflow.steps import StepExecutor
 from src.agent.validator import check_claude_cli_available
+from src.agent.conversation import ConversationSession
 
 # Configure logging
 logging.basicConfig(
@@ -677,137 +678,74 @@ def cmd_interactive(args):
     print(format_workflow_status(state))
     print()
 
-    # Show what to do next
+    # Start conversational mode with Claude
+    print("=" * 60)
+    print("CSES Expert Assistant")
+    print("=" * 60)
+    print()
+    print("I'm here to guide you through the CSES data processing workflow.")
+    print("Ask me anything about the process, or tell me what you'd like to do.")
+    print()
+    print("Type 'quit' to exit, 'status' to see progress.\n")
+
+    # Create conversation session
+    conversation = ConversationSession(state)
+
+    # Send initial greeting to get Claude's guidance
     next_step = state.get_next_step()
     if next_step is not None:
         step_info = WORKFLOW_STEPS[next_step]
-        print(f">>> Next: Step {next_step} - {step_info['name']}")
-        print(f"    Press ENTER to start, or type a command.\n")
-
-    executor = StepExecutor(state)
+        initial_prompt = f"The study is initialized. The next step is Step {next_step}: {step_info['name']}. Briefly explain what this step involves and ask if the user is ready to proceed."
+        try:
+            response = conversation.send(initial_prompt)
+            print(f"Assistant: {response}\n")
+        except Exception as e:
+            print(f"Note: Could not connect to Claude ({e})")
+            print(f"Next step: Step {next_step} - {step_info['name']}\n")
 
     while True:
         try:
-            user_input = input("cses> ").strip()
+            user_input = input("You: ").strip()
         except (EOFError, KeyboardInterrupt):
             print("\nGoodbye!")
             break
 
-        # Strip "cses" prefix if user typed it
-        if user_input.lower().startswith("cses "):
-            user_input = user_input[5:].strip()
-
-        # Empty input = run next step
         if not user_input:
-            next_step = state.get_next_step()
-            if next_step is not None:
-                user_input = "next"
-            else:
-                print("All steps complete! Type 'help' for commands.")
-                continue
+            continue
 
-        parts = user_input.lower().split()
-        cmd = parts[0]
-        rest = user_input[len(cmd):].strip()
+        # Handle special commands
+        cmd_lower = user_input.lower()
 
-        if cmd in ["quit", "exit", "q"]:
+        if cmd_lower in ["quit", "exit", "q"]:
             print("Goodbye!")
             break
 
-        elif cmd == "help":
+        elif cmd_lower == "status":
+            conversation.refresh_state()
+            print()
+            print(format_workflow_status(conversation.state))
+            print()
+            continue
+
+        elif cmd_lower == "help":
             print("""
-Commands:
-  ENTER        Start the next step
-  next         Same as ENTER - work on next step
-  step N       Jump to step N (0-16)
-  status       Show workflow progress
-  files        List detected files
-  match        Run variable matching (Step 7)
-  export       Export approved mappings
-  quit         Exit
+Just chat naturally! You can ask things like:
+  - "What should I do next?"
+  - "Explain step 3"
+  - "I'm having trouble with the questionnaire"
+  - "What are the CSES coding conventions?"
+
+Commands: status, quit
 """)
+            continue
 
-        elif cmd == "status":
-            print(format_workflow_status(state))
-
-        elif cmd == "step":
-            try:
-                step_num = int(rest) if rest else state.get_next_step()
-                if step_num is None:
-                    print("All steps complete!")
-                    continue
-
-                # Execute the step
-                print(f"\n{'='*60}")
-                print(f"Step {step_num}: {WORKFLOW_STEPS[step_num]['name']}")
-                print(f"{'='*60}\n")
-
-                result = executor.execute_step(step_num)
-
-                if result.success:
-                    print(f"\n✅ {result.message}")
-                else:
-                    print(f"\n❌ {result.message}")
-
-                # Reload state
-                state = WorkflowState.load(study_dir)
-                executor = StepExecutor(state)
-
-                # Show next step
-                next_step = state.get_next_step()
-                if next_step is not None:
-                    print(f"\n>>> Next: Step {next_step} - {WORKFLOW_STEPS[next_step]['name']}")
-                    print(f"    Press ENTER to continue.\n")
-                else:
-                    print("\n🎉 All steps complete!")
-
-            except ValueError:
-                print("Usage: step N (where N is 0-16)")
-
-        elif cmd == "next":
-            next_step = state.get_next_step()
-            if next_step is None:
-                print("All steps complete!")
-            else:
-                # Execute the step
-                print(f"\n{'='*60}")
-                print(f"Step {next_step}: {WORKFLOW_STEPS[next_step]['name']}")
-                print(f"{'='*60}\n")
-
-                result = executor.execute_step(next_step)
-
-                if result.success:
-                    print(f"\n✅ {result.message}")
-                else:
-                    print(f"\n❌ {result.message}")
-
-                # Reload state
-                state = WorkflowState.load(study_dir)
-                executor = StepExecutor(state)
-
-                # Show next step
-                next_step = state.get_next_step()
-                if next_step is not None:
-                    print(f"\n>>> Next: Step {next_step} - {WORKFLOW_STEPS[next_step]['name']}")
-                    print(f"    Press ENTER to continue.\n")
-                else:
-                    print("\n🎉 All steps complete!")
-
-        elif cmd == "match":
-            match_args = argparse.Namespace(no_validate=False)
-            cmd_match(match_args)
-            state = WorkflowState.load(study_dir)
-
-        elif cmd == "export":
-            export_args = argparse.Namespace(format="both")
-            cmd_export(export_args)
-
-        elif cmd == "files":
-            print(detect_and_summarize(study_dir or working_dir))
-
-        else:
-            print(f"Unknown command: '{cmd}'")
-            print("Press ENTER to continue to next step, or type 'help'.")
+        # Send everything else to Claude
+        try:
+            print()
+            response = conversation.send(user_input)
+            print(f"Assistant: {response}\n")
+        except Exception as e:
+            print(f"Error: {e}\n")
 
 
 def cmd_setup(args):
