@@ -36,6 +36,11 @@ MACRO_REPORT_KEYWORDS = [
     "macro data", "macro_data", "macrodata"
 ]
 
+# Keywords for district data (election results by constituency)
+DISTRICT_DATA_KEYWORDS = [
+    "district", "constituency", "riding", "wahlkreis", "circonscription"
+]
+
 # Keywords to identify English translation questionnaires
 ENGLISH_KEYWORDS = [
     "english", "eng", "_en_", "_en.", "(en)", "[en]",
@@ -154,7 +159,8 @@ def deduplicate_by_format(
 @dataclass
 class DetectedFiles:
     """Results of file detection in a directory."""
-    data_files: list[Path] = field(default_factory=list)
+    data_files: list[Path] = field(default_factory=list)  # Survey data (main)
+    district_data_files: list[Path] = field(default_factory=list)  # District/constituency election results
     questionnaire_files: list[Path] = field(default_factory=list)
     codebook_files: list[Path] = field(default_factory=list)
     design_report_files: list[Path] = field(default_factory=list)
@@ -179,10 +185,18 @@ class DetectedFiles:
 
         lines.extend([
             "",
-            f"### Data files ({len(self.data_files)})"
+            f"### Survey Data ({len(self.data_files)})"
         ])
         for f in self.data_files:
             lines.append(f"  - {f.name}")
+
+        if self.district_data_files:
+            lines.extend([
+                "",
+                f"### District Data ({len(self.district_data_files)})"
+            ])
+            for f in self.district_data_files:
+                lines.append(f"  - {f.name}")
 
         lines.extend([
             "",
@@ -330,7 +344,11 @@ class FileOrganizer:
         name_lower = file_path.name.lower()
 
         if ext in DATA_EXTENSIONS:
-            result.data_files.append(file_path)
+            # Check if it's district data (election results by constituency)
+            if any(kw in name_lower for kw in DISTRICT_DATA_KEYWORDS):
+                result.district_data_files.append(file_path)
+            else:
+                result.data_files.append(file_path)
             return
 
         if ext in DOC_EXTENSIONS:
@@ -352,6 +370,7 @@ class FileOrganizer:
         """Try to detect country and year from filenames."""
         all_files = (
             result.data_files +
+            result.district_data_files +
             result.questionnaire_files +
             result.codebook_files +
             result.design_report_files +
@@ -444,6 +463,7 @@ class FileOrganizer:
         # Collect all source files for original deposit
         all_source_files = (
             detected.data_files +
+            detected.district_data_files +
             detected.questionnaire_files +
             detected.codebook_files +
             detected.design_report_files +
@@ -481,6 +501,24 @@ class FileOrganizer:
                 shutil.copy2(best_data, dst)
                 mapping[str(best_data)] = str(dst)
                 logger.info(f"Copied: {best_data.name} -> {new_name}")
+
+        # Copy and rename district data (election results by constituency)
+        # Used in Step 9 for merging
+        if detected.district_data_files:
+            district_files = deduplicate_by_format(
+                detected.district_data_files,
+                format_preference=DATA_FORMAT_PREFERENCE
+            )
+            for i, src in enumerate(district_files):
+                if len(district_files) == 1:
+                    new_name = f"{prefix}_district_data{src.suffix}"
+                else:
+                    new_name = f"{prefix}_district_data_{i+1}{src.suffix}"
+                dst = study_dir / new_name
+                if not dst.exists():
+                    shutil.copy2(src, dst)
+                    mapping[str(src)] = str(dst)
+                    logger.info(f"Copied: {src.name} -> {new_name}")
 
         # Copy and rename questionnaires (english vs native)
         # First separate by language, then deduplicate each group
