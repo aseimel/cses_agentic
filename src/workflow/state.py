@@ -76,8 +76,8 @@ WORKFLOW_STEPS = {
         "requires_llm": True
     },
     8: {
-        "name": "Complete Documentation",
-        "description": "Finalize log file, fill codebook entries, create party table",
+        "name": "Debug Stata .do File",
+        "description": "Run and debug the generated .do file in Stata, fix errors iteratively",
         "automatable": True,
         "requires_llm": True
     },

@@ -336,6 +336,8 @@ class StepExecutor:
         # Run the dual-model matching
         try:
             from src.agent import run_harmonization
+            from src.agent.tool_wrappers import export_tracking_sheet, export_do_file
+            from datetime import datetime
 
             result = run_harmonization(
                 data_file=Path(data_file),
@@ -350,12 +352,52 @@ class StepExecutor:
             self.state.mappings = [v.to_dict() for v in result.validations]
             self.state.save()
 
+            artifacts = [str(self.working_dir / ".cses" / "mappings")]
+
+            # Auto-generate output files
+            print("Generating CSES output files...")
+            country_code = self.state.country or "CNT"
+            year = self.state.year or "YEAR"
+            date_str = datetime.now().strftime("%Y%m%d")
+
+            # Ensure micro folder exists
+            micro_dir = self.working_dir / "micro"
+            micro_dir.mkdir(exist_ok=True)
+
+            # Generate tracking sheet
+            tracking_path = micro_dir / f"deposited variables-m6_{country_code}_{year}_{date_str}.xlsx"
+            tracking_result = export_tracking_sheet(
+                mappings=self.state.mappings,
+                output_path=tracking_path,
+                country_code=country_code,
+                year=year
+            )
+            if tracking_result.success:
+                artifacts.append(str(tracking_path))
+                print(f"  Created: {tracking_path.name}")
+
+            # Generate .do file
+            do_path = micro_dir / f"cses-m6_micro_{country_code}_{year}_{date_str}.do"
+            do_result = export_do_file(
+                mappings=self.state.mappings,
+                output_path=do_path,
+                country_code=country_code,
+                country_name=self.state.country or "COUNTRY",
+                year=year,
+                author="CSES Agent",
+                data_file_path=str(data_file)
+            )
+            if do_result.success:
+                artifacts.append(str(do_path))
+                print(f"  Created: {do_path.name}")
+
             return StepResult(
                 success=True,
                 message=f"Matched {result.matched_count}/{result.total_targets} variables. "
-                        f"Agreements: {result.agree_count}, Disagreements: {result.disagree_count}",
-                artifacts=[str(self.working_dir / ".cses" / "mappings")],
-                next_action="Review mappings in the UI or conversation, then approve/reject"
+                        f"Agreements: {result.agree_count}, Disagreements: {result.disagree_count}. "
+                        f"Output files generated in micro/ folder.",
+                artifacts=artifacts,
+                next_action="Review mappings and run Stata debugging if needed"
             )
 
         except Exception as e:
@@ -365,6 +407,77 @@ class StepExecutor:
                 message=f"Variable matching failed: {e}",
                 issues=[str(e)]
             )
+
+    def _step_8(self, do_file: str = None, **kwargs) -> StepResult:
+        """Step 8: Debug Stata .do File
+
+        This step runs the generated .do file through Stata and checks for errors.
+        If errors are found, the agent can use the debugging tools to fix them.
+        """
+        from src.agent.tool_wrappers import run_stata_debug
+
+        # Find .do file
+        if do_file:
+            do_path = Path(do_file)
+        else:
+            # Look for most recent .do file in micro folder
+            micro_dir = self.working_dir / "micro"
+            do_files = list(micro_dir.glob("cses-m6_micro_*.do"))
+            if not do_files:
+                return StepResult(
+                    success=False,
+                    message="No .do file found in micro/ folder",
+                    issues=["Run step 7 first to generate .do file"]
+                )
+            do_path = max(do_files, key=lambda p: p.stat().st_mtime)
+
+        if not do_path.exists():
+            return StepResult(
+                success=False,
+                message=f".do file not found: {do_path}"
+            )
+
+        # Run Stata debug
+        result = run_stata_debug(do_path)
+
+        if result.success:
+            return StepResult(
+                success=True,
+                message="Stata executed .do file successfully",
+                artifacts=[result.data.get("log_path", str(do_path))],
+                next_action="Review log file and proceed to quality checks"
+            )
+        else:
+            # Get error details for the agent to fix
+            if result.data and "errors" in result.data:
+                error_count = result.data.get("error_count", 0)
+                errors = result.data.get("errors", [])
+                error_summary = result.data.get("error_summary", "")
+
+                # Store error info in state for agent access
+                self.state.pending_questions = [{
+                    "type": "stata_debug",
+                    "do_file": str(do_path),
+                    "errors": errors,
+                    "error_summary": error_summary
+                }]
+                self.state.save()
+
+                issues = [f"Line {e['line_number']}: {e['error_line']}" for e in errors[:5]]
+
+                return StepResult(
+                    success=False,
+                    message=f"Stata found {error_count} error(s) in .do file. Use debugging tools to fix.",
+                    artifacts=[result.data.get("log_path", "")],
+                    issues=issues,
+                    next_action="Use run_stata_debug, read_do_file, and fix_do_file_line tools to debug"
+                )
+            else:
+                return StepResult(
+                    success=False,
+                    message=result.error or "Stata execution failed",
+                    issues=[result.error] if result.error else []
+                )
 
     def _step_12(self, **kwargs) -> StepResult:
         """Step 12: Run Check Files"""
