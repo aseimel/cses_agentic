@@ -261,8 +261,13 @@ def print_validation_status():
     print()
 
 
-def cmd_init(args):
-    """Initialize a new study from files in the current folder."""
+def cmd_init(args) -> Path:
+    """
+    Initialize a new study from files in the current folder.
+
+    Returns:
+        Path to the study directory (for use by cmd_interactive)
+    """
     working_dir = Path.cwd()
 
     # Check if already initialized
@@ -270,7 +275,7 @@ def cmd_init(args):
     if existing_state:
         print(f"Study already initialized: {existing_state.country} {existing_state.year}")
         print(f"Use 'cses status' to see progress or 'cses' for interactive mode.")
-        return
+        return Path(existing_state.working_dir)
 
     print("Scanning folder for collaborator files...\n")
 
@@ -395,7 +400,8 @@ def cmd_init(args):
     print(f"\n✅ Study initialized: {country} {year}")
     print(f"   Session ID: {state.session_id}")
     print(f"   Working directory: {study_dir}")
-    print(f"\nRun 'cses' to enter interactive mode or 'cses status' to see workflow.")
+
+    return study_dir
 
 
 def cmd_status(args):
@@ -625,6 +631,16 @@ def cmd_interactive(args):
     print_validation_status()
 
     if not state:
+        # Check for study folders in current directory
+        for subdir in working_dir.iterdir():
+            if subdir.is_dir() and (subdir / ".cses").exists():
+                state = WorkflowState.load(subdir)
+                if state:
+                    working_dir = subdir
+                    print(f"Found existing study: {state.country} {state.year}")
+                    break
+
+    if not state:
         print("No study initialized in this folder.")
         print()
         print(detect_and_summarize(working_dir))
@@ -639,16 +655,22 @@ def cmd_interactive(args):
                 no_organize=False,
                 move=False
             )
-            cmd_init(init_args)
-            state = WorkflowState.load(working_dir)
+            study_dir = cmd_init(init_args)
+
+            # Load state from the actual study directory
+            if study_dir:
+                state = WorkflowState.load(study_dir)
+                working_dir = study_dir
 
             if not state:
                 print("Initialization failed. Please check the files and try again.")
                 return
+        else:
+            print("\nNo study initialized. Exiting.")
+            return
 
-    if state:
-        print(format_workflow_status(state))
-        print()
+    print(format_workflow_status(state))
+    print()
 
     # Interactive loop
     print("Type 'help' for commands, 'quit' to exit.\n")
