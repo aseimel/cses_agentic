@@ -779,6 +779,96 @@ def cmd_setup(args):
     first_run_setup(force=True)
 
 
+def cmd_update(args):
+    """Update CSES agent from GitHub."""
+    import tempfile
+    import zipfile
+    import urllib.request
+
+    install_dir = get_install_dir()
+    repo_url = "https://github.com/aseimel/cses_agentic/archive/refs/heads/main.zip"
+
+    print("CSES Agent Update")
+    print("=" * 40)
+    print()
+
+    # Preserve .env
+    env_file = install_dir / ".env"
+    env_content = None
+    if env_file.exists():
+        env_content = env_file.read_text()
+        print("Preserving configuration...")
+
+    # Download latest
+    print("Downloading latest version...")
+    try:
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".zip") as tmp:
+            urllib.request.urlretrieve(repo_url, tmp.name)
+            zip_path = tmp.name
+    except Exception as e:
+        print(f"Download failed: {e}")
+        return
+
+    # Extract to temp directory
+    print("Extracting...")
+    try:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            with zipfile.ZipFile(zip_path, 'r') as zf:
+                zf.extractall(tmp_dir)
+
+            extracted_dir = Path(tmp_dir) / "cses_agentic-main"
+
+            # Update Python files (preserve .env and .venv)
+            print("Updating files...")
+            for item in extracted_dir.iterdir():
+                if item.name in [".env", ".venv", ".git"]:
+                    continue
+
+                dst = install_dir / item.name
+                if item.is_dir():
+                    if dst.exists():
+                        shutil.rmtree(dst)
+                    shutil.copytree(item, dst)
+                else:
+                    shutil.copy2(item, dst)
+
+            # Restore .env
+            if env_content:
+                env_file.write_text(env_content)
+                print("Configuration restored.")
+
+            # Check if requirements changed and update
+            print("Checking dependencies...")
+            venv_python = install_dir / ".venv" / ("Scripts" if os.name == "nt" else "bin") / "python"
+            if venv_python.exists():
+                import subprocess
+                result = subprocess.run(
+                    [str(venv_python), "-m", "pip", "install", "-q", "-r", str(install_dir / "requirements.txt")],
+                    capture_output=True,
+                    text=True
+                )
+                if result.returncode != 0:
+                    print(f"Warning: pip install had issues: {result.stderr}")
+
+    except Exception as e:
+        print(f"Update failed: {e}")
+        import traceback
+        traceback.print_exc()
+        return
+    finally:
+        # Clean up zip
+        try:
+            os.unlink(zip_path)
+        except:
+            pass
+
+    print()
+    print("=" * 40)
+    print("Update complete!")
+    print()
+    print("Changes will take effect on next run.")
+
+
 def main():
     """Main entry point."""
     try:
@@ -810,6 +900,7 @@ Examples:
   cses match        Run variable matching with dual-model validation
   cses export       Export approved mappings
   cses setup        Re-run initial configuration
+  cses update       Update to latest version from GitHub
         """
     )
 
@@ -846,10 +937,13 @@ Examples:
     export_parser.add_argument("--format", "-f", choices=["json", "xlsx", "both"],
                               default="both", help="Export format")
 
+    # update command
+    subparsers.add_parser("update", help="Update to latest version from GitHub")
+
     args = parser.parse_args()
 
-    # Check for first-run setup (except for setup command itself)
-    if args.command != "setup":
+    # Check for first-run setup (except for setup and update commands)
+    if args.command not in ["setup", "update"]:
         try:
             if not first_run_setup():
                 print("\nSetup cancelled or incomplete.")
@@ -868,6 +962,8 @@ Examples:
     try:
         if args.command == "setup":
             cmd_setup(args)
+        elif args.command == "update":
+            cmd_update(args)
         elif args.command == "init":
             cmd_init(args)
         elif args.command == "status":

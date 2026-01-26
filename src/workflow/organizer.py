@@ -42,8 +42,11 @@ ENGLISH_KEYWORDS = [
     "translation", "translated", "engl"
 ]
 
-# Preferred format order (first = most preferred)
-FORMAT_PREFERENCE = [".pdf", ".docx", ".doc", ".rtf", ".txt"]
+# Preferred format order for documents (first = most preferred)
+DOC_FORMAT_PREFERENCE = [".pdf", ".docx", ".doc", ".rtf", ".txt"]
+
+# Preferred format order for data files (first = most preferred)
+DATA_FORMAT_PREFERENCE = [".dta", ".sav", ".parquet", ".csv", ".xlsx", ".xls", ".json"]
 
 
 def filename_similarity(name1: str, name2: str) -> float:
@@ -72,16 +75,22 @@ def filename_similarity(name1: str, name2: str) -> float:
     return intersection / union if union > 0 else 0.0
 
 
-def deduplicate_by_format(files: list[Path], similarity_threshold: float = 0.7) -> list[Path]:
+def deduplicate_by_format(
+    files: list[Path],
+    format_preference: list[str] = None,
+    similarity_threshold: float = 0.7
+) -> list[Path]:
     """
-    Remove duplicate documents that exist in multiple formats.
-    Keeps the preferred format (PDF > DOCX > DOC > RTF > TXT).
+    Remove duplicate files that exist in multiple formats.
+    Keeps the preferred format based on the preference list.
 
     Only deduplicates if filenames are similar enough (above threshold).
     All originals are still preserved in original_deposit/.
 
     Args:
         files: List of file paths
+        format_preference: Ordered list of preferred extensions (first = most preferred)
+                          Defaults to DOC_FORMAT_PREFERENCE
         similarity_threshold: Minimum similarity to consider files as duplicates
 
     Returns:
@@ -89,6 +98,9 @@ def deduplicate_by_format(files: list[Path], similarity_threshold: float = 0.7) 
     """
     if len(files) <= 1:
         return files
+
+    if format_preference is None:
+        format_preference = DOC_FORMAT_PREFERENCE
 
     # Group files by their base name similarity
     groups = []  # List of lists of similar files
@@ -123,9 +135,9 @@ def deduplicate_by_format(files: list[Path], similarity_threshold: float = 0.7) 
             def format_rank(f: Path) -> int:
                 ext = f.suffix.lower()
                 try:
-                    return FORMAT_PREFERENCE.index(ext)
+                    return format_preference.index(ext)
                 except ValueError:
-                    return len(FORMAT_PREFERENCE)
+                    return len(format_preference)
 
             group.sort(key=format_rank)
             preferred = group[0]
@@ -445,13 +457,16 @@ class FileOrganizer:
                 shutil.copy2(src, dst)
                 logger.info(f"Preserved original: {src.name}")
 
-        # Copy and rename data files (working copies)
-        for i, src in enumerate(detected.data_files):
-            ext = src.suffix
-            if len(detected.data_files) == 1:
-                new_name = f"{prefix}_data{ext}"
+        # Copy and rename data files (working copies, deduplicate, prefer .dta)
+        data_files = deduplicate_by_format(
+            detected.data_files,
+            format_preference=DATA_FORMAT_PREFERENCE
+        )
+        for i, src in enumerate(data_files):
+            if len(data_files) == 1:
+                new_name = f"{prefix}_data{src.suffix}"
             else:
-                new_name = f"{prefix}_data_{i+1}{ext}"
+                new_name = f"{prefix}_data_{i+1}{src.suffix}"
             dst = study_dir / new_name
             if not dst.exists():
                 shutil.copy2(src, dst)
