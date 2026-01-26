@@ -1,0 +1,50 @@
+# CSES Data Harmonization Agent
+# Complete dependencies for the workflow automation system
+
+# =============================================================================
+# Data Processing
+# =============================================================================
+pandas>=2.0.0
+polars>=1.15.0
+pyreadstat>=1.2.7      # For reading .dta (Stata) and .sav (SPSS) files
+openpyxl>=3.1.0        # For Excel files (.xlsx)
+xlrd>=2.0.0            # For older Excel files (.xls)
+pyarrow>=14.0.0        # For Parquet files
+numpy>=1.24.0
+
+# =============================================================================
+# Document Parsing
+# =============================================================================
+pypdf>=4.0.0           # For PDF files
+python-docx>=1.0.0     # For DOCX files
+striprtf>=0.0.26       # For RTF files
+
+# =============================================================================
+# LLM Integration
+# =============================================================================
+litellm>=1.52.0        # Unified LLM API (supports OpenAI, Anthropic, etc.)
+anthropic>=0.39.0      # Claude API client
+openai>=1.0.0          # OpenAI API client (for other models via LiteLLM)
+tiktoken>=0.5.0        # Token counting
+
+# =============================================================================
+# Workflow Orchestration
+# =============================================================================
+prefect>=3.0.0         # Workflow management (optional, for advanced use)
+
+# =============================================================================
+# Utilities
+# =============================================================================
+python-dotenv>=1.0.0   # Environment variable management
+pyyaml>=6.0.0          # YAML parsing
+rich>=13.0.0           # Beautiful terminal output
+click>=8.0.0           # CLI framework (alternative to argparse)
+tqdm>=4.65.0           # Progress bars
+
+# =============================================================================
+# Development & Testing
+# =============================================================================
+pytest>=7.0.0
+pytest-asyncio>=0.21.0
+black>=23.0.0
+ruff>=0.1.0

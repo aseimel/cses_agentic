@@ -1,0 +1,38 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+.venv/
+venv/
+ENV/
+*.egg-info/
+dist/
+build/
+*.egg
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Environment - keep example, ignore actual
+.env
+!.env.example
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Project specific
+outputs/
+*.log
+app.log
+
+# Test outputs
+test_output/
+
+# Large data files (don't commit)
+repo/
