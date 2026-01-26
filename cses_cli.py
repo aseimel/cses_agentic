@@ -274,63 +274,64 @@ def cmd_init(args) -> Path:
     # Check if already initialized
     existing_state = WorkflowState.load(working_dir)
     if existing_state:
-        print(f"Study already initialized: {existing_state.country} {existing_state.year}")
-        print(f"Use 'cses status' to see progress or 'cses' for interactive mode.")
         return Path(existing_state.working_dir)
 
-    print("Scanning folder for collaborator files...\n")
+    # Also check subdirectories
+    for subdir in working_dir.iterdir():
+        if subdir.is_dir() and (subdir / ".cses").exists():
+            existing_state = WorkflowState.load(subdir)
+            if existing_state:
+                return subdir
+
+    print("Scanning files...")
 
     # Detect files
     organizer = FileOrganizer(working_dir)
     detected = organizer.detect_files()
 
-    print(detected.summary())
-    print()
+    if not detected.data_files:
+        print("\n❌ No data files found (.dta, .sav, .csv, .xlsx)")
+        print("   Please run this in a folder containing the collaborator's data files.")
+        return None
 
     # Get country/year (use detected or prompt)
     country = args.country or detected.country
     year = args.year or detected.year
 
     if not country:
-        country = input("Enter country name: ").strip() or "Unknown"
-    if not year:
-        year = input("Enter election year: ").strip() or "0000"
+        country = input("\nCountry name: ").strip()
+        if not country:
+            print("Country name is required.")
+            return None
 
-    # Determine whether to organize files
-    if args.no_organize:
+    if not year:
+        year = input("Election year: ").strip()
+        if not year:
+            print("Election year is required.")
+            return None
+
+    # Show what we found
+    country_code = organizer.COUNTRY_CODES.get(country.lower(), country[:3].upper())
+    print(f"\n📁 Setting up: {country} {year} ({country_code}_{year})")
+    print(f"\nDetected files:")
+    print(f"  Data: {len(detected.data_files)} file(s)")
+    print(f"  Questionnaires: {len(detected.questionnaire_files)} file(s)")
+    print(f"  Codebooks: {len(detected.codebook_files)} file(s)")
+
+    # Determine study directory
+    expected_folder = f"{country_code}_{year}"
+
+    if working_dir.name == expected_folder or (working_dir / ".cses").exists():
         study_dir = working_dir
     else:
-        # Check if we should create folder structure
-        # Use country code for folder name
-        country_code = organizer.COUNTRY_CODES.get(country.lower(), country[:3].upper())
-        expected_folder = f"{country_code}_{year}"
-
-        if working_dir.name == expected_folder or (working_dir / ".cses").exists():
-            # Already in a study folder
-            study_dir = working_dir
-            print(f"\nUsing existing folder structure: {working_dir}")
-        else:
-            # Ask user
-            print(f"\nWould you like to organize files into {expected_folder}/?")
-            print(f"\nFolder structure:")
-            print(f"  {expected_folder}/")
-            print(f"  ├── original_deposit/           # Untouched originals")
-            print(f"  │   └── [all your original files]")
-            print(f"  ├── {expected_folder}_data.dta")
-            print(f"  ├── {expected_folder}_questionnaire_english.pdf")
-            print(f"  ├── {expected_folder}_questionnaire_native.pdf")
-            print(f"  └── ... plus generated outputs")
-            response = input("Organize files? [Y/n]: ").strip().lower()
-
-            if response != 'n':
-                study_dir, _ = organizer.initialize_study(
-                    country=country,
-                    year=year,
-                    copy_files=not args.move
-                )
-                print(f"\nCreated study folder: {study_dir}")
-            else:
-                study_dir = working_dir
+        # Create organized folder
+        study_dir, _ = organizer.initialize_study(
+            country=country,
+            year=year,
+            copy_files=True
+        )
+        print(f"\n✅ Created: {study_dir.name}/")
+        print(f"   Originals preserved in: {study_dir.name}/original_deposit/")
 
     # Create workflow state
     country_code = organizer.COUNTRY_CODES.get(country.lower(), country[:3].upper())
@@ -626,57 +627,64 @@ def cmd_export(args):
 def cmd_interactive(args):
     """Start interactive conversation mode."""
     working_dir = Path.cwd()
-    state = WorkflowState.load(working_dir)
+    study_dir = None
+    state = None
 
     print_banner()
-    print_validation_status()
 
-    if not state:
+    # Try to find existing state
+    state = WorkflowState.load(working_dir)
+    if state:
+        study_dir = Path(state.working_dir)
+    else:
         # Check for study folders in current directory
         for subdir in working_dir.iterdir():
             if subdir.is_dir() and (subdir / ".cses").exists():
                 state = WorkflowState.load(subdir)
                 if state:
-                    working_dir = subdir
-                    print(f"Found existing study: {state.country} {state.year}")
+                    study_dir = subdir
+                    print(f"Found existing study: {state.country} {state.year}\n")
                     break
 
     if not state:
-        print("No study initialized in this folder.")
-        print()
+        print("No study initialized in this folder.\n")
         print(detect_and_summarize(working_dir))
         print()
 
-        response = input("Would you like to initialize a new study? [Y/n]: ").strip().lower()
-        if response != 'n':
-            # Use init command
-            init_args = argparse.Namespace(
-                country=None,
-                year=None,
-                no_organize=False,
-                move=False
-            )
-            study_dir = cmd_init(init_args)
-
-            # Load state from the actual study directory
-            if study_dir:
-                state = WorkflowState.load(study_dir)
-                working_dir = study_dir
-
-            if not state:
-                print("Initialization failed. Please check the files and try again.")
-                return
-        else:
-            print("\nNo study initialized. Exiting.")
+        response = input("Initialize a new study? [Y/n]: ").strip().lower()
+        if response == 'n':
+            print("\nExiting.")
             return
 
+        # Initialize
+        init_args = argparse.Namespace(
+            country=None,
+            year=None,
+            no_organize=False,
+            move=False
+        )
+        study_dir = cmd_init(init_args)
+
+        if study_dir:
+            state = WorkflowState.load(study_dir)
+
+        if not state:
+            print("\nInitialization failed.")
+            return
+
+    # Show current status
+    print()
     print(format_workflow_status(state))
     print()
 
-    # Interactive loop
-    print("Type 'help' for commands, 'quit' to exit.\n")
+    # Show what to do next
+    next_step = state.get_next_step()
+    if next_step is not None:
+        step_info = WORKFLOW_STEPS[next_step]
+        print(f">>> Next: Step {next_step} - {step_info['name']}")
+        print(f"    Press ENTER to start, or type a command.\n")
 
-    executor = StepExecutor(state) if state else None
+    executor = StepExecutor(state)
 
     while True:
         try:
@@ -685,10 +693,21 @@ def cmd_interactive(args):
             print("\nGoodbye!")
             break
 
-        if not user_input:
-            continue
+        # Strip "cses" prefix if user typed it
+        if user_input.lower().startswith("cses "):
+            user_input = user_input[5:].strip()
 
-        cmd = user_input.lower().split()[0]
+        # Empty input = run next step
+        if not user_input:
+            next_step = state.get_next_step()
+            if next_step is not None:
+                user_input = "next"
+            else:
+                print("All steps complete! Type 'help' for commands.")
+                continue
+
+        parts = user_input.lower().split()
+        cmd = parts[0]
         rest = user_input[len(cmd):].strip()
 
         if cmd in ["quit", "exit", "q"]:
@@ -697,95 +716,98 @@ def cmd_interactive(args):
 
         elif cmd == "help":
             print("""
-Available commands:
+Commands:
+  ENTER        Start the next step
+  next         Same as ENTER - work on next step
+  step N       Jump to step N (0-16)
   status       Show workflow progress
-  step N       Work on step N (0-16)
-  next         Work on the next pending step
+  files        List detected files
   match        Run variable matching (Step 7)
   export       Export approved mappings
-  files        List detected files
-  questions    Show pending collaborator questions
-  help         Show this help
   quit         Exit
-
-You can also type natural language and I'll try to help!
 """)
 
         elif cmd == "status":
-            if state:
-                print(format_workflow_status(state))
-            else:
-                print("No study initialized.")
+            print(format_workflow_status(state))
 
         elif cmd == "step":
-            if not state:
-                print("Initialize a study first with 'cses init'")
-                continue
             try:
                 step_num = int(rest) if rest else state.get_next_step()
                 if step_num is None:
                     print("All steps complete!")
                     continue
 
-                step_args = argparse.Namespace(step_number=step_num)
-                cmd_step(step_args)
+                # Execute the step
+                print(f"\n{'='*60}")
+                print(f"Step {step_num}: {WORKFLOW_STEPS[step_num]['name']}")
+                print(f"{'='*60}\n")
+
+                result = executor.execute_step(step_num)
+
+                if result.success:
+                    print(f"\n✅ {result.message}")
+                else:
+                    print(f"\n❌ {result.message}")
+
                 # Reload state
-                state = WorkflowState.load(working_dir)
+                state = WorkflowState.load(study_dir)
                 executor = StepExecutor(state)
+
+                # Show next step
+                next_step = state.get_next_step()
+                if next_step is not None:
+                    print(f"\n>>> Next: Step {next_step} - {WORKFLOW_STEPS[next_step]['name']}")
+                    print(f"    Press ENTER to continue.\n")
+                else:
+                    print("\n🎉 All steps complete!")
+
             except ValueError:
                 print("Usage: step N (where N is 0-16)")
 
         elif cmd == "next":
-            if not state:
-                print("Initialize a study first.")
-                continue
             next_step = state.get_next_step()
             if next_step is None:
                 print("All steps complete!")
             else:
-                step_args = argparse.Namespace(step_number=next_step)
-                cmd_step(step_args)
-                state = WorkflowState.load(working_dir)
+                # Execute the step
+                print(f"\n{'='*60}")
+                print(f"Step {next_step}: {WORKFLOW_STEPS[next_step]['name']}")
+                print(f"{'='*60}\n")
+
+                result = executor.execute_step(next_step)
+
+                if result.success:
+                    print(f"\n✅ {result.message}")
+                else:
+                    print(f"\n❌ {result.message}")
+
+                # Reload state
+                state = WorkflowState.load(study_dir)
                 executor = StepExecutor(state)
 
+                # Show next step
+                next_step = state.get_next_step()
+                if next_step is not None:
+                    print(f"\n>>> Next: Step {next_step} - {WORKFLOW_STEPS[next_step]['name']}")
+                    print(f"    Press ENTER to continue.\n")
+                else:
+                    print("\n🎉 All steps complete!")
+
         elif cmd == "match":
-            if not state:
-                print("Initialize a study first.")
-                continue
             match_args = argparse.Namespace(no_validate=False)
             cmd_match(match_args)
-            state = WorkflowState.load(working_dir)
+            state = WorkflowState.load(study_dir)
 
         elif cmd == "export":
-            if not state:
-                print("Initialize a study first.")
-                continue
             export_args = argparse.Namespace(format="both")
             cmd_export(export_args)
 
         elif cmd == "files":
-            print(detect_and_summarize(working_dir))
-
-        elif cmd == "questions":
-            if not state or not state.pending_questions:
-                print("No pending questions.")
-            else:
-                print(f"## Pending Questions ({len(state.pending_questions)})")
-                for i, q in enumerate(state.pending_questions, 1):
-                    print(f"\n{i}. {q.get('issue', 'N/A')}")
-                    print(f"   Status: {q.get('status', 'pending')}")
+            print(detect_and_summarize(study_dir or working_dir))
 
         else:
-            # Treat as natural language - provide guidance
-            print(f"I don't have a specific command for '{cmd}'.")
-            print("Type 'help' to see available commands.")
-
-            # Suggest based on workflow state
-            if state:
-                next_step = state.get_next_step()
-                if next_step is not None:
-                    print(f"\nSuggestion: Work on Step {next_step} ({WORKFLOW_STEPS[next_step]['name']})")
-                    print(f"Type 'next' or 'step {next_step}' to continue.")
+            print(f"Unknown command: '{cmd}'")
+            print("Press ENTER to continue to next step, or type 'help'.")
 
 
 def cmd_setup(args):
