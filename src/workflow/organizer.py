@@ -457,21 +457,30 @@ class FileOrganizer:
                 shutil.copy2(src, dst)
                 logger.info(f"Preserved original: {src.name}")
 
-        # Copy and rename data files (working copies, deduplicate, prefer .dta)
-        data_files = deduplicate_by_format(
-            detected.data_files,
-            format_preference=DATA_FORMAT_PREFERENCE
-        )
-        for i, src in enumerate(data_files):
-            if len(data_files) == 1:
-                new_name = f"{prefix}_data{src.suffix}"
-            else:
-                new_name = f"{prefix}_data_{i+1}{src.suffix}"
+        # Pick the single best data file (prefer .dta > .sav > etc.)
+        # There should only be one data submission per study
+        if detected.data_files:
+            def data_format_rank(f: Path) -> int:
+                ext = f.suffix.lower()
+                try:
+                    return DATA_FORMAT_PREFERENCE.index(ext)
+                except ValueError:
+                    return len(DATA_FORMAT_PREFERENCE)
+
+            # Sort by format preference and pick the best one
+            sorted_data = sorted(detected.data_files, key=data_format_rank)
+            best_data = sorted_data[0]
+
+            if len(detected.data_files) > 1:
+                skipped = [f.name for f in sorted_data[1:]]
+                logger.info(f"Data files: using {best_data.name}, skipping {skipped}")
+
+            new_name = f"{prefix}_data{best_data.suffix}"
             dst = study_dir / new_name
             if not dst.exists():
-                shutil.copy2(src, dst)
-                mapping[str(src)] = str(dst)
-                logger.info(f"Copied: {src.name} -> {new_name}")
+                shutil.copy2(best_data, dst)
+                mapping[str(best_data)] = str(dst)
+                logger.info(f"Copied: {best_data.name} -> {new_name}")
 
         # Copy and rename questionnaires (english vs native)
         # First separate by language, then deduplicate each group
