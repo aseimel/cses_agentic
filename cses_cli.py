@@ -326,12 +326,13 @@ def cmd_init(args) -> Path:
         study_dir = working_dir
     else:
         # Create organized folder
+        print("\nOrganizing files...")
         study_dir, _ = organizer.initialize_study(
             country=country,
             year=year,
             copy_files=True
         )
-        print(f"\n[OK] Created: {study_dir.name}/")
+        print(f"[OK] Created: {study_dir.name}/")
         print(f"   Originals preserved in: {study_dir.name}/original_deposit/")
 
     # Create workflow state
@@ -649,6 +650,7 @@ def cmd_interactive(args):
 
     if not state:
         print("No study initialized in this folder.\n")
+        print("Scanning files...")
         print(detect_and_summarize(working_dir))
         print()
 
@@ -697,9 +699,12 @@ def cmd_interactive(args):
         step_info = WORKFLOW_STEPS[next_step]
         initial_prompt = f"The study is initialized. The next step is Step {next_step}: {step_info['name']}. Briefly explain what this step involves and ask if the user is ready to proceed."
         try:
+            print("Connecting to Claude...", end="", flush=True)
             response = conversation.send(initial_prompt)
+            print("\r" + " " * 30 + "\r", end="")  # Clear the line
             print(f"Assistant: {response}\n")
         except Exception as e:
+            print("\r" + " " * 30 + "\r", end="")  # Clear the line
             print(f"Note: Could not connect to Claude ({e})")
             print(f"Next step: Step {next_step} - {step_info['name']}\n")
 
@@ -742,9 +747,12 @@ Commands: status, quit
         # Send everything else to Claude
         try:
             print()
+            print("Thinking...", end="", flush=True)
             response = conversation.send(user_input)
+            print("\r" + " " * 20 + "\r", end="")  # Clear the line
             print(f"Assistant: {response}\n")
         except Exception as e:
+            print("\r" + " " * 20 + "\r", end="")  # Clear the line
             print(f"Error: {e}\n")
 
 

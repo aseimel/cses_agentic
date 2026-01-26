@@ -41,6 +41,13 @@ install.ps1          # Windows installer
    - Don't over-engineer
    - Don't add features beyond what's requested
 
+3. **ALWAYS provide user feedback during operations**
+   - Users are non-technical and need to know the tool is working
+   - Print progress messages before any operation that takes time
+   - Examples: "Loading data file...", "Connecting to Claude...", "Processing documents..."
+   - Never leave users waiting with no output - they will think the tool is frozen
+   - NO emojis (Windows cp1252 encoding compatibility)
+
 ## Key Files
 
 | File | Purpose |
