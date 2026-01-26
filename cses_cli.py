@@ -30,7 +30,7 @@ from src.workflow.state import (
     WORKFLOW_STEPS,
     format_workflow_status
 )
-from src.workflow.organizer import FileOrganizer, detect_and_summarize
+from src.workflow.organizer import FileOrganizer, detect_and_summarize, detect_questionnaire_language
 from src.workflow.steps import StepExecutor
 from src.agent.validator import check_claude_cli_available
 
@@ -306,14 +306,14 @@ def cmd_init(args):
         else:
             # Ask user
             print(f"\nWould you like to organize files into {expected_folder}/?")
-            print(f"All files will be renamed with {expected_folder}_ prefix:")
-            print(f"  {expected_folder}_original_data.dta")
-            print(f"  {expected_folder}_questionnaire.pdf")
-            print(f"  {expected_folder}_codebook.docx")
-            print(f"  ... plus generated outputs:")
-            print(f"  {expected_folder}_processing.do")
-            print(f"  {expected_folder}_variable_mappings.xlsx")
-            print(f"  {expected_folder}_M6.dta")
+            print(f"\nFolder structure:")
+            print(f"  {expected_folder}/")
+            print(f"  ├── original_deposit/           # Untouched originals")
+            print(f"  │   └── [all your original files]")
+            print(f"  ├── {expected_folder}_data.dta")
+            print(f"  ├── {expected_folder}_questionnaire_english.pdf")
+            print(f"  ├── {expected_folder}_questionnaire_native.pdf")
+            print(f"  └── ... plus generated outputs")
             response = input("Organize files? [Y/n]: ").strip().lower()
 
             if response != 'n':
@@ -341,19 +341,34 @@ def cmd_init(args):
     if detected.data_files:
         if study_dir != working_dir:
             ext = detected.data_files[0].suffix
-            state.data_file = str(study_dir / f"{prefix}_original_data{ext}")
+            state.data_file = str(study_dir / f"{prefix}_data{ext}")
         else:
             state.data_file = str(detected.data_files[0])
 
     if detected.questionnaire_files:
         if study_dir != working_dir:
             state.questionnaire_files = []
-            for i, f in enumerate(detected.questionnaire_files):
-                ext = f.suffix
-                if len(detected.questionnaire_files) == 1:
-                    state.questionnaire_files.append(str(study_dir / f"{prefix}_questionnaire{ext}"))
-                else:
-                    state.questionnaire_files.append(str(study_dir / f"{prefix}_questionnaire_{i+1}{ext}"))
+            if len(detected.questionnaire_files) == 1:
+                f = detected.questionnaire_files[0]
+                state.questionnaire_files.append(str(study_dir / f"{prefix}_questionnaire{f.suffix}"))
+            else:
+                # Separate english vs native
+                english_files = [f for f in detected.questionnaire_files
+                                if detect_questionnaire_language(f.name) == "english"]
+                native_files = [f for f in detected.questionnaire_files
+                               if detect_questionnaire_language(f.name) == "native"]
+
+                for i, f in enumerate(english_files):
+                    if len(english_files) == 1:
+                        state.questionnaire_files.append(str(study_dir / f"{prefix}_questionnaire_english{f.suffix}"))
+                    else:
+                        state.questionnaire_files.append(str(study_dir / f"{prefix}_questionnaire_english_{i+1}{f.suffix}"))
+
+                for i, f in enumerate(native_files):
+                    if len(native_files) == 1:
+                        state.questionnaire_files.append(str(study_dir / f"{prefix}_questionnaire_native{f.suffix}"))
+                    else:
+                        state.questionnaire_files.append(str(study_dir / f"{prefix}_questionnaire_native_{i+1}{f.suffix}"))
         else:
             state.questionnaire_files = [str(f) for f in detected.questionnaire_files]
 
@@ -766,12 +781,22 @@ def cmd_setup(args):
 
 def main():
     """Main entry point."""
-    # Load environment from install directory
-    install_dir = get_install_dir()
-    env_file = install_dir / ".env"
-    if env_file.exists():
-        from dotenv import load_dotenv
-        load_dotenv(env_file)
+    try:
+        # Load environment from install directory
+        install_dir = get_install_dir()
+        env_file = install_dir / ".env"
+        if env_file.exists():
+            try:
+                from dotenv import load_dotenv
+                load_dotenv(env_file)
+            except ImportError:
+                print("Warning: python-dotenv not installed, skipping .env loading")
+            except Exception as e:
+                print(f"Warning: Could not load .env file: {e}")
+    except Exception as e:
+        print(f"Error during initialization: {e}")
+        input("Press Enter to exit...")
+        sys.exit(1)
 
     parser = argparse.ArgumentParser(
         description="CSES Data Harmonization CLI",
@@ -825,25 +850,51 @@ Examples:
 
     # Check for first-run setup (except for setup command itself)
     if args.command != "setup":
-        if not first_run_setup():
+        try:
+            if not first_run_setup():
+                print("\nSetup cancelled or incomplete.")
+                input("Press Enter to exit...")
+                sys.exit(1)
+        except (EOFError, KeyboardInterrupt):
+            print("\nSetup interrupted.")
+            sys.exit(1)
+        except Exception as e:
+            print(f"\nSetup error: {e}")
+            import traceback
+            traceback.print_exc()
+            input("Press Enter to exit...")
             sys.exit(1)
 
-    if args.command == "setup":
-        cmd_setup(args)
-    elif args.command == "init":
-        cmd_init(args)
-    elif args.command == "status":
-        cmd_status(args)
-    elif args.command == "step":
-        cmd_step(args)
-    elif args.command == "match":
-        cmd_match(args)
-    elif args.command == "export":
-        cmd_export(args)
-    else:
-        # No command - start interactive mode
-        cmd_interactive(args)
+    try:
+        if args.command == "setup":
+            cmd_setup(args)
+        elif args.command == "init":
+            cmd_init(args)
+        elif args.command == "status":
+            cmd_status(args)
+        elif args.command == "step":
+            cmd_step(args)
+        elif args.command == "match":
+            cmd_match(args)
+        elif args.command == "export":
+            cmd_export(args)
+        else:
+            # No command - start interactive mode
+            cmd_interactive(args)
+    except Exception as e:
+        print(f"\nError: {e}")
+        import traceback
+        traceback.print_exc()
+        input("\nPress Enter to exit...")
+        sys.exit(1)
 
 
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    except Exception as e:
+        print(f"\nUnexpected error: {e}")
+        import traceback
+        traceback.print_exc()
+        input("\nPress Enter to exit...")
+        sys.exit(1)
