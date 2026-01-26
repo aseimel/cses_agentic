@@ -71,12 +71,18 @@ def first_run_setup() -> bool:
     install_dir = get_install_dir()
     env_file = install_dir / ".env"
 
-    # Check if already configured
+    # Check if already configured via setup wizard
     if env_file.exists():
         from dotenv import dotenv_values
         config = dotenv_values(env_file)
-        if config.get("OPENAI_API_KEY") and config.get("OPENAI_API_KEY") != "your-key-here":
-            return True  # Already configured
+        # Check for setup wizard marker or valid API key
+        if config.get("CSES_SETUP_COMPLETE") == "true":
+            return True  # Setup wizard was completed
+        if config.get("OPENAI_API_KEY") and config.get("OPENAI_API_KEY") not in ["your-key-here", ""]:
+            # Has API key but no setup marker - prompt to complete setup
+            print("\nExisting configuration found but setup was not completed.")
+            print("Running setup wizard to verify settings...\n")
+            # Continue to setup wizard
 
     print("""
 ╔══════════════════════════════════════════════════════════════╗
@@ -173,6 +179,12 @@ LLM_MODEL_VALIDATE=openai/gpt-oss:120b
         env_content += f"""
 # Stata executable path
 STATA_PATH={stata_path}
+"""
+
+    # Add setup complete marker
+    env_content += """
+# Setup wizard completed
+CSES_SETUP_COMPLETE=true
 """
 
     # Save to install directory
