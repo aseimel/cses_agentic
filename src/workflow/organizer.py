@@ -42,6 +42,102 @@ ENGLISH_KEYWORDS = [
     "translation", "translated", "engl"
 ]
 
+# Preferred format order (first = most preferred)
+FORMAT_PREFERENCE = [".pdf", ".docx", ".doc", ".rtf", ".txt"]
+
+
+def filename_similarity(name1: str, name2: str) -> float:
+    """
+    Calculate similarity between two filenames (without extensions).
+    Uses Jaccard similarity on character trigrams.
+
+    Returns:
+        Float between 0 and 1, where 1 = identical
+    """
+    def get_trigrams(s: str) -> set:
+        s = s.lower()
+        if len(s) < 3:
+            return {s}
+        return {s[i:i+3] for i in range(len(s) - 2)}
+
+    trigrams1 = get_trigrams(name1)
+    trigrams2 = get_trigrams(name2)
+
+    if not trigrams1 or not trigrams2:
+        return 0.0
+
+    intersection = len(trigrams1 & trigrams2)
+    union = len(trigrams1 | trigrams2)
+
+    return intersection / union if union > 0 else 0.0
+
+
+def deduplicate_by_format(files: list[Path], similarity_threshold: float = 0.7) -> list[Path]:
+    """
+    Remove duplicate documents that exist in multiple formats.
+    Keeps the preferred format (PDF > DOCX > DOC > RTF > TXT).
+
+    Only deduplicates if filenames are similar enough (above threshold).
+    All originals are still preserved in original_deposit/.
+
+    Args:
+        files: List of file paths
+        similarity_threshold: Minimum similarity to consider files as duplicates
+
+    Returns:
+        Deduplicated list with preferred formats
+    """
+    if len(files) <= 1:
+        return files
+
+    # Group files by their base name similarity
+    groups = []  # List of lists of similar files
+    used = set()
+
+    for i, file1 in enumerate(files):
+        if i in used:
+            continue
+
+        group = [file1]
+        used.add(i)
+        stem1 = file1.stem
+
+        for j, file2 in enumerate(files):
+            if j in used:
+                continue
+            stem2 = file2.stem
+
+            if filename_similarity(stem1, stem2) >= similarity_threshold:
+                group.append(file2)
+                used.add(j)
+
+        groups.append(group)
+
+    # For each group, pick the preferred format
+    result = []
+    for group in groups:
+        if len(group) == 1:
+            result.append(group[0])
+        else:
+            # Sort by format preference
+            def format_rank(f: Path) -> int:
+                ext = f.suffix.lower()
+                try:
+                    return FORMAT_PREFERENCE.index(ext)
+                except ValueError:
+                    return len(FORMAT_PREFERENCE)
+
+            group.sort(key=format_rank)
+            preferred = group[0]
+
+            # Log what we're deduplicating
+            others = [f.name for f in group[1:]]
+            logger.info(f"Deduplicating: keeping {preferred.name}, skipping {others}")
+
+            result.append(preferred)
+
+    return result
+
 
 @dataclass
 class DetectedFiles:
@@ -363,32 +459,36 @@ class FileOrganizer:
                 logger.info(f"Copied: {src.name} -> {new_name}")
 
         # Copy and rename questionnaires (english vs native)
-        if len(detected.questionnaire_files) == 1:
-            src = detected.questionnaire_files[0]
-            ext = src.suffix
-            new_name = f"{prefix}_questionnaire{ext}"
+        # First separate by language, then deduplicate each group
+        english_files = []
+        native_files = []
+        for src in detected.questionnaire_files:
+            if detect_questionnaire_language(src.name) == "english":
+                english_files.append(src)
+            else:
+                native_files.append(src)
+
+        # Deduplicate each language group (prefer PDF)
+        english_files = deduplicate_by_format(english_files)
+        native_files = deduplicate_by_format(native_files)
+
+        all_questionnaires = english_files + native_files
+
+        if len(all_questionnaires) == 1:
+            src = all_questionnaires[0]
+            new_name = f"{prefix}_questionnaire{src.suffix}"
             dst = study_dir / new_name
             if not dst.exists():
                 shutil.copy2(src, dst)
                 mapping[str(src)] = str(dst)
                 logger.info(f"Copied: {src.name} -> {new_name}")
         else:
-            # Multiple questionnaires - identify english vs native
-            english_files = []
-            native_files = []
-            for src in detected.questionnaire_files:
-                if detect_questionnaire_language(src.name) == "english":
-                    english_files.append(src)
-                else:
-                    native_files.append(src)
-
             # Copy english questionnaires
             for i, src in enumerate(english_files):
-                ext = src.suffix
                 if len(english_files) == 1:
-                    new_name = f"{prefix}_questionnaire_english{ext}"
+                    new_name = f"{prefix}_questionnaire_english{src.suffix}"
                 else:
-                    new_name = f"{prefix}_questionnaire_english_{i+1}{ext}"
+                    new_name = f"{prefix}_questionnaire_english_{i+1}{src.suffix}"
                 dst = study_dir / new_name
                 if not dst.exists():
                     shutil.copy2(src, dst)
@@ -397,50 +497,49 @@ class FileOrganizer:
 
             # Copy native questionnaires
             for i, src in enumerate(native_files):
-                ext = src.suffix
                 if len(native_files) == 1:
-                    new_name = f"{prefix}_questionnaire_native{ext}"
+                    new_name = f"{prefix}_questionnaire_native{src.suffix}"
                 else:
-                    new_name = f"{prefix}_questionnaire_native_{i+1}{ext}"
+                    new_name = f"{prefix}_questionnaire_native_{i+1}{src.suffix}"
                 dst = study_dir / new_name
                 if not dst.exists():
                     shutil.copy2(src, dst)
                     mapping[str(src)] = str(dst)
                     logger.info(f"Copied: {src.name} -> {new_name}")
 
-        # Copy and rename codebooks
-        for i, src in enumerate(detected.codebook_files):
-            ext = src.suffix
-            if len(detected.codebook_files) == 1:
-                new_name = f"{prefix}_codebook{ext}"
+        # Copy and rename codebooks (deduplicate first)
+        codebooks = deduplicate_by_format(detected.codebook_files)
+        for i, src in enumerate(codebooks):
+            if len(codebooks) == 1:
+                new_name = f"{prefix}_codebook{src.suffix}"
             else:
-                new_name = f"{prefix}_codebook_{i+1}{ext}"
+                new_name = f"{prefix}_codebook_{i+1}{src.suffix}"
             dst = study_dir / new_name
             if not dst.exists():
                 shutil.copy2(src, dst)
                 mapping[str(src)] = str(dst)
                 logger.info(f"Copied: {src.name} -> {new_name}")
 
-        # Copy and rename design reports
-        for i, src in enumerate(detected.design_report_files):
-            ext = src.suffix
-            if len(detected.design_report_files) == 1:
-                new_name = f"{prefix}_design_report{ext}"
+        # Copy and rename design reports (deduplicate first)
+        design_reports = deduplicate_by_format(detected.design_report_files)
+        for i, src in enumerate(design_reports):
+            if len(design_reports) == 1:
+                new_name = f"{prefix}_design_report{src.suffix}"
             else:
-                new_name = f"{prefix}_design_report_{i+1}{ext}"
+                new_name = f"{prefix}_design_report_{i+1}{src.suffix}"
             dst = study_dir / new_name
             if not dst.exists():
                 shutil.copy2(src, dst)
                 mapping[str(src)] = str(dst)
                 logger.info(f"Copied: {src.name} -> {new_name}")
 
-        # Copy and rename macro reports
-        for i, src in enumerate(detected.macro_report_files):
-            ext = src.suffix
-            if len(detected.macro_report_files) == 1:
-                new_name = f"{prefix}_macro_report{ext}"
+        # Copy and rename macro reports (deduplicate first)
+        macro_reports = deduplicate_by_format(detected.macro_report_files)
+        for i, src in enumerate(macro_reports):
+            if len(macro_reports) == 1:
+                new_name = f"{prefix}_macro_report{src.suffix}"
             else:
-                new_name = f"{prefix}_macro_report_{i+1}{ext}"
+                new_name = f"{prefix}_macro_report_{i+1}{src.suffix}"
             dst = study_dir / new_name
             if not dst.exists():
                 shutil.copy2(src, dst)
