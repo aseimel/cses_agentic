@@ -362,25 +362,25 @@ def format_workflow_status(state: WorkflowState) -> str:
     ])
 
     lines.append("### Steps")
-    status_emoji = {
-        "not_started": "⬜",
-        "in_progress": "🔄",
-        "blocked": "🚫",
-        "completed": "✅",
-        "skipped": "⏭️"
+    status_markers = {
+        "not_started": "[    ]",
+        "in_progress": "[....]",
+        "blocked": "[WAIT]",
+        "completed": "[DONE]",
+        "skipped": "[SKIP]"
     }
 
     for step_num in sorted(WORKFLOW_STEPS.keys()):
         step_info = WORKFLOW_STEPS[step_num]
         step_state = state.get_step(step_num)
-        emoji = status_emoji.get(step_state.status, "❓")
+        marker = status_markers.get(step_state.status, "[????]")
 
-        line = f"{emoji} **Step {step_num}:** {step_info['name']}"
+        line = f"{marker} **Step {step_num}:** {step_info['name']}"
         if step_state.status == "in_progress":
-            line += " ← current"
+            line += " <- current"
         lines.append(line)
 
         if step_state.issues:
-            lines.append(f"   ⚠️ Issues: {len(step_state.issues)}")
+            lines.append(f"   [!] Issues: {len(step_state.issues)}")
 
     return "\n".join(lines)

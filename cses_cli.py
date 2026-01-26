@@ -106,7 +106,7 @@ def first_run_setup(force: bool = False) -> bool:
 
     api_key = input("GESIS API Key: ").strip()
     if not api_key:
-        print("\n❌ API key is required. Setup cancelled.")
+        print("\n[X] API key is required. Setup cancelled.")
         return False
 
     # Stata Path
@@ -130,7 +130,7 @@ def first_run_setup(force: bool = False) -> bool:
     if stata_path:
         stata_path_obj = Path(stata_path)
         if not stata_path_obj.exists():
-            print(f"\n⚠️  Warning: File not found: {stata_path}")
+            print(f"\n[!] Warning: File not found: {stata_path}")
             confirm = input("Save anyway? [y/N]: ").strip().lower()
             if confirm != 'y':
                 stata_path = ""
@@ -197,7 +197,7 @@ CSES_SETUP_COMPLETE=true
     with open(env_file, 'w') as f:
         f.write(env_content)
 
-    print(f"✅ Configuration saved to: {env_file}")
+    print(f"[OK] Configuration saved to: {env_file}")
     print()
     print("=" * 60)
     print("Setup Complete!")
@@ -237,16 +237,16 @@ def check_validation_setup() -> tuple[bool, str]:
         # Using Claude CLI with Max subscription
         available, msg = check_claude_cli_available()
         if available:
-            return True, f"✅ Validation: Claude CLI (Max subscription)\n   {msg}"
+            return True, f"[OK] Validation: Claude CLI (Max subscription)\n   {msg}"
         else:
-            return False, f"⚠️ Validation: Claude CLI not ready\n   {msg}\n   Run 'claude login' to authenticate"
+            return False, f"[!] Validation: Claude CLI not ready\n   {msg}\n   Run 'claude login' to authenticate"
 
     elif validation_model:
         # Using API model
-        return True, f"✅ Validation: {validation_model} (API)"
+        return True, f"[OK] Validation: {validation_model} (API)"
 
     else:
-        return False, "⚠️ Validation model not configured. Set LLM_MODEL_VALIDATE in .env"
+        return False, "[!] Validation model not configured. Set LLM_MODEL_VALIDATE in .env"
 
 
 def print_validation_status():
@@ -291,7 +291,7 @@ def cmd_init(args) -> Path:
     detected = organizer.detect_files()
 
     if not detected.data_files:
-        print("\n❌ No data files found (.dta, .sav, .csv, .xlsx)")
+        print("\n[X] No data files found (.dta, .sav, .csv, .xlsx)")
         print("   Please run this in a folder containing the collaborator's data files.")
         return None
 
@@ -313,7 +313,7 @@ def cmd_init(args) -> Path:
 
     # Show what we found
     country_code = organizer.COUNTRY_CODES.get(country.lower(), country[:3].upper())
-    print(f"\n📁 Setting up: {country} {year} ({country_code}_{year})")
+    print(f"\nSetting up: {country} {year} ({country_code}_{year})")
     print(f"\nDetected files:")
     print(f"  Data: {len(detected.data_files)} file(s)")
     print(f"  Questionnaires: {len(detected.questionnaire_files)} file(s)")
@@ -331,7 +331,7 @@ def cmd_init(args) -> Path:
             year=year,
             copy_files=True
         )
-        print(f"\n✅ Created: {study_dir.name}/")
+        print(f"\n[OK] Created: {study_dir.name}/")
         print(f"   Originals preserved in: {study_dir.name}/original_deposit/")
 
     # Create workflow state
@@ -400,7 +400,7 @@ def cmd_init(args) -> Path:
     # Save state
     state.save(study_dir / ".cses")
 
-    print(f"\n✅ Study initialized: {country} {year}")
+    print(f"\n[OK] Study initialized: {country} {year}")
     print(f"   Session ID: {state.session_id}")
     print(f"   Working directory: {study_dir}")
 
@@ -465,9 +465,9 @@ def cmd_step(args):
     result = executor.execute_step(step_num)
 
     if result.success:
-        print(f"\n✅ {result.message}")
+        print(f"\n[OK] {result.message}")
     else:
-        print(f"\n❌ {result.message}")
+        print(f"\n[X] {result.message}")
 
     if result.artifacts:
         print(f"\nArtifacts created:")
@@ -477,7 +477,7 @@ def cmd_step(args):
     if result.issues:
         print(f"\nIssues to address:")
         for i in result.issues:
-            print(f"  ⚠️ {i}")
+            print(f"  [!] {i}")
 
     if result.next_action:
         print(f"\nNext: {result.next_action}")
@@ -496,11 +496,11 @@ def cmd_match(args):
     print()
 
     if not state.data_file:
-        print("❌ No data file found. Check deposit completeness.")
+        print("[X] No data file found. Check deposit completeness.")
         return
 
     if not state.questionnaire_files and not state.codebook_file:
-        print("❌ No documentation found. Need questionnaire or codebook for matching.")
+        print("[X] No documentation found. Need questionnaire or codebook for matching.")
         return
 
     print(f"Data file: {state.data_file}")
@@ -524,7 +524,7 @@ def cmd_match(args):
     result = executor.execute_step(7)
 
     if result.success:
-        print(f"\n✅ {result.message}")
+        print(f"\n[OK] {result.message}")
 
         # Show summary of mappings
         if state.mappings:
@@ -535,10 +535,10 @@ def cmd_match(args):
             print(f"  - Disagreements: {disagrees}")
 
             if disagrees > 0:
-                print(f"\n⚠️ {disagrees} mappings need review (models disagreed)")
+                print(f"\n[!] {disagrees} mappings need review (models disagreed)")
                 print("Use 'cses' interactive mode to review.")
     else:
-        print(f"\n❌ {result.message}")
+        print(f"\n[X] {result.message}")
 
     if result.next_action:
         print(f"\nNext: {result.next_action}")
@@ -618,11 +618,11 @@ def cmd_export(args):
 
     if fmt in ["json", "both"]:
         path = agent.export(result, "json")
-        print(f"✅ Exported JSON: {path}")
+        print(f"[OK] Exported JSON: {path}")
 
     if fmt in ["xlsx", "both"]:
         path = agent.export(result, "xlsx")
-        print(f"✅ Exported Excel: {path}")
+        print(f"[OK] Exported Excel: {path}")
 
 
 def cmd_interactive(args):

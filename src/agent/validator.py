@@ -425,10 +425,10 @@ def format_validation_result(result: ValidationResult) -> str:
     """Format a validation result for display."""
     proposal = result.proposal
 
-    status_emoji = {
-        ValidationVerdict.AGREE: "✅",
-        ValidationVerdict.DISAGREE: "❌",
-        ValidationVerdict.UNCERTAIN: "⚠️"
+    status_markers = {
+        ValidationVerdict.AGREE: "[OK]",
+        ValidationVerdict.DISAGREE: "[X]",
+        ValidationVerdict.UNCERTAIN: "[?]"
     }
 
     lines = [
@@ -441,7 +441,7 @@ def format_validation_result(result: ValidationResult) -> str:
         f"- Reasoning: {proposal.reasoning}",
         "",
         "### Claude Validation",
-        f"- Verdict: {status_emoji[result.verdict]} {result.verdict.value}",
+        f"- Verdict: {status_markers[result.verdict]} {result.verdict.value}",
         f"- Reasoning: {result.reasoning}",
     ]
 
@@ -452,7 +452,7 @@ def format_validation_result(result: ValidationResult) -> str:
     if result.models_agree:
         lines.extend(["", "**Status:** Both models agree - recommend approval"])
     else:
-        lines.extend(["", f"**Status:** {status_emoji[result.verdict]} Models disagree - requires review"])
+        lines.extend(["", f"**Status:** {status_markers[result.verdict]} Models disagree - requires review"])
 
     return "\n".join(lines)
 

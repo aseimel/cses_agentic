@@ -94,7 +94,7 @@ def get_file_info(state: WorkflowState) -> str:
 
 
 def get_workflow_status(state: WorkflowState) -> str:
-    """Get formatted workflow status."""
+    """Get formatted workflow status (text only, no emojis for Windows compatibility)."""
     lines = []
     next_step = state.get_next_step()
 
@@ -103,19 +103,18 @@ def get_workflow_status(state: WorkflowState) -> str:
         step_state = state.steps.get(step_key)
 
         if step_state:
-            # StepState object
             status = step_state.status if hasattr(step_state, 'status') else "not_started"
         else:
             status = "not_started"
 
         if status == "completed":
-            marker = "✅"
+            marker = "[DONE]"
         elif status == "in_progress":
-            marker = "🔄"
+            marker = "[IN PROGRESS]"
         elif step_num == next_step:
-            marker = "👉"
+            marker = "[NEXT]"
         else:
-            marker = "⬜"
+            marker = "[    ]"
 
         lines.append(f"{marker} Step {step_num}: {step_info['name']}")
 
@@ -182,12 +181,15 @@ def _call_claude_cli(
     full_prompt += f"User: {user_message}\n\nAssistant:"
 
     try:
+        # Use UTF-8 encoding explicitly for Windows compatibility
         result = subprocess.run(
             [claude_path, "--print", "--dangerously-skip-permissions"],
             input=full_prompt,
             capture_output=True,
             text=True,
-            timeout=120
+            timeout=120,
+            encoding='utf-8',
+            errors='replace'
         )
 
         if result.returncode == 0:
