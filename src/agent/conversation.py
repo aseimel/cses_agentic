@@ -99,7 +99,14 @@ def get_workflow_status(state: WorkflowState) -> str:
     next_step = state.get_next_step()
 
     for step_num, step_info in WORKFLOW_STEPS.items():
-        status = state.steps.get(str(step_num), {}).get("status", "not_started")
+        step_key = str(step_num)
+        step_state = state.steps.get(step_key)
+
+        if step_state:
+            # StepState object
+            status = step_state.status if hasattr(step_state, 'status') else "not_started"
+        else:
+            status = "not_started"
 
         if status == "completed":
             marker = "✅"
