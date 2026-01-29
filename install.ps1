@@ -232,7 +232,7 @@ $missingPackages = @()
 $alreadyInstalled = 0
 
 foreach ($item in $packagesToInstall) {
-    & $pythonExe -c "import $($item.mod)" 2>&1 | Out-Null
+    $result = & $pythonExe -c "import $($item.mod)" 2>&1
     if ($LASTEXITCODE -eq 0) {
         $alreadyInstalled++
     } else {
@@ -308,7 +308,7 @@ $failedModules = @()
 foreach ($item in $modulesToTest) {
     $mod = $item[0]
     $pkg = $item[1]
-    & $pythonExe -c "import $mod" 2>&1 | Out-Null
+    $result = & $pythonExe -c "import $mod" 2>&1
     if ($LASTEXITCODE -eq 0) {
         Write-Host "  [OK] $pkg" -ForegroundColor Green
     } else {
@@ -341,7 +341,7 @@ if ($failedModules.Count -gt 0) {
     foreach ($item in $modulesToTest) {
         $mod = $item[0]
         $pkg = $item[1]
-        & $pythonExe -c "import $mod" 2>&1 | Out-Null
+        $result = & $pythonExe -c "import $mod" 2>&1
         if ($LASTEXITCODE -ne 0) {
             $stillFailed += $pkg
         }
