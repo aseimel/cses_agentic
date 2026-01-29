@@ -92,9 +92,11 @@ if (-not (Test-Python)) {
 }
 Write-Host ""
 
-# Check for existing installation and preserve .env
+# Check for existing installation
 $ExistingEnv = $null
+$ExistingVenv = $null
 $IsUpdate = $false
+
 if (Test-Path $InstallDir) {
     $IsUpdate = $true
     Write-Host "Existing installation found - updating..." -ForegroundColor Yellow
@@ -105,34 +107,39 @@ if (Test-Path $InstallDir) {
         $ExistingEnv = Get-Content "$InstallDir\.env" -Raw
     }
 
-    # Stop any Python processes that might lock the venv
+    # Preserve venv (so we don't reinstall all packages)
+    if (Test-Path "$InstallDir\.venv") {
+        Write-Host "Preserving Python environment..." -ForegroundColor Cyan
+        $ExistingVenv = "$env:TEMP\cses_venv_backup"
+        if (Test-Path $ExistingVenv) {
+            Remove-Item -Recurse -Force $ExistingVenv -ErrorAction SilentlyContinue
+        }
+        try {
+            Move-Item "$InstallDir\.venv" $ExistingVenv -ErrorAction Stop
+        } catch {
+            Write-Host "  Could not preserve venv, will reinstall packages" -ForegroundColor Yellow
+            $ExistingVenv = $null
+        }
+    }
+
+    # Stop any Python processes that might lock files
     Write-Host "Stopping Python processes..." -ForegroundColor Cyan
     Get-Process python -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
-    Start-Sleep -Seconds 2
+    Start-Sleep -Seconds 1
 
-    # Try to remove old installation
+    # Remove old installation (venv already moved out)
     try {
         Remove-Item -Recurse -Force $InstallDir -ErrorAction Stop
     } catch {
         Write-Host "Cannot remove old installation (files locked)." -ForegroundColor Yellow
-        Write-Host "Moving to backup location..." -ForegroundColor Cyan
-
-        # Move to backup instead
-        $BackupDir = "$InstallDir.old"
-        if (Test-Path $BackupDir) {
-            Remove-Item -Recurse -Force $BackupDir -ErrorAction SilentlyContinue
+        # Restore venv if we moved it
+        if ($ExistingVenv -and (Test-Path $ExistingVenv)) {
+            New-Item -ItemType Directory -Force -Path $InstallDir | Out-Null
+            Move-Item $ExistingVenv "$InstallDir\.venv" -ErrorAction SilentlyContinue
         }
-
-        try {
-            Rename-Item $InstallDir $BackupDir -ErrorAction Stop
-            Write-Host "Old installation moved to $BackupDir" -ForegroundColor Gray
-        } catch {
-            Write-Host "[X] Cannot move or delete old installation." -ForegroundColor Red
-            Write-Host "    Please close all terminals and try again." -ForegroundColor Yellow
-            Write-Host "    Or manually delete: $InstallDir" -ForegroundColor Yellow
-            Read-Host "Press Enter to exit"
-            exit 1
-        }
+        Write-Host "[X] Please close all terminals and try again." -ForegroundColor Red
+        Read-Host "Press Enter to exit"
+        exit 1
     }
 }
 
@@ -158,28 +165,35 @@ if ($ExistingEnv) {
     Set-Content -Path "$InstallDir\.env" -Value $ExistingEnv
 }
 
-# Create virtual environment
-Write-Host "Setting up Python environment..." -ForegroundColor Cyan
+# Restore or create virtual environment
 Set-Location $InstallDir
-
-if ($script:PythonArgs.Length -gt 0) {
-    & $script:PythonCmd $script:PythonArgs -m venv .venv
-} else {
-    & $script:PythonCmd -m venv .venv
-}
-
-# Check venv was created
 $pipExe = "$InstallDir\.venv\Scripts\pip.exe"
 $pythonExe = "$InstallDir\.venv\Scripts\python.exe"
 
-if (-not (Test-Path $pythonExe)) {
-    Write-Host "[X] Failed to create Python virtual environment" -ForegroundColor Red
-    Write-Host "    Try running: $script:PythonCmd -m venv $InstallDir\.venv" -ForegroundColor Yellow
-    Read-Host "Press Enter to exit"
-    exit 1
-}
+if ($ExistingVenv -and (Test-Path $ExistingVenv)) {
+    # Restore preserved venv (fast update - no package reinstall needed)
+    Write-Host "Restoring Python environment..." -ForegroundColor Cyan
+    Move-Item $ExistingVenv "$InstallDir\.venv"
+    Write-Host "[OK] Python environment restored (packages preserved)" -ForegroundColor Green
+} else {
+    # Create new virtual environment
+    Write-Host "Creating Python environment..." -ForegroundColor Cyan
 
-Write-Host "[OK] Virtual environment created" -ForegroundColor Green
+    if ($script:PythonArgs.Length -gt 0) {
+        & $script:PythonCmd $script:PythonArgs -m venv .venv
+    } else {
+        & $script:PythonCmd -m venv .venv
+    }
+
+    if (-not (Test-Path $pythonExe)) {
+        Write-Host "[X] Failed to create Python virtual environment" -ForegroundColor Red
+        Write-Host "    Try running: $script:PythonCmd -m venv $InstallDir\.venv" -ForegroundColor Yellow
+        Read-Host "Press Enter to exit"
+        exit 1
+    }
+
+    Write-Host "[OK] Virtual environment created" -ForegroundColor Green
+}
 
 # Install dependencies
 Write-Host ""
@@ -249,7 +263,7 @@ if ($missingPackages.Count -gt 0) {
 }
 
 Write-Host ""
-Write-Host "Installed $installedCount of $($corePackages.Count) packages" -ForegroundColor Cyan
+Write-Host "Installed $installedCount of $($packagesToInstall.Count) packages" -ForegroundColor Cyan
 
 if ($failedPackages.Count -gt 0) {
     Write-Host "Failed packages: $($failedPackages -join ', ')" -ForegroundColor Yellow
