@@ -700,6 +700,124 @@ class FileOrganizer:
         shutil.copy2(src, fallback_dst)
         logger.warning(f"Could not convert to PDF, kept original format: {fallback_dst.name}")
 
+    def _translate_questionnaire_to_english(self, src: Path, dst: Path):
+        """
+        Translate a questionnaire to English using LLM and save as PDF.
+
+        Adds a disclaimer that the document was AI-translated.
+
+        Args:
+            src: Source file path (native language questionnaire)
+            dst: Destination path (should end in .pdf)
+        """
+        from reportlab.lib.pagesizes import letter
+        from reportlab.pdfgen import canvas
+        from reportlab.lib.units import inch
+
+        # Extract text from source document
+        src_ext = src.suffix.lower()
+        source_text = ""
+
+        if src_ext == '.pdf':
+            try:
+                from pypdf import PdfReader
+                reader = PdfReader(src)
+                for page in reader.pages:
+                    source_text += page.extract_text() + "\n"
+            except Exception as e:
+                logger.warning(f"Could not read PDF: {e}")
+        elif src_ext in ['.docx', '.doc']:
+            try:
+                from docx import Document
+                doc = Document(src)
+                source_text = "\n".join(p.text for p in doc.paragraphs)
+            except Exception as e:
+                logger.warning(f"Could not read docx: {e}")
+        elif src_ext == '.txt':
+            source_text = src.read_text(encoding='utf-8', errors='replace')
+
+        if not source_text.strip():
+            logger.warning(f"Could not extract text from {src.name}, copying as-is")
+            self._copy_as_pdf(src, dst)
+            return
+
+        # Translate using LLM
+        try:
+            from litellm import completion
+            import os
+
+            model = os.getenv("LLM_MODEL_PREPROCESS", "openai/gpt-4o-mini")
+
+            print(f"Translating questionnaire to English...")
+            response = completion(
+                model=model,
+                max_tokens=8192,
+                timeout=300,
+                messages=[{
+                    "role": "user",
+                    "content": f"""Translate this questionnaire to English. Preserve the structure and formatting.
+
+QUESTIONNAIRE TEXT:
+{source_text[:15000]}
+
+Translate to English, keeping question numbers and response options intact."""
+                }]
+            )
+
+            translated_text = response.choices[0].message.content.strip()
+
+        except Exception as e:
+            logger.error(f"Translation failed: {e}")
+            translated_text = f"[TRANSLATION FAILED: {e}]\n\n{source_text}"
+
+        # Create PDF with disclaimer
+        c = canvas.Canvas(str(dst), pagesize=letter)
+        width, height = letter
+        y_position = height - inch
+
+        # Add disclaimer at top
+        c.setFont("Helvetica-Bold", 12)
+        c.drawString(inch, y_position, "DISCLAIMER: This document was translated by AI.")
+        y_position -= 16
+        c.setFont("Helvetica-Oblique", 10)
+        c.drawString(inch, y_position, "Original document should be consulted for accuracy.")
+        y_position -= 24
+        c.drawString(inch, y_position, "-" * 70)
+        y_position -= 20
+
+        # Add translated content
+        c.setFont("Helvetica", 10)
+        for line in translated_text.split('\n'):
+            line = line.strip()
+            if not line:
+                y_position -= 10
+                continue
+
+            # Wrap long lines
+            words = line.split()
+            current_line = ""
+            for word in words:
+                test_line = f"{current_line} {word}".strip()
+                if len(test_line) > 85:
+                    c.drawString(inch, y_position, current_line)
+                    y_position -= 12
+                    current_line = word
+                else:
+                    current_line = test_line
+
+            if current_line:
+                c.drawString(inch, y_position, current_line)
+                y_position -= 12
+
+            # New page if needed
+            if y_position < inch:
+                c.showPage()
+                c.setFont("Helvetica", 10)
+                y_position = height - inch
+
+        c.save()
+        logger.info(f"Created AI-translated English questionnaire: {dst.name}")
+
     def copy_files_with_standard_names(
         self,
         detected: DetectedFiles,
@@ -755,6 +873,16 @@ class FileOrganizer:
                 else:
                     native_questionnaires.append(src)
 
+            # Select best native questionnaire (prefer PDF) - always copy native first
+            native_src = None
+            if native_questionnaires:
+                native_questionnaires.sort(key=lambda f: (f.suffix.lower() != '.pdf', f.name))
+                native_src = native_questionnaires[0]
+                dst = micro_dir / f"{prefix}_questionnaire_native.pdf"
+                self._copy_as_pdf(native_src, dst)
+                mapping["questionnaire_native"] = str(dst)
+                logger.info(f"Copied native questionnaire: {native_src.name} -> {dst.name}")
+
             # Select best English questionnaire (prefer PDF)
             if english_questionnaires:
                 english_questionnaires.sort(key=lambda f: (f.suffix.lower() != '.pdf', f.name))
@@ -763,15 +891,14 @@ class FileOrganizer:
                 self._copy_as_pdf(src, dst)
                 mapping["questionnaire_english"] = str(dst)
                 logger.info(f"Copied English questionnaire: {src.name} -> {dst.name}")
-
-            # Select best native questionnaire (prefer PDF)
-            if native_questionnaires:
-                native_questionnaires.sort(key=lambda f: (f.suffix.lower() != '.pdf', f.name))
-                src = native_questionnaires[0]
-                dst = micro_dir / f"{prefix}_questionnaire_native.pdf"
-                self._copy_as_pdf(src, dst)
-                mapping["questionnaire_native"] = str(dst)
-                logger.info(f"Copied native questionnaire: {src.name} -> {dst.name}")
+            elif native_src:
+                # No English questionnaire - translate the native one
+                print("No English questionnaire found - translating native version...")
+                dst = micro_dir / f"{prefix}_questionnaire_english.pdf"
+                self._translate_questionnaire_to_english(native_src, dst)
+                mapping["questionnaire_english"] = str(dst)
+                mapping["questionnaire_english_translated"] = True
+                logger.info(f"Translated questionnaire to English: {native_src.name} -> {dst.name}")
 
         # Copy codebook
         if detected.codebook_files:
