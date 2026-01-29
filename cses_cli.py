@@ -1006,115 +1006,76 @@ def cmd_migrate(args):
 
 
 def cmd_update(args):
-    """Update CSES Assistant from GitHub."""
+    """Update CSES Assistant from GitHub by running the install script."""
+    import subprocess
     import tempfile
-    import zipfile
     import urllib.request
-
-    install_dir = get_install_dir()
-    repo_url = "https://github.com/aseimel/cses_agentic/archive/refs/heads/main.zip"
 
     print("CSES Assistant Update")
     print("=" * 40)
     print()
 
-    # Preserve .env
-    env_file = install_dir / ".env"
-    env_content = None
-    if env_file.exists():
-        env_content = env_file.read_text()
-        print("Preserving configuration...")
+    if os.name == 'nt':
+        # Windows - download and run PowerShell install script
+        script_url = "https://raw.githubusercontent.com/aseimel/cses_agentic/main/install.ps1"
+        print("Downloading update script...")
 
-    # Download latest
-    print("Downloading latest version...")
-    try:
-        with tempfile.NamedTemporaryFile(delete=False, suffix=".zip") as tmp:
-            urllib.request.urlretrieve(repo_url, tmp.name)
-            zip_path = tmp.name
-    except Exception as e:
-        print(f"Download failed: {e}")
-        return
+        try:
+            with tempfile.NamedTemporaryFile(mode='w', suffix='.ps1', delete=False, encoding='utf-8') as tmp:
+                response = urllib.request.urlopen(script_url)
+                tmp.write(response.read().decode('utf-8'))
+                script_path = tmp.name
+        except Exception as e:
+            print(f"[X] Download failed: {e}")
+            return
 
-    # Extract to temp directory
-    print("Extracting...")
-    try:
-        with tempfile.TemporaryDirectory() as tmp_dir:
-            with zipfile.ZipFile(zip_path, 'r') as zf:
-                zf.extractall(tmp_dir)
+        print("Running update...")
+        print()
 
-            extracted_dir = Path(tmp_dir) / "cses_agentic-main"
-
-            # Update Python files (preserve .env and .venv)
-            print("Updating files...")
-            for item in extracted_dir.iterdir():
-                if item.name in [".env", ".venv", ".git"]:
-                    continue
-
-                dst = install_dir / item.name
-                if item.is_dir():
-                    if dst.exists():
-                        shutil.rmtree(dst)
-                    shutil.copytree(item, dst)
-                else:
-                    shutil.copy2(item, dst)
-
-            # Restore .env
-            if env_content:
-                env_file.write_text(env_content)
-                print("Configuration restored.")
-
-            # Install any new dependencies
-            print("Installing dependencies...")
-            import subprocess
-
-            # Try multiple Python locations
-            venv_python = install_dir / ".venv" / ("Scripts" if os.name == "nt" else "bin") / ("python.exe" if os.name == "nt" else "python")
-
-            python_cmd = None
-            if venv_python.exists():
-                python_cmd = str(venv_python)
-                print(f"  Using venv: {venv_python}")
-            else:
-                # Try system Python
-                python_cmd = sys.executable
-                print(f"  Using system Python: {python_cmd}")
-
+        try:
+            # Run PowerShell script
             result = subprocess.run(
-                [python_cmd, "-m", "pip", "install", "--upgrade", "-r", str(install_dir / "requirements.txt")],
-                capture_output=True,
-                text=True
+                ["powershell", "-ExecutionPolicy", "Bypass", "-File", script_path],
+                check=False
             )
             if result.returncode != 0:
-                print(f"[!] pip install failed:")
-                print(f"    {result.stderr}")
-                print()
-                print("Manual fix: Run this command:")
-                print(f"    pip install reportlab")
-            else:
-                # Count newly installed packages
-                installed = [line for line in result.stdout.split('\n') if 'Successfully installed' in line]
-                if installed:
-                    print(f"[OK] {installed[0]}")
-                else:
-                    print("[OK] All dependencies up to date")
+                print(f"[!] Update script returned error code {result.returncode}")
+        except Exception as e:
+            print(f"[X] Failed to run update script: {e}")
+        finally:
+            try:
+                os.unlink(script_path)
+            except:
+                pass
+    else:
+        # Linux/Mac - download and run bash install script
+        script_url = "https://raw.githubusercontent.com/aseimel/cses_agentic/main/install.sh"
+        print("Downloading update script...")
 
-    except Exception as e:
-        print(f"Update failed: {e}")
-        import traceback
-        traceback.print_exc()
-        return
-    finally:
-        # Clean up zip
         try:
-            os.unlink(zip_path)
-        except:
-            pass
+            with tempfile.NamedTemporaryFile(mode='w', suffix='.sh', delete=False, encoding='utf-8') as tmp:
+                response = urllib.request.urlopen(script_url)
+                tmp.write(response.read().decode('utf-8'))
+                script_path = tmp.name
+        except Exception as e:
+            print(f"[X] Download failed: {e}")
+            return
 
-    print()
-    print("=" * 40)
-    print("Update complete!")
-    print()
-    print("Changes will take effect on next run.")
+        print("Running update...")
+        print()
+
+        try:
+            os.chmod(script_path, 0o755)
+            result = subprocess.run(["bash", script_path], check=False)
+            if result.returncode != 0:
+                print(f"[!] Update script returned error code {result.returncode}")
+        except Exception as e:
+            print(f"[X] Failed to run update script: {e}")
+        finally:
+            try:
+                os.unlink(script_path)
+            except:
+                pass
 
 
 def main():
