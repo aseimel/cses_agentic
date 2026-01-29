@@ -19,7 +19,12 @@ import logging
 import shutil
 import sys
 import os
+import atexit
 from pathlib import Path
+
+# Platform-specific locking
+if os.name != 'nt':  # Unix/Linux/Mac
+    import fcntl
 
 # Add project root to path
 PROJECT_ROOT = Path(__file__).parent
@@ -42,6 +47,81 @@ logging.basicConfig(
     format="%(message)s"
 )
 logger = logging.getLogger(__name__)
+
+
+# Global lock file handle (kept open for duration of process)
+_lock_file_handle = None
+
+
+def get_lock_file_path() -> Path:
+    """Get the path to the lock file."""
+    if os.name == 'nt':  # Windows
+        return Path(os.environ.get('TEMP', '.')) / "cses_agent.lock"
+    else:
+        return Path("/tmp") / "cses_agent.lock"
+
+
+def acquire_lock() -> bool:
+    """
+    Acquire an exclusive lock to prevent parallel execution.
+
+    Returns True if lock acquired, False if another instance is running.
+    """
+    global _lock_file_handle
+
+    lock_path = get_lock_file_path()
+
+    try:
+        # Open lock file (create if doesn't exist)
+        _lock_file_handle = open(lock_path, 'w')
+
+        if os.name == 'nt':  # Windows
+            import msvcrt
+            try:
+                msvcrt.locking(_lock_file_handle.fileno(), msvcrt.LK_NBLCK, 1)
+                _lock_file_handle.write(str(os.getpid()))
+                _lock_file_handle.flush()
+                return True
+            except IOError:
+                _lock_file_handle.close()
+                _lock_file_handle = None
+                return False
+        else:  # Unix/Linux/Mac
+            try:
+                fcntl.flock(_lock_file_handle.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+                _lock_file_handle.write(str(os.getpid()))
+                _lock_file_handle.flush()
+                return True
+            except IOError:
+                _lock_file_handle.close()
+                _lock_file_handle = None
+                return False
+    except Exception as e:
+        logger.warning(f"Could not acquire lock: {e}")
+        return True  # Proceed anyway if lock mechanism fails
+
+
+def release_lock():
+    """Release the lock file."""
+    global _lock_file_handle
+
+    if _lock_file_handle:
+        try:
+            if os.name == 'nt':  # Windows
+                import msvcrt
+                try:
+                    msvcrt.locking(_lock_file_handle.fileno(), msvcrt.LK_UNLCK, 1)
+                except:
+                    pass
+            else:  # Unix/Linux/Mac
+                try:
+                    fcntl.flock(_lock_file_handle.fileno(), fcntl.LOCK_UN)
+                except:
+                    pass
+            _lock_file_handle.close()
+        except:
+            pass
+        _lock_file_handle = None
 
 
 def get_install_dir() -> Path:
@@ -946,6 +1026,11 @@ def cmd_update(args):
     print("=" * 40)
     print()
 
+    # CRITICAL: Release lock before running installer
+    # The installer will run as a separate process and needs the lock
+    print("Preparing for update...")
+    release_lock()
+
     if os.name == 'nt':
         # Windows - download and run PowerShell install script
         script_url = "https://raw.githubusercontent.com/aseimel/cses_agentic/main/install.ps1"
@@ -961,10 +1046,12 @@ def cmd_update(args):
             return
 
         print("Running update...")
+        print("(This window will close after update completes)")
         print()
 
         try:
-            # Run PowerShell script
+            # Run PowerShell script - this replaces the current installation
+            # so we exit immediately after starting it
             result = subprocess.run(
                 ["powershell", "-ExecutionPolicy", "Bypass", "-File", script_path],
                 check=False
@@ -978,6 +1065,8 @@ def cmd_update(args):
                 os.unlink(script_path)
             except:
                 pass
+        # Exit after update to avoid running old code
+        sys.exit(0)
     else:
         # Linux/Mac - download and run bash install script
         script_url = "https://raw.githubusercontent.com/aseimel/cses_agentic/main/install.sh"
@@ -993,6 +1082,7 @@ def cmd_update(args):
             return
 
         print("Running update...")
+        print("(This window will close after update completes)")
         print()
 
         try:
@@ -1007,10 +1097,27 @@ def cmd_update(args):
                 os.unlink(script_path)
             except:
                 pass
+        # Exit after update to avoid running old code
+        sys.exit(0)
 
 
 def main():
     """Main entry point."""
+    # CRITICAL: Acquire lock to prevent parallel execution
+    # This prevents the CLI and install script from running simultaneously
+    if not acquire_lock():
+        print("\n[X] Another CSES instance is already running.")
+        print("    Please wait for it to finish or close it first.")
+        print()
+        print("    If you believe this is an error, delete the lock file:")
+        print(f"    {get_lock_file_path()}")
+        print()
+        input("Press Enter to exit...")
+        sys.exit(1)
+
+    # Register cleanup on exit
+    atexit.register(release_lock)
+
     try:
         # Load environment from install directory
         install_dir = get_install_dir()
@@ -1025,6 +1132,7 @@ def main():
                 print(f"Warning: Could not load .env file: {e}")
     except Exception as e:
         print(f"Error during initialization: {e}")
+        release_lock()
         input("Press Enter to exit...")
         sys.exit(1)
 

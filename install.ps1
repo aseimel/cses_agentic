@@ -14,6 +14,39 @@ Write-Host ""
 # Installation paths (no admin needed - user directory)
 $InstallDir = "$env:USERPROFILE\.cses-agent"
 $RepoUrl = "https://github.com/aseimel/cses_agentic/archive/refs/heads/main.zip"
+$LockFile = "$env:TEMP\cses_agent.lock"
+
+# CRITICAL: Check for running CSES instance
+# This prevents parallel execution with the CLI
+Write-Host "Checking for running instances..." -ForegroundColor Cyan
+if (Test-Path $LockFile) {
+    try {
+        # Try to open the lock file exclusively
+        $lockHandle = [System.IO.File]::Open($LockFile, 'Open', 'Read', 'None')
+        $lockHandle.Close()
+        # If we got here, no one else has the lock - delete stale lock file
+        Remove-Item $LockFile -Force -ErrorAction SilentlyContinue
+    } catch {
+        # Lock file is held by another process
+        Write-Host ""
+        Write-Host "[X] CSES Assistant is currently running!" -ForegroundColor Red
+        Write-Host "    Please close all CSES windows before updating." -ForegroundColor Yellow
+        Write-Host ""
+        Write-Host "    If you believe this is an error, delete:" -ForegroundColor Gray
+        Write-Host "    $LockFile" -ForegroundColor Gray
+        Write-Host ""
+        Read-Host "Press Enter to exit"
+        exit 1
+    }
+}
+
+# Create our own lock during installation
+try {
+    $script:InstallLock = [System.IO.File]::Open($LockFile, 'Create', 'Write', 'None')
+    "INSTALL-$PID" | Out-File $LockFile -NoNewline
+} catch {
+    Write-Host "[!] Could not create lock file (non-critical)" -ForegroundColor Yellow
+}
 
 # Check Python (3.10-3.14 all work - 3.14 requires latest package versions)
 function Test-Python {
@@ -277,3 +310,11 @@ if ($IsUpdate) {
 Write-Host ""
 Write-Host "To reconfigure later: cses setup --force" -ForegroundColor Gray
 Write-Host ""
+
+# Release install lock
+if ($script:InstallLock) {
+    try {
+        $script:InstallLock.Close()
+        Remove-Item $LockFile -Force -ErrorAction SilentlyContinue
+    } catch {}
+}
