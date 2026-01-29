@@ -6,20 +6,105 @@ interface where users can chat with Claude about the CSES workflow.
 Claude has expert knowledge of the CSES process and guides users through
 each step.
 
-CRITICAL: Claude MUST write important findings to the log file in real-time
-using the [LOG:...] and [STUDY_DESIGN:...] markers.
+Claude has direct tool access to write to the log file in real-time using
+tools like write_log_entry, update_study_design, add_collaborator_question,
+and update_variable_mapping.
 """
 
 import subprocess
 import shutil
 import json
 import os
-import re
 from pathlib import Path
-from typing import Optional
+from typing import Optional, TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from src.workflow.active_logging import ActiveLogger
 
 from src.workflow.state import WorkflowState, WORKFLOW_STEPS, StepStatus
 from src.workflow.active_logging import ActiveLogger
+
+
+# Tool definitions for Claude to update log files directly
+LOG_TOOLS = [
+    {
+        "type": "function",
+        "function": {
+            "name": "write_log_entry",
+            "description": "Write an entry to the CSES log file. Use this for any observation, issue, or finding that should be documented.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "message": {
+                        "type": "string",
+                        "description": "The log message to record"
+                    }
+                },
+                "required": ["message"]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "update_study_design",
+            "description": "Update study design section with a specific field value. Call this when you discover study design information from documentation.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "field": {
+                        "type": "string",
+                        "enum": ["sample_design", "sample_size", "response_rate", "weighting", "collection_period", "mode", "field_lag"],
+                        "description": "The study design field to update"
+                    },
+                    "value": {
+                        "type": "string",
+                        "description": "The value to set for this field"
+                    }
+                },
+                "required": ["field", "value"]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "add_collaborator_question",
+            "description": "Add a question that needs to be sent to the collaborator for clarification.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "question": {
+                        "type": "string",
+                        "description": "The question to ask the collaborator"
+                    }
+                },
+                "required": ["question"]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "update_variable_mapping",
+            "description": "Record a variable mapping in the tracking sheet. Use when you identify which source variable maps to a CSES target variable.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "cses_code": {
+                        "type": "string",
+                        "description": "CSES target variable code (e.g., F2001, F3024)"
+                    },
+                    "source_variable": {
+                        "type": "string",
+                        "description": "Source variable name from the deposited data"
+                    }
+                },
+                "required": ["cses_code", "source_variable"]
+            }
+        }
+    }
+]
 
 
 # CSES Expert System Prompt
@@ -76,28 +161,26 @@ Working Directory: {working_dir}
 - You can read files in the study folder if needed to answer questions
 
 ## CRITICAL: Live Log File Updates
-You MUST write important findings to the log file AS YOU DISCOVER THEM using these markers:
+You MUST write important findings to the log file AS YOU DISCOVER THEM.
 
-[LOG: your note here]
-- Use for any observation, issue, or finding that should be documented
-- Examples: field lag issues, missing weights, unusual methodology, data quality notes
+If you have tool access, use the tools:
+- write_log_entry(message): Log any observation, issue, or finding
+- update_study_design(field, value): Record study design details
+- add_collaborator_question(question): Add a question for the collaborator
+- update_variable_mapping(cses_code, source_variable): Record a variable mapping
 
-[STUDY_DESIGN: field=value]
-- Use to update the Study Design section with specific values
-- Fields: sample_design, sample_size, response_rate, weighting, collection_period, mode
-- Example: [STUDY_DESIGN: sample_size=1500]
-- Example: [STUDY_DESIGN: weighting=No post-stratification weights available]
+If tools are not available, use these markers in your response:
+[LOG: your note here] - For any observation, issue, or finding
+[STUDY_DESIGN: field=value] - For study design info (sample_design, sample_size, response_rate, weighting, collection_period, mode, field_lag)
+[QUESTION: your question] - For collaborator questions
+[VARIABLE: cses_code=source_variable] - For variable mappings
 
-[QUESTION: your question for collaborator]
-- Use to add a question that needs to be sent to the collaborator
+IMPORTANT: When you discover information from documents, RECORD IT IMMEDIATELY.
+Do not just mention "response rate of 45%" - record it with update_study_design or [STUDY_DESIGN: response_rate=45%].
+Do not just note "152 days field lag" - record it with write_log_entry or [LOG: Field lag of 152 days].
+When you identify a variable mapping, record it immediately.
 
-[VARIABLE: cses_code=source_variable]
-- Use to record a variable mapping in the tracking sheet
-- Example: [VARIABLE: F1003_2=respondent_id]
-- Example: [VARIABLE: F2001=gender]
-- The tracking sheet will be updated with this mapping
-
-IMPORTANT: Anything important you say in your response that should be preserved in the log MUST also be written with a [LOG:...] marker. If you mention "152 days field lag" in your discussion, also include [LOG: Field lag of 152 days between election and fieldwork start - unusually long].
+Every important finding should be recorded so it persists in the log file.
 
 Respond naturally as a helpful CSES expert assistant."""
 
@@ -164,22 +247,29 @@ def build_system_prompt(state: WorkflowState) -> str:
 def call_claude_conversation(
     user_message: str,
     state: WorkflowState,
-    conversation_history: list = None
+    conversation_history: list = None,
+    active_logger: "ActiveLogger" = None
 ) -> str:
     """
     Send a message to Claude and get a response.
 
-    Uses Claude CLI if available, otherwise falls back to LiteLLM API.
+    Uses LiteLLM API with tool support for logging, or CLI if configured.
     """
     system_prompt = build_system_prompt(state)
 
-    # Check if Claude CLI is available
-    claude_path = shutil.which("claude")
+    # Check model configuration
+    model = os.getenv("LLM_MODEL_VALIDATE") or os.getenv("LLM_MODEL", "anthropic/claude-sonnet-4-20250514")
 
-    if claude_path:
-        return _call_claude_cli(user_message, system_prompt, conversation_history)
-    else:
-        return _call_litellm(user_message, system_prompt, conversation_history)
+    # If model is "claude-cli", use CLI path (doesn't support tools)
+    if model == "claude-cli":
+        claude_path = shutil.which("claude")
+        if claude_path:
+            return _call_claude_cli(user_message, system_prompt, conversation_history)
+        else:
+            return "Error: claude-cli configured but Claude CLI not found in PATH"
+
+    # Otherwise use LiteLLM with tool support
+    return _call_litellm(user_message, system_prompt, conversation_history, active_logger, state)
 
 
 def _call_claude_cli(
@@ -235,9 +325,11 @@ def _call_claude_cli(
 def _call_litellm(
     user_message: str,
     system_prompt: str,
-    conversation_history: list = None
+    conversation_history: list = None,
+    active_logger: "ActiveLogger" = None,
+    state: WorkflowState = None
 ) -> str:
-    """Call Claude via LiteLLM API."""
+    """Call Claude via LiteLLM API with tool support for logging."""
     try:
         from litellm import completion
 
@@ -252,17 +344,139 @@ def _call_litellm(
         # Get model from environment
         model = os.getenv("LLM_MODEL_VALIDATE") or os.getenv("LLM_MODEL", "anthropic/claude-sonnet-4-20250514")
 
+        # Include tools only if we have an active_logger to execute them
+        tools_param = LOG_TOOLS if active_logger else None
+
         response = completion(
             model=model,
             messages=messages,
+            tools=tools_param,
             max_tokens=2048,
             temperature=0.7
         )
 
-        return response.choices[0].message.content.strip()
+        # Check if there are tool calls to execute
+        message = response.choices[0].message
+
+        if active_logger and hasattr(message, 'tool_calls') and message.tool_calls:
+            # Execute tool calls and continue conversation if needed
+            return _execute_tool_loop(messages, message, active_logger, state, model)
+
+        # No tool calls, just return the content
+        content = message.content
+        return content.strip() if content else ""
 
     except Exception as e:
         return f"Error calling API: {e}"
+
+
+def _execute_tool_loop(
+    messages: list,
+    initial_response_message,
+    active_logger: "ActiveLogger",
+    state: WorkflowState,
+    model: str,
+    max_iterations: int = 10
+) -> str:
+    """
+    Execute tool calls in a loop until Claude returns a final text response.
+
+    This handles cases where Claude may need to call multiple tools.
+    """
+    from litellm import completion
+
+    current_message = initial_response_message
+
+    for _ in range(max_iterations):
+        if not hasattr(current_message, 'tool_calls') or not current_message.tool_calls:
+            # No more tool calls, return the content
+            return current_message.content.strip() if current_message.content else ""
+
+        # Add assistant message with tool calls to history
+        messages.append({
+            "role": "assistant",
+            "content": current_message.content or "",
+            "tool_calls": [
+                {
+                    "id": tc.id,
+                    "type": "function",
+                    "function": {
+                        "name": tc.function.name,
+                        "arguments": tc.function.arguments
+                    }
+                }
+                for tc in current_message.tool_calls
+            ]
+        })
+
+        # Execute each tool call
+        tool_results = []
+        for tool_call in current_message.tool_calls:
+            result = _execute_single_tool(tool_call, active_logger, state)
+            tool_results.append({
+                "role": "tool",
+                "tool_call_id": tool_call.id,
+                "content": result
+            })
+
+        # Add tool results to messages
+        messages.extend(tool_results)
+
+        # Call Claude again with tool results
+        response = completion(
+            model=model,
+            messages=messages,
+            tools=LOG_TOOLS,
+            max_tokens=2048,
+            temperature=0.7
+        )
+
+        current_message = response.choices[0].message
+
+    # Max iterations reached, return whatever content we have
+    return current_message.content.strip() if current_message.content else ""
+
+
+def _execute_single_tool(tool_call, active_logger: "ActiveLogger", state: WorkflowState) -> str:
+    """Execute a single tool call and return the result."""
+    name = tool_call.function.name
+    try:
+        args = json.loads(tool_call.function.arguments)
+    except json.JSONDecodeError:
+        return f"Error: Invalid JSON arguments for {name}"
+
+    if name == "write_log_entry":
+        message = args.get("message", "")
+        active_logger.log_message(message)
+        print(f"  [Logged] {message[:60]}...")
+        return f"Logged: {message}"
+
+    elif name == "update_study_design":
+        field = args.get("field", "")
+        value = args.get("value", "")
+        active_logger.update_study_design_section({field: value})
+        print(f"  [Study Design] {field}: {value[:40]}...")
+        return f"Updated study design: {field} = {value}"
+
+    elif name == "add_collaborator_question":
+        question = args.get("question", "")
+        active_logger.add_collaborator_question(
+            question,
+            "From conversation",
+            state.get_next_step() or 0
+        )
+        print(f"  [Question added] {question[:60]}...")
+        return f"Added question: {question}"
+
+    elif name == "update_variable_mapping":
+        cses_code = args.get("cses_code", "")
+        source_variable = args.get("source_variable", "")
+        active_logger.update_variable_mapping(cses_code, source_variable)
+        print(f"  [Variable] {cses_code} <- {source_variable}")
+        return f"Mapped variable: {cses_code} = {source_variable}"
+
+    else:
+        return f"Unknown tool: {name}"
 
 
 class ConversationSession:
@@ -275,29 +489,36 @@ class ConversationSession:
 
     def send(self, message: str) -> str:
         """Send a message and get a response."""
+        import re
+
         # Add user message to history
         self.history.append({"role": "user", "content": message})
 
-        # Get response
-        response = call_claude_conversation(message, self.state, self.history)
+        # Get response - pass active_logger so tools can write to log directly
+        response = call_claude_conversation(
+            message, self.state, self.history, self.active_logger
+        )
 
-        # CRITICAL: Parse and write log entries in real-time
-        response = self._process_log_markers(response)
+        # For CLI path (which doesn't support tools), process markers as fallback
+        model = os.getenv("LLM_MODEL_VALIDATE") or os.getenv("LLM_MODEL", "")
+        if model == "claude-cli":
+            response = self._process_log_markers(response)
 
         # Add assistant response to history
         self.history.append({"role": "assistant", "content": response})
+
+        # Save state after any updates
+        self.state.save()
 
         return response
 
     def _process_log_markers(self, response: str) -> str:
         """
         Parse response for log markers and write to log file.
-
-        Markers:
-        - [LOG: message] -> Write to log file notes section
-        - [STUDY_DESIGN: field=value] -> Update study design section
-        - [QUESTION: question] -> Add collaborator question
+        Used as fallback for CLI path which doesn't support tools.
         """
+        import re
+
         # Process [LOG: ...] markers
         log_pattern = r'\[LOG:\s*(.+?)\]'
         log_matches = re.findall(log_pattern, response, re.DOTALL)
@@ -310,11 +531,9 @@ class ConversationSession:
         design_pattern = r'\[STUDY_DESIGN:\s*(\w+)\s*=\s*(.+?)\]'
         design_matches = re.findall(design_pattern, response)
         if design_matches:
-            design_info = {}
             for field, value in design_matches:
-                design_info[field.strip()] = value.strip()
+                self.active_logger.update_study_design_section({field.strip(): value.strip()})
                 print(f"  [Study Design] {field}: {value[:40]}...")
-            self.active_logger.update_study_design_section(design_info)
 
         # Process [QUESTION: ...] markers
         question_pattern = r'\[QUESTION:\s*(.+?)\]'
@@ -336,10 +555,6 @@ class ConversationSession:
                 cses_code.strip(),
                 source_var.strip()
             )
-
-        # Save state after any updates
-        if log_matches or design_matches or question_matches or variable_matches:
-            self.state.save()
 
         return response
 

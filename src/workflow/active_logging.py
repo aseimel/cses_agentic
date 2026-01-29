@@ -425,29 +425,82 @@ class ActiveLogger:
         """
         Update the OVERVIEW OF STUDY DESIGN AND WEIGHTS section in the log file.
 
+        This method preserves existing values and only updates fields provided in info.
+
         Args:
             info: Dictionary with keys: sample_design, sample_size, weighting,
-                  collection_period, mode, response_rate
+                  collection_period, mode, response_rate, field_lag
         """
         if not self.log_file_path or not self.log_file_path.exists():
             return
 
         country_code = self.state.country_code or self.state.country[:3].upper()
         year = self.state.year
+        section_marker = f"<<>> OVERVIEW OF STUDY DESIGN AND WEIGHTS - {country_code}_{year}_M6:"
 
+        # Read current values from the log file
+        existing_values = self._read_study_design_values(section_marker)
+
+        # Merge new values with existing (new values take precedence)
+        merged = {**existing_values, **info}
+
+        # Format the section content
         content_lines = [
-            f"Sample Design: {info.get('sample_design', 'TBD')}",
-            f"Sample Size: {info.get('sample_size', 'TBD')}",
-            f"Response Rate: {info.get('response_rate', 'TBD')}",
-            f"Weighting Methodology: {info.get('weighting', 'TBD')}",
-            f"Data Collection Period: {info.get('collection_period', 'TBD')}",
-            f"Mode of Interview: {info.get('mode', 'TBD')}",
+            f"Sample Design: {merged.get('sample_design', 'TBD')}",
+            f"Sample Size: {merged.get('sample_size', 'TBD')}",
+            f"Response Rate: {merged.get('response_rate', 'TBD')}",
+            f"Weighting Methodology: {merged.get('weighting', 'TBD')}",
+            f"Data Collection Period: {merged.get('collection_period', 'TBD')}",
+            f"Mode of Interview: {merged.get('mode', 'TBD')}",
+            f"Field Lag: {merged.get('field_lag', 'TBD')}",
         ]
 
-        self._update_log_section(
-            f"<<>> OVERVIEW OF STUDY DESIGN AND WEIGHTS - {country_code}_{year}_M6:",
-            "\n".join(content_lines)
-        )
+        self._update_log_section(section_marker, "\n".join(content_lines))
+
+    def _read_study_design_values(self, section_marker: str) -> dict:
+        """
+        Read existing study design values from the log file.
+
+        Returns a dict with current values for preservation during updates.
+        """
+        values = {}
+        if not self.log_file_path or not self.log_file_path.exists():
+            return values
+
+        try:
+            content = self.log_file_path.read_text()
+            lines = content.split("\n")
+
+            in_section = False
+            for line in lines:
+                if section_marker in line:
+                    in_section = True
+                    continue
+                elif in_section and (line.startswith("<<>>") or line.startswith(">>>") or line.startswith("=")):
+                    break
+                elif in_section and ":" in line:
+                    # Parse "Field Name: value" format
+                    parts = line.split(":", 1)
+                    if len(parts) == 2:
+                        field_name = parts[0].strip()
+                        value = parts[1].strip()
+                        if value and value != "TBD":
+                            # Map display names to internal keys
+                            field_map = {
+                                "Sample Design": "sample_design",
+                                "Sample Size": "sample_size",
+                                "Response Rate": "response_rate",
+                                "Weighting Methodology": "weighting",
+                                "Data Collection Period": "collection_period",
+                                "Mode of Interview": "mode",
+                                "Field Lag": "field_lag",
+                            }
+                            if field_name in field_map:
+                                values[field_map[field_name]] = value
+        except Exception as e:
+            logger.error(f"Failed to read study design values: {e}")
+
+        return values
 
     def update_deposit_inventory(self, data_files: list, questionnaires: list,
                                   codebooks: list, design_reports: list, macro_reports: list):
