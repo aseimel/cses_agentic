@@ -154,39 +154,6 @@ LOG_TOOLS = [
                 "required": ["item"]
             }
         }
-    },
-    {
-        "type": "function",
-        "function": {
-            "name": "read_file",
-            "description": "Read contents of a file in the study folder. Use for design reports, questionnaires, codebooks, and other documentation.",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "path": {
-                        "type": "string",
-                        "description": "File path relative to study folder (e.g., 'micro/original_deposit/design_report.pdf')"
-                    }
-                },
-                "required": ["path"]
-            }
-        }
-    },
-    {
-        "type": "function",
-        "function": {
-            "name": "list_files",
-            "description": "List files in a directory of the study folder.",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "directory": {
-                        "type": "string",
-                        "description": "Directory path relative to study folder (default: study root)"
-                    }
-                }
-            }
-        }
     }
 ]
 
@@ -584,38 +551,6 @@ def _execute_single_tool(tool_call, active_logger: "ActiveLogger", state: Workfl
         active_logger.add_todo_item(item)
         print(f"  [TODO] {item[:50]}...")
         return f"Added TODO: {item}"
-
-    elif name == "read_file":
-        path = args.get("path", "")
-        full_path = Path(state.working_dir) / path
-        if not full_path.exists():
-            return f"Error: File not found: {path}"
-        try:
-            if full_path.suffix.lower() == '.pdf':
-                from pypdf import PdfReader
-                reader = PdfReader(full_path)
-                text = "\n".join(page.extract_text() or "" for page in reader.pages)
-                print(f"  [Read] {path} ({len(text)} chars)")
-                return text[:50000]  # Limit for context
-            else:
-                content = full_path.read_text(errors='replace')
-                print(f"  [Read] {path} ({len(content)} chars)")
-                return content[:50000]
-        except Exception as e:
-            return f"Error reading file: {e}"
-
-    elif name == "list_files":
-        directory = args.get("directory", "")
-        dir_path = Path(state.working_dir) / directory
-        if not dir_path.exists():
-            return f"Error: Directory not found: {directory}"
-        files = []
-        for f in dir_path.rglob("*"):
-            if f.is_file():
-                rel_path = f.relative_to(Path(state.working_dir))
-                files.append(str(rel_path))
-        print(f"  [List] {directory or '.'} ({len(files)} files)")
-        return "\n".join(files[:100])  # Limit to 100 files
 
     else:
         return f"Unknown tool: {name}"

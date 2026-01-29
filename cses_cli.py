@@ -793,7 +793,25 @@ def cmd_interactive(args):
     print(format_workflow_status(state))
     print()
 
-    # Start conversational mode with Claude
+    # Create conversation session
+    conversation = ConversationSession(state)
+
+    # Try to use Textual TUI if available
+    try:
+        from src.tui.chat_app import CSESChat
+        print("Starting TUI interface...")
+        app = CSESChat(state, conversation)
+        app.run()
+        return
+    except ImportError:
+        # Textual not available, fall back to simple chat
+        print("Note: Install 'textual' for a better interface (pip install textual)")
+        print()
+    except Exception as e:
+        print(f"TUI error: {e}, falling back to simple chat")
+        print()
+
+    # Simple text-based chat fallback
     print("=" * 60)
     print("CSES Expert Assistant")
     print("=" * 60)
@@ -804,22 +822,19 @@ def cmd_interactive(args):
     print("Type 'quit' to exit, 'status' to see progress.")
     print()
 
-    # Create conversation session
-    conversation = ConversationSession(state)
-
     # Send initial greeting to get Claude's guidance
     next_step = state.get_next_step()
     if next_step is not None:
         step_info = WORKFLOW_STEPS[next_step]
         initial_prompt = f"The study is initialized. The next step is Step {next_step}: {step_info['name']}. Briefly explain what this step involves and ask if the user is ready to proceed."
-        print("Connecting to Claude...")
+        print("Connecting to assistant...")
         try:
             response = conversation.send(initial_prompt)
             print()
             print(f"Assistant: {response}")
             print()
         except Exception as e:
-            print(f"Note: Could not connect to Claude ({e})")
+            print(f"Note: Could not connect ({e})")
             print(f"Next step: Step {next_step} - {step_info['name']}")
             print()
 
@@ -861,7 +876,7 @@ Commands: status, quit, help
 """)
             continue
 
-        # Send everything else to Claude
+        # Send everything else to assistant
         try:
             print()
             print("Thinking...")
