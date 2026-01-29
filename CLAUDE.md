@@ -80,7 +80,13 @@ install.ps1          # Windows installer
    - ONLY implement exactly what the user requested, nothing more
    - If in doubt, ask the user first - don't assume
 
-6. **ALWAYS provide user feedback during operations**
+6. **NEVER rely on PowerShell-specific features**
+   - The install script must use simple, portable constructs
+   - No complex PowerShell syntax, no here-strings with special characters
+   - Keep it simple: basic commands, loops, conditionals only
+   - If something can break in PowerShell, it will - keep it minimal
+
+7. **ALWAYS provide user feedback during operations**
    - Users are non-technical and need to know the tool is working
    - Print progress messages before any operation that takes time
    - Examples: "Loading data file...", "Connecting to Claude...", "Processing documents..."

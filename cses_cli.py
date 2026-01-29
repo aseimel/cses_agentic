@@ -453,6 +453,16 @@ def cmd_init(args) -> Path:
     active_logger.log_message(f"Study initialized: {country} {year}")
     active_logger.log_message(f"Session ID: {state.session_id}")
 
+    # CRITICAL: Fill deposit inventory in log file immediately
+    active_logger.update_deposit_inventory(
+        data_files=[str(f) for f in detected.data_files],
+        questionnaires=[str(f) for f in detected.questionnaire_files],
+        codebooks=[str(f) for f in detected.codebook_files],
+        design_reports=[str(f) for f in detected.design_report_files],
+        macro_reports=[str(f) for f in detected.macro_report_files]
+    )
+    print("  Log file updated with deposit inventory")
+
     # Save state again with log file paths
     state.save(study_dir / ".cses")
 
