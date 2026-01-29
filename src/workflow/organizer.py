@@ -268,6 +268,45 @@ def detect_questionnaire_language(filename: str) -> str:
     return "native"
 
 
+def parse_country_year_from_folder(folder_name: str) -> tuple[str, str]:
+    """
+    Parse country name and year from folder names.
+
+    Handles various formats:
+    - SouthKorea_2024 -> ("South Korea", "2024")
+    - South_Korea_2024 -> ("South Korea", "2024")
+    - Korea_2024 -> ("Korea", "2024")
+    - NewZealand_2025 -> ("New Zealand", "2025")
+
+    Args:
+        folder_name: Name of the folder (e.g., "SouthKorea_2024")
+
+    Returns:
+        Tuple of (country_name, year). Year may be empty if not found.
+    """
+    # Try to extract year (4 digits at end after underscore)
+    year_match = re.search(r'_(\d{4})$', folder_name)
+    year = year_match.group(1) if year_match else ""
+
+    # Remove year from name
+    if year:
+        name_part = folder_name[:year_match.start()]
+    else:
+        name_part = folder_name
+
+    # Replace underscores with spaces
+    name_part = name_part.replace('_', ' ')
+
+    # Split camelCase (e.g., "SouthKorea" -> "South Korea")
+    # Insert space before capital letters that follow lowercase
+    name_part = re.sub(r'([a-z])([A-Z])', r'\1 \2', name_part)
+
+    # Clean up extra spaces
+    country = ' '.join(name_part.split())
+
+    return (country, year)
+
+
 class FileOrganizer:
     """
     Detects and organizes collaborator files into a clean folder structure.
@@ -344,11 +383,51 @@ class FileOrganizer:
         """Initialize organizer for a directory."""
         self.working_dir = working_dir or Path.cwd()
 
-    def detect_files(self) -> DetectedFiles:
-        """Detect and classify files in the working directory."""
-        result = DetectedFiles()
+    def find_email_folder(self) -> tuple[Path, Path] | None:
+        """
+        Find email folder and the subfolder containing the data deposit.
+
+        Identifies the deposit folder by finding the subfolder with the largest
+        total file size (the actual deposit will have the most data).
+
+        Returns:
+            Tuple of (email_folder, deposit_subfolder) or None if not found
+        """
+        # Match: emails, Emails, E-mails, E-mail, email, etc.
+        email_variants = ['emails', 'e-mails', 'e-mail', 'email']
 
         for item in self.working_dir.iterdir():
+            if not item.is_dir():
+                continue
+            # Normalize: lowercase, remove hyphens/underscores
+            normalized = item.name.lower().replace('-', '').replace('_', '')
+            if normalized not in [v.replace('-', '') for v in email_variants]:
+                continue
+
+            # Found email folder - find subfolder with largest total file size
+            subfolders = [d for d in item.iterdir() if d.is_dir()]
+            if not subfolders:
+                continue
+
+            def folder_size(folder: Path) -> int:
+                return sum(f.stat().st_size for f in folder.iterdir() if f.is_file())
+
+            # Sort by total size descending, pick largest
+            subfolders.sort(key=folder_size, reverse=True)
+            deposit_folder = subfolders[0]
+
+            # Verify it has data files
+            if any(f.suffix.lower() in DATA_EXTENSIONS for f in deposit_folder.iterdir() if f.is_file()):
+                return (item, deposit_folder)
+
+        return None
+
+    def detect_files(self, source_dir: Path = None) -> DetectedFiles:
+        """Detect and classify files in the specified or working directory."""
+        result = DetectedFiles()
+        scan_dir = source_dir or self.working_dir
+
+        for item in scan_dir.iterdir():
             if item.name.startswith("."):
                 continue
             if item.is_dir():
@@ -509,6 +588,130 @@ class FileOrganizer:
 
         logger.info(f"Created study folder: {study_dir}")
         return study_dir
+
+    def create_study_structure(self, study_dir: Path):
+        """
+        Create CSES folder structure at the specified directory (root level).
+
+        This is used when the country folder already exists (e.g., from email deposit)
+        and we just need to create the processing folders alongside the email folder.
+
+        Creates:
+        - micro/
+        - micro/FINAL dataset/
+        - micro/deposited variable list/
+        - micro/Collaborator Questions/
+        - macro/
+        - Election Results/
+        - .cses/
+
+        Note: Does NOT create micro/original_deposit/ since the email folder
+        serves as the raw backup.
+
+        Args:
+            study_dir: Directory to create structure in
+        """
+        # micro/ and subfolders
+        (study_dir / "micro").mkdir(exist_ok=True)
+        (study_dir / "micro" / "FINAL dataset").mkdir(parents=True, exist_ok=True)
+        (study_dir / "micro" / "deposited variable list").mkdir(parents=True, exist_ok=True)
+        (study_dir / "micro" / "Collaborator Questions").mkdir(parents=True, exist_ok=True)
+
+        # macro/
+        (study_dir / "macro").mkdir(exist_ok=True)
+
+        # Election Results/
+        (study_dir / "Election Results").mkdir(exist_ok=True)
+
+        # .cses/ for agent state
+        (study_dir / ".cses").mkdir(exist_ok=True)
+
+        logger.info(f"Created study structure in: {study_dir}")
+
+    def copy_files_with_standard_names(
+        self,
+        detected: DetectedFiles,
+        source_dir: Path,
+        study_dir: Path,
+        country_code: str,
+        year: str
+    ) -> dict:
+        """
+        Copy detected files to micro/ with standardized names.
+
+        Naming: {CODE}_{YEAR}_{type}.{ext}
+        Examples: KOR_2024_data.dta, KOR_2024_questionnaire.pdf
+
+        Args:
+            detected: DetectedFiles result
+            source_dir: Where the original files are (e.g., emails/20250303/)
+            study_dir: Target study directory (root of country folder)
+            country_code: 3-letter country code (e.g., KOR)
+            year: Election year (e.g., 2024)
+
+        Returns:
+            Dict mapping file type to path of standardized copy
+        """
+        mapping = {}
+        micro_dir = study_dir / "micro"
+        prefix = f"{country_code}_{year}"
+
+        # Copy data file(s)
+        if detected.data_files:
+            src = detected.data_files[0]
+            dst = micro_dir / f"{prefix}_data{src.suffix}"
+            shutil.copy2(src, dst)
+            mapping["data"] = str(dst)
+            logger.info(f"Copied data: {src.name} -> {dst.name}")
+
+            # If multiple data files, copy with numeric suffixes
+            for i, src in enumerate(detected.data_files[1:], start=2):
+                dst = micro_dir / f"{prefix}_data_{i}{src.suffix}"
+                shutil.copy2(src, dst)
+                mapping[f"data_{i}"] = str(dst)
+                logger.info(f"Copied data: {src.name} -> {dst.name}")
+
+        # Copy questionnaire(s)
+        for i, src in enumerate(detected.questionnaire_files):
+            suffix = "" if i == 0 else f"_{i+1}"
+            dst = micro_dir / f"{prefix}_questionnaire{suffix}{src.suffix}"
+            shutil.copy2(src, dst)
+            mapping[f"questionnaire{suffix}"] = str(dst)
+            logger.info(f"Copied questionnaire: {src.name} -> {dst.name}")
+
+        # Copy codebook
+        if detected.codebook_files:
+            src = detected.codebook_files[0]
+            dst = micro_dir / f"{prefix}_codebook{src.suffix}"
+            shutil.copy2(src, dst)
+            mapping["codebook"] = str(dst)
+            logger.info(f"Copied codebook: {src.name} -> {dst.name}")
+
+        # Copy design report
+        if detected.design_report_files:
+            src = detected.design_report_files[0]
+            dst = micro_dir / f"{prefix}_design_report{src.suffix}"
+            shutil.copy2(src, dst)
+            mapping["design_report"] = str(dst)
+            logger.info(f"Copied design report: {src.name} -> {dst.name}")
+
+        # Copy macro reports
+        if detected.macro_report_files:
+            src = detected.macro_report_files[0]
+            dst = micro_dir / f"{prefix}_macro_report{src.suffix}"
+            shutil.copy2(src, dst)
+            mapping["macro_report"] = str(dst)
+            logger.info(f"Copied macro report: {src.name} -> {dst.name}")
+
+        # Copy district data
+        if detected.district_data_files:
+            src = detected.district_data_files[0]
+            dst = micro_dir / f"{prefix}_district_data{src.suffix}"
+            shutil.copy2(src, dst)
+            mapping["district_data"] = str(dst)
+            logger.info(f"Copied district data: {src.name} -> {dst.name}")
+
+        return mapping
 
     def organize_files(
         self,
