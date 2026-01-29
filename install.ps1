@@ -213,6 +213,20 @@ if ($fullInstallFailed) {
     Write-Host "  $pythonExe -m pip install python-dotenv litellm pandas" -ForegroundColor White
 }
 
+# Verify critical packages are installed
+Write-Host ""
+Write-Host "Verifying installation..." -ForegroundColor Cyan
+$verifyOutput = & $pipExe show python-dotenv litellm pandas 2>&1
+if ($LASTEXITCODE -eq 0) {
+    Write-Host "[OK] Core packages verified" -ForegroundColor Green
+} else {
+    Write-Host "[X] Package verification failed!" -ForegroundColor Red
+    Write-Host "    Running pip list to show what's installed:" -ForegroundColor Yellow
+    & $pipExe list
+    Write-Host ""
+    Write-Host "Please check the errors above and try reinstalling." -ForegroundColor Yellow
+}
+
 Write-Host ""
 
 # Create batch file launcher
