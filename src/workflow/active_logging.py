@@ -137,6 +137,9 @@ class ActiveLogger:
             "Deposited Files:",
             "",
             "",
+            "--- Processing Notes ---",
+            "",
+            "",
             "=" * 75,
             f">>> Questions for Collaborator: {country_code}_{year}_M6",
             "=" * 75,
@@ -348,28 +351,28 @@ class ActiveLogger:
                     lines[i] = f"Most recent update: {datetime.now().strftime('%Y-%m-%d')}"
                     break
 
-            # Find ">>> Log File Notes" section and add entry after "Deposited Files:"
+            # Find "--- Processing Notes ---" marker and add entry after it
             self._log_entry_count += 1
             prefix = "" if level == "INFO" else "[!] "
             entry_text = f"{self._log_entry_count:02d}. {prefix}{message}"
 
-            # Find where to insert (after "Deposited Files:" or after the section header)
-            found_notes = False
-            found_deposited = False
+            # Find where to insert (after "--- Processing Notes ---" marker)
             insert_idx = None
             for i, line in enumerate(lines):
-                if ">>> Log File Notes" in line and "===" in lines[i-1] if i > 0 else False:
-                    found_notes = True
-                elif found_notes and "Deposited Files:" in line:
-                    found_deposited = True
-                elif found_notes and found_deposited and line.strip() == "":
-                    # Insert after the blank line following "Deposited Files:"
+                if line.strip() == "--- Processing Notes ---":
+                    # Insert after the marker and any blank line
                     insert_idx = i + 1
+                    # Skip blank lines after marker
+                    while insert_idx < len(lines) and lines[insert_idx].strip() == "":
+                        insert_idx += 1
                     break
-                elif found_notes and ">>> Questions for Collaborator" in line:
-                    # Insert before Questions section
-                    insert_idx = i - 2
-                    break
+
+            # Fallback: insert before Questions section
+            if insert_idx is None:
+                for i, line in enumerate(lines):
+                    if ">>> Questions for Collaborator" in line:
+                        insert_idx = i - 2 if i > 1 else i
+                        break
 
             inserted = False
             if insert_idx and insert_idx < len(lines):
@@ -741,20 +744,24 @@ class ActiveLogger:
                     return False, "Failed to add Deposited Files section"
                 return True, "Deposited files section added"
 
-            # Find end - next section marker
+            # Find end - stop at "Processing Notes" separator or next section
             end_idx = None
             for i in range(start_idx + 1, len(lines)):
                 line = lines[i].strip()
+                # Stop at Processing Notes separator (preserves log entries)
+                if line == "--- Processing Notes ---":
+                    end_idx = i
+                    break
+                # Or stop at next major section
                 if line.startswith(">>>") or line.startswith("=" * 10):
                     end_idx = i
                     break
 
-            # If no end marker, replace to end of Log File Notes section
+            # If no end marker found, look for Questions section
             if end_idx is None:
-                # Look for the next major section
                 for i in range(start_idx + 1, len(lines)):
                     if ">>> Questions for Collaborator" in lines[i]:
-                        end_idx = i - 1  # Before the separator
+                        end_idx = i - 1
                         break
                 if end_idx is None:
                     end_idx = len(lines)
