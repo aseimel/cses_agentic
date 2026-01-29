@@ -620,7 +620,7 @@ class ActiveLogger:
     def _update_log_section(self, section_marker: str, content: str) -> tuple:
         """
         Update a specific section in the log file.
-        SAFE: Only replaces content between section marker and next marker.
+        ESSENTIAL: Content MUST be added - this is not optional.
         Returns (success, message) tuple.
         """
         if not self.log_file_path or not self.log_file_path.exists():
@@ -638,8 +638,36 @@ class ActiveLogger:
                     start_idx = i + 1  # Content starts after marker
                     break
 
+            # If section marker not found, ADD it to the file
             if start_idx is None:
-                return False, f"Section marker not found: {section_marker}"
+                # Find the Election Study Notes section to add subsections
+                insert_point = None
+                for i, line in enumerate(lines):
+                    if ">>> Election Study Notes" in line:
+                        # Find the end of this section (next >>> or end)
+                        for j in range(i + 1, len(lines)):
+                            if lines[j].startswith(">>>") or (lines[j].startswith("=") and len(lines[j]) > 10):
+                                insert_point = j
+                                break
+                        if insert_point is None:
+                            insert_point = len(lines)
+                        break
+
+                if insert_point is None:
+                    # Last resort: append to end of file
+                    insert_point = len(lines)
+
+                # Add the section marker and content
+                new_section = ["", section_marker, "", content, ""]
+                lines = lines[:insert_point] + new_section + lines[insert_point:]
+                self.log_file_path.write_text("\n".join(lines))
+
+                # Verify
+                verify = self.log_file_path.read_text()
+                if content not in verify:
+                    self.log_file_path.write_text(original_content)
+                    return False, "Failed to add new section - verification failed"
+                return True, f"Section added: {section_marker[:30]}..."
 
             # Find section end - look for next section marker (<<>> or >>> or ===)
             end_idx = None
@@ -649,15 +677,13 @@ class ActiveLogger:
                     end_idx = i
                     break
 
-            # SAFE FALLBACK: If no end marker, only replace until next blank line
+            # If no end marker, this is the LAST section - replace to end of file
+            # This is correct behavior for sections like PARTIES AND LEADERS
             if end_idx is None:
-                for i in range(start_idx, len(lines)):
-                    if lines[i].strip() == "" and i > start_idx:
-                        end_idx = i
-                        break
-                # Last resort: only replace content area, not beyond
-                if end_idx is None:
-                    end_idx = min(start_idx + 5, len(lines))  # Max 5 lines
+                end_idx = len(lines)
+                # Trim trailing empty lines from end_idx so we don't accumulate blanks
+                while end_idx > start_idx and lines[end_idx - 1].strip() == "":
+                    end_idx -= 1
 
             # Build new content - preserve everything before and after
             new_lines = lines[:start_idx] + ["", content, ""] + lines[end_idx:]
@@ -666,17 +692,12 @@ class ActiveLogger:
             # Write new content
             self.log_file_path.write_text(new_content)
 
-            # VERIFY: Read back and check
+            # VERIFY: Read back and check content was written
             verify_content = self.log_file_path.read_text()
             if content not in verify_content:
                 # Restore original
                 self.log_file_path.write_text(original_content)
                 return False, "Verification failed - content not found after write"
-
-            if len(verify_content) < len(original_content) * 0.5:
-                # File shrunk by more than 50% - something went wrong
-                self.log_file_path.write_text(original_content)
-                return False, "Verification failed - file size decreased significantly"
 
             return True, "Section updated successfully"
 
@@ -685,7 +706,7 @@ class ActiveLogger:
             return False, f"Error updating section: {e}"
 
     def _update_deposited_files_section(self, content: str) -> tuple:
-        """Update the Deposited Files section - SAFE version with verification."""
+        """Update the Deposited Files section - MUST add content."""
         if not self.log_file_path or not self.log_file_path.exists():
             return False, "Log file does not exist"
 
@@ -700,8 +721,25 @@ class ActiveLogger:
                     start_idx = i
                     break
 
+            # If not found, ADD the section after ">>> Log File Notes"
             if start_idx is None:
-                return False, "Deposited Files section not found"
+                insert_point = None
+                for i, line in enumerate(lines):
+                    if ">>> Log File Notes" in line:
+                        # Insert after the section header line and separator
+                        insert_point = i + 2
+                        break
+                if insert_point is None:
+                    insert_point = 10  # Fallback to near start
+
+                lines = lines[:insert_point] + ["", content, ""] + lines[insert_point:]
+                self.log_file_path.write_text("\n".join(lines))
+
+                verify = self.log_file_path.read_text()
+                if "Deposited Files:" not in verify:
+                    self.log_file_path.write_text(original_content)
+                    return False, "Failed to add Deposited Files section"
+                return True, "Deposited files section added"
 
             # Find end - next section marker
             end_idx = None
@@ -711,9 +749,15 @@ class ActiveLogger:
                     end_idx = i
                     break
 
-            # Safe fallback
+            # If no end marker, replace to end of Log File Notes section
             if end_idx is None:
-                end_idx = start_idx + 1
+                # Look for the next major section
+                for i in range(start_idx + 1, len(lines)):
+                    if ">>> Questions for Collaborator" in lines[i]:
+                        end_idx = i - 1  # Before the separator
+                        break
+                if end_idx is None:
+                    end_idx = len(lines)
 
             new_lines = lines[:start_idx] + [content, ""] + lines[end_idx:]
             new_content = "\n".join(new_lines)
