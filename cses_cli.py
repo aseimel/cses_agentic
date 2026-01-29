@@ -49,14 +49,20 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 # Suppress LiteLLM and HTTP library noise (prevents API call overlays in TUI)
+import os
+os.environ["LITELLM_LOG"] = "ERROR"  # Suppress litellm info/debug output
+os.environ["HTTPX_LOG_LEVEL"] = "WARNING"  # Suppress httpx output
 try:
     import litellm
     litellm.suppress_debug_info = True
+    litellm.set_verbose = False
 except ImportError:
     pass
-logging.getLogger("litellm").setLevel(logging.WARNING)
-logging.getLogger("httpx").setLevel(logging.WARNING)
-logging.getLogger("httpcore").setLevel(logging.WARNING)
+logging.getLogger("litellm").setLevel(logging.ERROR)
+logging.getLogger("LiteLLM").setLevel(logging.ERROR)
+logging.getLogger("httpx").setLevel(logging.ERROR)
+logging.getLogger("httpcore").setLevel(logging.ERROR)
+logging.getLogger("openai").setLevel(logging.ERROR)
 
 
 # Global lock file handle (kept open for duration of process)

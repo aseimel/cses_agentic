@@ -230,13 +230,23 @@ class CSESChat(App):
         yield Footer()
 
     def on_mount(self):
-        """Show welcome message and initial status."""
-        self._add_message(
-            f"Working on {self.state.country} {self.state.year}.\n"
-            f"I can read files, document findings, and guide you through CSES workflow.\n"
-            f"Type 'status' to refresh, or ask me anything.",
-            role="system"
-        )
+        """Show welcome message proposing the next step."""
+        # Get next step info
+        next_step = self.state.get_next_step()
+        if next_step is not None:
+            step_info = WORKFLOW_STEPS.get(next_step, {})
+            step_name = step_info.get('name', f'Step {next_step}')
+            welcome = (
+                f"Working on {self.state.country} {self.state.year}.\n\n"
+                f"Current status: Step {next_step} - {step_name}\n\n"
+                f"I will now work on this step. Should I proceed?"
+            )
+        else:
+            welcome = (
+                f"Working on {self.state.country} {self.state.year}.\n\n"
+                f"All steps completed! Type 'status' to review progress."
+            )
+        self._add_message(welcome, role="system")
         # Initial tool log message
         self.query_one("#tool-log", ToolLog).update("Tool activity will appear here...")
 
