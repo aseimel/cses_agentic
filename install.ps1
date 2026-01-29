@@ -136,8 +136,29 @@ if ($script:PythonArgs.Length -gt 0) {
 
 # Install dependencies
 Write-Host "Installing dependencies (this may take a few minutes)..." -ForegroundColor Cyan
-& "$InstallDir\.venv\Scripts\python.exe" -m pip install --upgrade pip 2>&1 | Out-Null
-& "$InstallDir\.venv\Scripts\python.exe" -m pip install -r requirements.txt
+Write-Host ""
+
+try {
+    & "$InstallDir\.venv\Scripts\python.exe" -m pip install --upgrade pip
+    if ($LASTEXITCODE -ne 0) {
+        throw "pip upgrade failed"
+    }
+
+    & "$InstallDir\.venv\Scripts\python.exe" -m pip install -r requirements.txt
+    if ($LASTEXITCODE -ne 0) {
+        throw "pip install requirements failed"
+    }
+} catch {
+    Write-Host ""
+    Write-Host "[X] Failed to install dependencies: $_" -ForegroundColor Red
+    Write-Host ""
+    Write-Host "This may be because Python 3.14 is too new." -ForegroundColor Yellow
+    Write-Host "Some packages may not support Python 3.14 yet." -ForegroundColor Yellow
+    Write-Host ""
+    Write-Host "Try installing Python 3.12 from python.org and run the installer again." -ForegroundColor Yellow
+    Write-Host ""
+    Read-Host "Press Enter to continue anyway (may not work)"
+}
 
 # Create batch file launcher
 Write-Host "Creating 'cses' command..." -ForegroundColor Cyan

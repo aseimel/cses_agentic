@@ -44,23 +44,30 @@ install.ps1          # Windows installer
 
 ## Critical Rules
 
-1. **NEVER write format-specific document parsing code**
+1. **ALWAYS TEST CODE BEFORE RETURNING TO USER**
+   - NEVER return untested code - this is strictly forbidden
+   - Run the code locally and verify it works
+   - Test the full flow, not just individual functions
+   - If you cannot test, explicitly tell the user and explain why
+   - Broken code wastes the user's time and destroys trust
+
+2. **NEVER write format-specific document parsing code**
    - NO regex patterns to parse collaborator documents
    - NO assumptions about document structure
    - Pass FULL document text to LLM and let it interpret semantically
 
-2. **Keep solutions simple**
+3. **Keep solutions simple**
    - Don't over-engineer
    - Don't add features beyond what's requested
 
-3. **ALWAYS provide user feedback during operations**
+4. **ALWAYS provide user feedback during operations**
    - Users are non-technical and need to know the tool is working
    - Print progress messages before any operation that takes time
    - Examples: "Loading data file...", "Connecting to Claude...", "Processing documents..."
    - Never leave users waiting with no output - they will think the tool is frozen
    - NO emojis (Windows cp1252 encoding compatibility)
 
-4. **NEVER allow skipping workflow steps**
+5. **NEVER allow skipping workflow steps**
    - Every step in the CSES workflow is required
    - Do NOT implement "skip" options for steps
    - Users can either proceed with a step or provide custom instructions
