@@ -139,24 +139,6 @@ def first_run_setup(force: bool = False) -> bool:
             if confirm != 'y':
                 stata_path = ""
 
-    # Claude validation preference
-    print()
-    print("=" * 60)
-    print("STEP 3: Validation Model")
-    print("=" * 60)
-    print("Choose how to validate variable mappings:")
-    print()
-    print("  1. Claude CLI (requires Claude Max subscription)")
-    print("     - Run 'claude login' first")
-    print("     - No additional API key needed")
-    print()
-    print("  2. GESIS API (uses same API key)")
-    print("     - Uses the GESIS OpenWebUI models")
-    print()
-
-    choice = input("Choose [1/2] (default: 2): ").strip()
-    use_claude_cli = choice == "1"
-
     # Write .env file
     print()
     print("Saving configuration...")
@@ -171,16 +153,6 @@ OPENAI_API_BASE=https://ai-openwebui.gesis.org/api/v1
 # LLM Models
 LLM_MODEL_MATCH=openai/gpt-oss:120b
 LLM_MODEL_PREPROCESS=openai/llama4:latest
-"""
-
-    if use_claude_cli:
-        env_content += """
-# Validation via Claude CLI (Max subscription)
-LLM_MODEL_VALIDATE=claude-cli
-"""
-    else:
-        env_content += """
-# Validation via GESIS API
 LLM_MODEL_VALIDATE=openai/gpt-oss:120b
 """
 

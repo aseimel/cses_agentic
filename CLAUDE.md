@@ -72,9 +72,13 @@ install.ps1          # Windows installer
    - NO assumptions about document structure
    - Pass FULL document text to LLM and let it interpret semantically
 
-5. **Keep solutions simple**
-   - Don't over-engineer
-   - Don't add features beyond what's requested
+5. **NEVER ADD FEATURES THE USER DID NOT ASK FOR**
+   - This is strictly forbidden
+   - Do NOT add new options, choices, or configuration steps
+   - Do NOT add "helpful" features the user might want
+   - Do NOT add validation steps, confirmations, or prompts
+   - ONLY implement exactly what the user requested, nothing more
+   - If in doubt, ask the user first - don't assume
 
 6. **ALWAYS provide user feedback during operations**
    - Users are non-technical and need to know the tool is working
