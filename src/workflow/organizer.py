@@ -656,6 +656,7 @@ class FileOrganizer:
         if src_ext == '.pdf':
             # Direct copy
             shutil.copy2(src, dst)
+            print(f"    [OK] Copied PDF")
             return
 
         # Try to convert .docx to PDF with formatting
@@ -740,13 +741,13 @@ class FileOrganizer:
                         story.append(Spacer(1, 12))
 
                 pdf_doc.build(story)
-                logger.info(f"Converted {src_ext} to PDF: {src.name}")
+                print(f"    [OK] Converted to PDF")
                 return
 
             except ImportError as e:
-                logger.warning(f"Cannot convert {src_ext} to PDF - missing dependency: {e}")
+                print(f"    [!] Cannot convert to PDF - missing dependency: {e}")
             except Exception as e:
-                logger.warning(f"Failed to convert {src_ext} to PDF: {e}")
+                print(f"    [!] Failed to convert to PDF: {e}")
 
         # Try to convert .txt to PDF
         if src_ext == '.txt':
@@ -772,16 +773,16 @@ class FileOrganizer:
                         story.append(Spacer(1, 6))
 
                 pdf_doc.build(story)
-                logger.info(f"Converted {src_ext} to PDF: {src.name}")
+                print(f"    [OK] Converted to PDF")
                 return
 
             except Exception as e:
-                logger.warning(f"Failed to convert {src_ext} to PDF: {e}")
+                print(f"    [!] Failed to convert txt to PDF: {e}")
 
         # Fallback: copy original file (keep original extension)
         fallback_dst = dst.with_suffix(src_ext)
         shutil.copy2(src, fallback_dst)
-        logger.warning(f"Could not convert to PDF, kept original format: {fallback_dst.name}")
+        print(f"    [!] Could not convert to PDF, kept original format: {fallback_dst.name}")
 
     def _translate_questionnaire_to_english(self, src: Path, dst: Path):
         """
@@ -933,16 +934,16 @@ Translate to English, keeping question numbers and response options intact."""
         if detected.data_files:
             src = detected.data_files[0]
             dst = micro_dir / f"{prefix}_data{src.suffix}"
+            print(f"  Copying data file: {src.name}")
             shutil.copy2(src, dst)
             mapping["data"] = str(dst)
-            logger.info(f"Copied data: {src.name} -> {dst.name}")
 
             # If multiple data files, copy with numeric suffixes
             for i, src in enumerate(detected.data_files[1:], start=2):
                 dst = micro_dir / f"{prefix}_data_{i}{src.suffix}"
+                print(f"  Copying data file: {src.name}")
                 shutil.copy2(src, dst)
                 mapping[f"data_{i}"] = str(dst)
-                logger.info(f"Copied data: {src.name} -> {dst.name}")
 
         # Copy questionnaires - one English, one native (both as PDF)
         if detected.questionnaire_files:
@@ -962,58 +963,57 @@ Translate to English, keeping question numbers and response options intact."""
                 native_questionnaires.sort(key=lambda f: (f.suffix.lower() != '.pdf', f.name))
                 native_src = native_questionnaires[0]
                 dst = micro_dir / f"{prefix}_questionnaire_native.pdf"
+                print(f"  Converting native questionnaire to PDF: {native_src.name}")
                 self._copy_as_pdf(native_src, dst)
                 mapping["questionnaire_native"] = str(dst)
-                logger.info(f"Copied native questionnaire: {native_src.name} -> {dst.name}")
 
             # Select best English questionnaire (prefer PDF)
             if english_questionnaires:
                 english_questionnaires.sort(key=lambda f: (f.suffix.lower() != '.pdf', f.name))
                 src = english_questionnaires[0]
                 dst = micro_dir / f"{prefix}_questionnaire_english.pdf"
+                print(f"  Converting English questionnaire to PDF: {src.name}")
                 self._copy_as_pdf(src, dst)
                 mapping["questionnaire_english"] = str(dst)
-                logger.info(f"Copied English questionnaire: {src.name} -> {dst.name}")
             elif native_src:
                 # No English questionnaire - translate the native one
-                print("No English questionnaire found - translating native version...")
+                print("  No English questionnaire found - translating native version...")
                 dst = micro_dir / f"{prefix}_questionnaire_english.pdf"
                 self._translate_questionnaire_to_english(native_src, dst)
                 mapping["questionnaire_english"] = str(dst)
                 mapping["questionnaire_english_translated"] = True
-                logger.info(f"Translated questionnaire to English: {native_src.name} -> {dst.name}")
 
         # Copy codebook (convert to PDF)
         if detected.codebook_files:
             src = detected.codebook_files[0]
             dst = micro_dir / f"{prefix}_codebook.pdf"
+            print(f"  Converting codebook to PDF: {src.name}")
             self._copy_as_pdf(src, dst)
             mapping["codebook"] = str(dst)
-            logger.info(f"Copied codebook: {src.name} -> {dst.name}")
 
         # Copy design report (convert to PDF)
         if detected.design_report_files:
             src = detected.design_report_files[0]
             dst = micro_dir / f"{prefix}_design_report.pdf"
+            print(f"  Converting design report to PDF: {src.name}")
             self._copy_as_pdf(src, dst)
             mapping["design_report"] = str(dst)
-            logger.info(f"Copied design report: {src.name} -> {dst.name}")
 
         # Copy macro reports (convert to PDF)
         if detected.macro_report_files:
             src = detected.macro_report_files[0]
             dst = micro_dir / f"{prefix}_macro_report.pdf"
+            print(f"  Converting macro report to PDF: {src.name}")
             self._copy_as_pdf(src, dst)
             mapping["macro_report"] = str(dst)
-            logger.info(f"Copied macro report: {src.name} -> {dst.name}")
 
         # Copy district data
         if detected.district_data_files:
             src = detected.district_data_files[0]
             dst = micro_dir / f"{prefix}_district_data{src.suffix}"
+            print(f"  Copying district data: {src.name}")
             shutil.copy2(src, dst)
             mapping["district_data"] = str(dst)
-            logger.info(f"Copied district data: {src.name} -> {dst.name}")
 
         return mapping
 
