@@ -385,12 +385,33 @@ def cmd_init(args) -> Path:
     # Mark Step 0 as complete
     state.set_step_status(0, StepStatus.COMPLETED, "Folder initialized (CSES standard)")
 
-    # Save state
+    # Save state first
+    state.save(study_dir / ".cses")
+
+    # Initialize active logging (creates log and questions files)
+    print("Initializing log files...")
+    from src.workflow.active_logging import ActiveLogger
+    active_logger = ActiveLogger(state)
+    active_logger.log_message(f"Study initialized: {country} {year}")
+    active_logger.log_message(f"Session ID: {state.session_id}")
+
+    # Save state again with log file paths
     state.save(study_dir / ".cses")
 
     print(f"\n[OK] Study initialized: {country} {year}")
     print(f"   Session ID: {state.session_id}")
     print(f"   Working directory: {study_dir}")
+
+    # Clean up source files from root directory (they're now in original_deposit)
+    if study_dir != working_dir:
+        print("\nCleaning up source files from root directory...")
+        cleanup_results = organizer.cleanup_source_files(working_dir, study_dir)
+        if cleanup_results["deleted"]:
+            print(f"   Removed {len(cleanup_results['deleted'])} file(s)")
+            active_logger.log_message(f"Cleaned up {len(cleanup_results['deleted'])} source files from root")
+        if cleanup_results["errors"]:
+            for e in cleanup_results["errors"]:
+                print(f"   [!] {e}")
 
     return study_dir
 
@@ -406,6 +427,26 @@ def cmd_status(args):
         return
 
     print(format_workflow_status(state))
+
+    # Show log file info
+    if state.log_file:
+        log_path = Path(state.log_file)
+        if log_path.exists():
+            print(f"\nLog file: {log_path.relative_to(Path(state.working_dir))}")
+
+    # Show collaborator questions info
+    pending = state.get_pending_questions()
+    if pending:
+        print(f"\nPending collaborator questions: {len(pending)}")
+        for q in pending[:3]:  # Show first 3
+            print(f"  - {q.get('id', '')}: {q.get('question', '')[:50]}...")
+        if len(pending) > 3:
+            print(f"  ... and {len(pending) - 3} more")
+
+    if state.collaborator_questions_file:
+        questions_path = Path(state.collaborator_questions_file)
+        if questions_path.exists():
+            print(f"Questions file: {questions_path.relative_to(Path(state.working_dir))}")
 
     # Show next action
     next_step = state.get_next_step()
@@ -1028,7 +1069,6 @@ def main():
         epilog="""
 Examples:
   cses              Start interactive mode
-  cses init         Initialize study from files in folder
   cses status       Show workflow progress
   cses step 7       Work on variable matching
   cses match        Run variable matching with dual-model validation

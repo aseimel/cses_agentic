@@ -52,6 +52,10 @@ class StepExecutor:
         self.llm_callback = llm_callback
         self.working_dir = Path(state.working_dir) if state.working_dir else Path.cwd()
 
+        # Initialize active logger for real-time logging
+        from .active_logging import ActiveLogger
+        self.active_logger = ActiveLogger(state)
+
     def execute_step(self, step_num: int, **kwargs) -> StepResult:
         """
         Execute a specific workflow step.
@@ -69,6 +73,9 @@ class StepExecutor:
                 message=f"Unknown step number: {step_num}"
             )
 
+        step_info = WORKFLOW_STEPS[step_num]
+        step_name = step_info["name"]
+
         # Get step handler
         handler_name = f"_step_{step_num}"
         handler = getattr(self, handler_name, None)
@@ -79,6 +86,9 @@ class StepExecutor:
                 message=f"Step {step_num} handler not implemented yet",
                 next_action=f"This step requires manual execution. See workflow.md for details."
             )
+
+        # Log step start
+        self.active_logger.log_step_start(step_num, step_name)
 
         # Mark step as in progress
         self.state.set_step_status(step_num, StepStatus.IN_PROGRESS)
@@ -96,21 +106,28 @@ class StepExecutor:
                 )
                 for artifact in result.artifacts:
                     self.state.add_step_artifact(step_num, artifact)
+
+                # Log step completion
+                self.active_logger.log_step_complete(step_num, result.message, result.artifacts)
             else:
+                # Log issues
                 for issue in result.issues:
                     self.state.add_step_issue(step_num, issue)
+                    self.active_logger.log_step_issue(step_num, issue)
 
             self.state.save()
             return result
 
         except Exception as e:
             logger.error(f"Step {step_num} failed: {e}")
-            self.state.add_step_issue(step_num, str(e))
+            error_msg = str(e)
+            self.state.add_step_issue(step_num, error_msg)
+            self.active_logger.log_step_issue(step_num, f"Error: {error_msg}")
             self.state.save()
             return StepResult(
                 success=False,
                 message=f"Step failed with error: {e}",
-                issues=[str(e)]
+                issues=[error_msg]
             )
 
     def _step_0(self, **kwargs) -> StepResult:
@@ -164,6 +181,8 @@ class StepExecutor:
         """Step 1: Check Completeness of Deposit"""
         from src.workflow.organizer import FileOrganizer
 
+        self.active_logger.log_message("Checking deposit completeness...")
+
         # Look for files in micro/original_deposit/ (CSES standard location)
         original_deposit = self.working_dir / "micro" / "original_deposit"
 
@@ -180,6 +199,12 @@ class StepExecutor:
             issues.append("No data file found")
         if not detected.questionnaire_files:
             issues.append("No questionnaire found (required per CSES policy)")
+            # Add as collaborator question
+            self.active_logger.add_collaborator_question(
+                "Please provide questionnaire document",
+                "Required per CSES deposit policy",
+                step_num=1
+            )
         if not detected.design_report_files:
             issues.append("No design report found")
         if not detected.codebook_files:
@@ -188,6 +213,7 @@ class StepExecutor:
         # Update state with detected files
         if detected.data_files:
             self.state.data_file = str(detected.data_files[0])
+            self.active_logger.log_message(f"Found data file: {detected.data_files[0].name}")
         self.state.questionnaire_files = [str(f) for f in detected.questionnaire_files]
         if detected.codebook_files:
             self.state.codebook_file = str(detected.codebook_files[0])
@@ -361,6 +387,8 @@ class StepExecutor:
                 message="No documentation files found for matching"
             )
 
+        self.active_logger.log_message("Starting variable matching...")
+
         # Run the dual-model matching
         try:
             from src.agent import run_harmonization
@@ -382,8 +410,25 @@ class StepExecutor:
 
             artifacts = [str(self.working_dir / ".cses" / "mappings")]
 
+            # Log matching results
+            self.active_logger.log_message(
+                f"Variable matching completed: {result.matched_count}/{result.total_targets} matched, "
+                f"{result.agree_count} agreements, {result.disagree_count} disagreements"
+            )
+
+            # Log disagreements as potential questions
+            for v in result.validations:
+                if v.verdict.name == "DISAGREE":
+                    self.active_logger.add_collaborator_question(
+                        f"Variable {v.proposal.target_variable} mapping needs clarification: "
+                        f"matched to '{v.proposal.source_variable}' but validation disagreed",
+                        f"Reasoning: {v.reasoning}",
+                        step_num=7
+                    )
+
             # Auto-generate output files
             print("Generating CSES output files...")
+            self.active_logger.log_message("Generating CSES output files...")
             country_code = self.state.country_code or "CNT"
             year = self.state.year or "YEAR"
             date_str = datetime.now().strftime("%Y%m%d")
@@ -448,6 +493,8 @@ class StepExecutor:
         """
         from src.agent.tool_wrappers import run_stata_debug
 
+        self.active_logger.log_message("Starting Stata debugging...")
+
         # Find .do file
         if do_file:
             do_path = Path(do_file)
@@ -469,10 +516,13 @@ class StepExecutor:
                 message=f".do file not found: {do_path}"
             )
 
+        self.active_logger.log_message(f"Running Stata on: {do_path.name}")
+
         # Run Stata debug
         result = run_stata_debug(do_path)
 
         if result.success:
+            self.active_logger.log_message("Stata executed successfully - no errors found")
             return StepResult(
                 success=True,
                 message="Stata executed .do file successfully",
@@ -485,6 +535,11 @@ class StepExecutor:
                 error_count = result.data.get("error_count", 0)
                 errors = result.data.get("errors", [])
                 error_summary = result.data.get("error_summary", "")
+
+                self.active_logger.log_message(
+                    f"Stata found {error_count} error(s) - debugging required",
+                    level="WARNING"
+                )
 
                 # Store error info in state for agent access
                 self.state.pending_questions = [{
@@ -557,60 +612,87 @@ class StepExecutor:
 
     def _step_13(self, **kwargs) -> StepResult:
         """Step 13: Write Up Collaborator Questions"""
-        # Compile questions from issues across steps
+        self.active_logger.log_message("Compiling collaborator questions...")
 
-        questions = []
+        # Use existing tracked questions from collaborator_questions
+        existing_questions = self.state.collaborator_questions.copy()
 
-        # Check for step issues
+        # Also check for step issues that weren't already added
         for step_num in WORKFLOW_STEPS:
             step = self.state.get_step(step_num)
             if step.issues:
                 for issue in step.issues:
-                    if "request" in issue.lower() or "ask" in issue.lower() or "clarify" in issue.lower():
-                        questions.append({
-                            "step": step_num,
-                            "issue": issue,
-                            "status": "pending"
-                        })
+                    keywords = ["request", "ask", "clarify", "confirm", "provide", "missing"]
+                    if any(kw in issue.lower() for kw in keywords):
+                        # Check if already tracked
+                        already_tracked = any(
+                            q.get("question") == issue or issue in q.get("question", "")
+                            for q in existing_questions
+                        )
+                        if not already_tracked:
+                            # Add new question
+                            self.state.add_collaborator_question(issue, f"From Step {step_num} issues", step_num)
 
-        # Check for mapping disagreements
+        # Check for mapping disagreements not already tracked
         for m in self.state.mappings:
             if m.get("validation_verdict") == "DISAGREE":
-                questions.append({
-                    "type": "mapping_clarification",
-                    "target": m.get("cses_target"),
-                    "source": m.get("source_variable"),
-                    "issue": m.get("validation_reasoning", "Models disagreed on mapping"),
-                    "status": "pending"
-                })
+                target = m.get("cses_target", "")
+                issue_text = f"Variable {target} mapping needs clarification"
+                already_tracked = any(
+                    target in q.get("question", "") for q in self.state.collaborator_questions
+                )
+                if not already_tracked:
+                    self.state.add_collaborator_question(
+                        issue_text,
+                        m.get("validation_reasoning", "Models disagreed on mapping"),
+                        step_num=7
+                    )
 
-        self.state.pending_questions = questions
+        # Get all pending questions
+        pending_questions = self.state.get_pending_questions()
+
+        # Also update legacy pending_questions for backwards compatibility
+        self.state.pending_questions = [
+            {"step": q.get("step"), "issue": q.get("question"), "status": q.get("status")}
+            for q in pending_questions
+        ]
         self.state.save()
 
-        if questions:
-            # Generate questions document
-            questions_file = self.working_dir / "micro" / "collaborator_questions.txt"
+        if pending_questions:
+            self.active_logger.log_message(f"Found {len(pending_questions)} pending questions")
+
+            # The questions are already in the Collaborator Questions Word doc
+            # but also generate a summary text file for quick reference
+            questions_file = self.working_dir / "micro" / "collaborator_questions_summary.txt"
             lines = [
-                f"# Collaborator Questions: {self.state.country} {self.state.year}",
+                f"# Collaborator Questions Summary: {self.state.country} {self.state.year}",
                 "",
-                f"Total questions: {len(questions)}",
+                f"Total pending questions: {len(pending_questions)}",
+                f"Full questions document: {self.state.collaborator_questions_file}",
                 ""
             ]
-            for i, q in enumerate(questions, 1):
-                lines.append(f"## Question {i}")
-                lines.append(f"Issue: {q.get('issue', 'N/A')}")
+            for q in pending_questions:
+                lines.append(f"## {q.get('id', 'Question')}")
+                lines.append(f"Step: {q.get('step', 'N/A')}")
+                lines.append(f"Question: {q.get('question', 'N/A')}")
+                lines.append(f"Context: {q.get('context', 'N/A')}")
                 lines.append(f"Status: {q.get('status', 'pending')}")
                 lines.append("")
 
             questions_file.write_text("\n".join(lines))
 
+            artifacts = [str(questions_file)]
+            if self.state.collaborator_questions_file:
+                artifacts.append(self.state.collaborator_questions_file)
+
             return StepResult(
                 success=True,
-                message=f"Compiled {len(questions)} questions for collaborator",
-                artifacts=[str(questions_file)],
-                next_action="Review questions and send to project manager"
+                message=f"Compiled {len(pending_questions)} questions for collaborator",
+                artifacts=artifacts,
+                next_action="Review questions document and send to project manager"
             )
         else:
+            self.active_logger.log_message("No collaborator questions found")
             return StepResult(
                 success=True,
                 message="No collaborator questions needed",

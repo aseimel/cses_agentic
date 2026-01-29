@@ -174,17 +174,28 @@ class WorkflowState:
     codebook_file: Optional[str] = None
     design_report_file: Optional[str] = None
 
+    # Active logging file paths
+    log_file: Optional[str] = None
+    collaborator_questions_file: Optional[str] = None
+
     # Step states
     steps: dict[str, StepState] = field(default_factory=dict)
 
     # Current focus
     current_step: int = 0
 
-    # Collaborator questions tracking
+    # Collaborator questions tracking (legacy - for Step 13 output)
     pending_questions: list[dict] = field(default_factory=list)
+
+    # Collaborator questions with full tracking
+    # Each: {id, question, context, step, timestamp, status}
+    collaborator_questions: list[dict] = field(default_factory=list)
 
     # Variable mappings (from Step 7)
     mappings: list[dict] = field(default_factory=list)
+
+    # Question ID counter for generating unique IDs
+    _question_counter: int = field(default=0, repr=False)
 
     def __post_init__(self):
         """Initialize step states if empty."""
@@ -233,6 +244,58 @@ class WorkflowState:
         step = self.get_step(step_num)
         if artifact_path not in step.artifacts:
             step.artifacts.append(artifact_path)
+        self.updated_at = datetime.now(timezone.utc).isoformat()
+
+    def add_collaborator_question(self, question: str, context: str, step_num: int) -> str:
+        """
+        Add a collaborator question with full tracking.
+
+        Args:
+            question: The question text
+            context: Context for the question
+            step_num: Step number where question arose
+
+        Returns:
+            Question ID (e.g., "CQ AA1")
+        """
+        # Generate question ID (CQ AA1, CQ AA2, etc.)
+        self._question_counter += 1
+        question_id = f"CQ AA{self._question_counter}"
+
+        question_entry = {
+            "id": question_id,
+            "question": question,
+            "context": context,
+            "step": step_num,
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "status": "pending"
+        }
+
+        self.collaborator_questions.append(question_entry)
+        self.updated_at = datetime.now(timezone.utc).isoformat()
+
+        return question_id
+
+    def get_pending_questions(self) -> list[dict]:
+        """Get all pending (unresolved) collaborator questions."""
+        return [q for q in self.collaborator_questions if q.get("status") == "pending"]
+
+    def resolve_question(self, question_id: str, answer: str = None):
+        """
+        Mark a collaborator question as resolved.
+
+        Args:
+            question_id: The question ID (e.g., "CQ AA1")
+            answer: Optional answer text
+        """
+        for q in self.collaborator_questions:
+            if q.get("id") == question_id:
+                q["status"] = "resolved"
+                q["resolved_at"] = datetime.now(timezone.utc).isoformat()
+                if answer:
+                    q["answer"] = answer
+                break
+
         self.updated_at = datetime.now(timezone.utc).isoformat()
 
     def get_next_step(self) -> Optional[int]:
@@ -285,8 +348,12 @@ class WorkflowState:
             "questionnaire_files": self.questionnaire_files,
             "codebook_file": self.codebook_file,
             "design_report_file": self.design_report_file,
+            "log_file": self.log_file,
+            "collaborator_questions_file": self.collaborator_questions_file,
             "current_step": self.current_step,
             "pending_questions": self.pending_questions,
+            "collaborator_questions": self.collaborator_questions,
+            "_question_counter": self._question_counter,
             "mappings": self.mappings,
             "steps": {}
         }
@@ -301,7 +368,10 @@ class WorkflowState:
     def from_dict(cls, data: dict) -> "WorkflowState":
         """Create from dictionary."""
         steps_data = data.pop("steps", {})
+        # Handle private fields that may be in saved data
+        question_counter = data.pop("_question_counter", 0)
         state = cls(**data)
+        state._question_counter = question_counter
         for key, step_data in steps_data.items():
             if isinstance(step_data, dict):
                 state.steps[key] = StepState.from_dict(step_data)
@@ -351,6 +421,20 @@ def format_workflow_status(state: WorkflowState) -> str:
         f"Last updated: {state.updated_at}",
         ""
     ]
+
+    # Show log file if exists
+    if state.log_file:
+        from pathlib import Path
+        log_path = Path(state.log_file)
+        lines.append(f"Log file: {log_path.name}")
+
+    # Show pending questions count
+    pending = state.get_pending_questions()
+    if pending:
+        lines.append(f"Pending questions: {len(pending)}")
+
+    if state.log_file or pending:
+        lines.append("")
 
     progress = state.get_progress_summary()
     lines.extend([

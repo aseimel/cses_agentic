@@ -67,6 +67,15 @@ install.ps1          # Windows installer
 | CLI | argparse |
 | File formats | pyreadstat, openpyxl, pypdf, python-docx |
 
+## Workflow Behavior
+
+When `cses` is run in a folder with deposited files:
+1. Files are detected and copied to `micro/original_deposit/`
+2. Source files are automatically removed from root after copying
+3. Log file and collaborator questions file are created in `micro/`
+
+This keeps the root folder clean - all originals are preserved in `original_deposit/`.
+
 ## Development
 
 ```bash

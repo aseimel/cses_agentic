@@ -684,6 +684,76 @@ class FileOrganizer:
         return results
 
 
+    def cleanup_source_files(
+        self,
+        source_dir: Path,
+        study_dir: Path,
+        dry_run: bool = False
+    ) -> dict:
+        """
+        Remove source files from the root directory after they've been copied
+        to micro/original_deposit/.
+
+        Only removes files that:
+        1. Exist in micro/original_deposit/ with the same name
+        2. Have the same file size (safety check)
+
+        Args:
+            source_dir: Directory containing original source files
+            study_dir: Study directory with micro/original_deposit/
+            dry_run: If True, only report what would be deleted
+
+        Returns:
+            Dict with cleanup results: deleted, skipped, errors
+        """
+        results = {
+            "deleted": [],
+            "skipped": [],
+            "errors": []
+        }
+
+        original_deposit = study_dir / "micro" / "original_deposit"
+        if not original_deposit.exists():
+            results["errors"].append("micro/original_deposit/ does not exist")
+            return results
+
+        # Get all files in original_deposit
+        deposited_files = {f.name: f for f in original_deposit.iterdir() if f.is_file()}
+
+        # Check source directory for matching files
+        for src_file in source_dir.iterdir():
+            if src_file.is_dir():
+                continue
+            if src_file.name.startswith("."):
+                continue
+
+            # Skip if not in original_deposit
+            if src_file.name not in deposited_files:
+                continue
+
+            dst_file = deposited_files[src_file.name]
+
+            # Safety check: verify file sizes match
+            if src_file.stat().st_size != dst_file.stat().st_size:
+                results["skipped"].append(
+                    f"{src_file.name} (size mismatch - may have been modified)"
+                )
+                continue
+
+            # Delete the source file
+            if dry_run:
+                results["deleted"].append(f"{src_file.name} (would delete)")
+            else:
+                try:
+                    src_file.unlink()
+                    results["deleted"].append(src_file.name)
+                    logger.info(f"Cleaned up: {src_file.name}")
+                except Exception as e:
+                    results["errors"].append(f"{src_file.name}: {e}")
+
+        return results
+
+
 def detect_and_summarize(directory: Path = None) -> str:
     """Quick detection and summary for a directory."""
     organizer = FileOrganizer(directory)
