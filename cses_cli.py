@@ -804,9 +804,8 @@ def cmd_migrate(args):
 
     This command:
     1. Moves original_deposit/ -> micro/original_deposit/
-    2. Renames emails/ -> E-mails/ (if E-mails/ doesn't exist)
-    3. Creates missing standard folders
-    4. Updates state.json paths if needed
+    2. Creates missing standard folders
+    3. Updates state.json paths if needed
     """
     working_dir = Path.cwd()
 
@@ -836,16 +835,11 @@ def cmd_migrate(args):
 
     # Check for old structure indicators
     old_deposit = working_dir / "original_deposit"
-    old_emails = working_dir / "emails"
     new_deposit = working_dir / "micro" / "original_deposit"
-    new_emails = working_dir / "E-mails"
 
     needs_migration = False
     if old_deposit.exists() and not new_deposit.exists():
         print("  [!] Found: original_deposit/ at root (should be micro/original_deposit/)")
-        needs_migration = True
-    if old_emails.exists() and not new_emails.exists():
-        print("  [!] Found: emails/ (should be E-mails/)")
         needs_migration = True
 
     if not needs_migration:

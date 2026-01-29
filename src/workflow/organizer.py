@@ -275,7 +275,6 @@ class FileOrganizer:
     Creates a study folder following CSES standard structure:
 
     Sweden_2024/                          # Full country name
-    ├── E-mails/                          # Correspondence
     ├── micro/
     │   ├── original_deposit/             # ALL original materials together, unchanged
     │   │   ├── original_data.dta
@@ -471,7 +470,6 @@ class FileOrganizer:
         - micro/Collaborator Questions/
         - macro/
         - Election Results/
-        - E-mails/ (only if doesn't exist)
         - .cses/
 
         Args:
@@ -505,11 +503,6 @@ class FileOrganizer:
 
         # Election Results/
         (study_dir / "Election Results").mkdir(exist_ok=True)
-
-        # E-mails/ - only create if doesn't exist (don't overwrite existing)
-        emails_folder = study_dir / "E-mails"
-        if not emails_folder.exists() and not (study_dir / "emails").exists():
-            emails_folder.mkdir(exist_ok=True)
 
         # .cses/ for agent state
         (study_dir / ".cses").mkdir(exist_ok=True)
@@ -600,8 +593,7 @@ class FileOrganizer:
 
         Performs:
         1. Move original_deposit/ -> micro/original_deposit/ (if at root)
-        2. Rename emails/ -> E-mails/ (if E-mails/ doesn't exist)
-        3. Create missing standard folders
+        2. Create missing standard folders
         4. Returns info about what was changed
 
         Args:
@@ -646,16 +638,7 @@ class FileOrganizer:
                 results["renamed_folders"].append("original_deposit/ -> micro/original_deposit/")
                 logger.info("Migrated: original_deposit/ -> micro/original_deposit/")
 
-        # 2. Rename emails/ -> E-mails/ (if E-mails doesn't exist)
-        old_emails = study_dir / "emails"
-        new_emails = study_dir / "E-mails"
-
-        if old_emails.exists() and old_emails.is_dir() and not new_emails.exists():
-            shutil.move(str(old_emails), str(new_emails))
-            results["renamed_folders"].append("emails/ -> E-mails/")
-            logger.info("Migrated: emails/ -> E-mails/")
-
-        # 3. Create missing standard folders
+        # 2. Create missing standard folders
         standard_folders = [
             "micro/original_deposit",
             "micro/FINAL dataset",
@@ -674,12 +657,6 @@ class FileOrganizer:
                 folder_path.mkdir(parents=True, exist_ok=True)
                 results["created_folders"].append(folder)
                 logger.info(f"Created: {folder}/")
-
-        # Create E-mails/ if neither exists
-        if not new_emails.exists() and not old_emails.exists():
-            new_emails.mkdir(exist_ok=True)
-            results["created_folders"].append("E-mails")
-            logger.info("Created: E-mails/")
 
         return results
 

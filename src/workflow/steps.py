@@ -150,14 +150,6 @@ class StepExecutor:
         if not (self.working_dir / "macro").exists():
             issues.append("Create folder: macro/")
 
-        # Check E-mails/ OR emails/ (accept either for backwards compatibility)
-        emails_exists = (
-            (self.working_dir / "E-mails").exists() or
-            (self.working_dir / "emails").exists()
-        )
-        if not emails_exists:
-            issues.append("Create folder: E-mails/")
-
         # Check Election Results/ folder
         if not (self.working_dir / "Election Results").exists():
             issues.append("Create folder: Election Results/")
@@ -717,7 +709,7 @@ class StepExecutor:
 
         # Add step-specific guidance
         guidance = {
-            0: "Create folder structure from CSES template. Files go in: emails/ (documentation), micro/ (data processing)",
+            0: "Create folder structure from CSES template. Files go in: micro/ (data processing)",
             1: "Check that all required files are present: data file, questionnaire, design report. Mark in tracking sheet.",
             2: "Review the design report for: sample size, sampling method, response rate, fieldwork dates, data collection mode.",
             3: "Check variable list against CSES requirements. Note missing or unusual variables.",
