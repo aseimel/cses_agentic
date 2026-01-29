@@ -173,18 +173,27 @@ class StepExecutor:
         """Step 1: Check Completeness of Deposit"""
         from src.workflow.organizer import FileOrganizer
 
+        print("Checking deposit completeness...")
         self.active_logger.log_message("Checking deposit completeness...")
 
-        # Look for files in micro/original_deposit/ (CSES standard location)
-        original_deposit = self.working_dir / "micro" / "original_deposit"
+        # Check micro/ directory first (new flow puts standardized files here)
+        micro_dir = self.working_dir / "micro"
 
-        if original_deposit.exists():
+        # Also check original_deposit for legacy support
+        original_deposit = micro_dir / "original_deposit"
+
+        if micro_dir.exists():
+            organizer = FileOrganizer(micro_dir)
+            detected = organizer.detect_files()
+            print(f"  Scanning micro/ directory...")
+        elif original_deposit.exists():
             organizer = FileOrganizer(original_deposit)
+            detected = organizer.detect_files()
+            print(f"  Scanning micro/original_deposit/ directory...")
         else:
-            # Fall back to checking working_dir for backwards compatibility
             organizer = FileOrganizer(self.working_dir)
-
-        detected = organizer.detect_files()
+            detected = organizer.detect_files()
+            print(f"  Scanning working directory...")
 
         issues = []
         if not detected.data_files:
@@ -212,6 +221,12 @@ class StepExecutor:
         if detected.design_report_files:
             self.state.design_report_file = str(detected.design_report_files[0])
 
+        # Show what was found
+        print(f"  Data files: {len(detected.data_files)}")
+        print(f"  Questionnaires: {len(detected.questionnaire_files)}")
+        print(f"  Design reports: {len(detected.design_report_files)}")
+        print(f"  Codebooks: {len(detected.codebook_files)}")
+
         if detected.has_minimum_requirements():
             return StepResult(
                 success=True,
@@ -222,6 +237,7 @@ class StepExecutor:
                 next_action="Proceed to Step 2: Read design report"
             )
         else:
+            print(f"  Issues: {issues}")
             return StepResult(
                 success=False,
                 message="Deposit incomplete - missing required files",
