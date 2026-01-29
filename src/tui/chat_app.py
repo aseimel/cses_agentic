@@ -256,10 +256,13 @@ class CSESChat(App):
         """Update tool log from main thread."""
         self.query_one("#tool-log", ToolLog).add_entry(msg)
 
-    def _refresh_sidebar(self):
-        """Refresh the workflow status sidebar."""
-        # Reload state from disk to get any updates
-        new_state = WorkflowState.load(Path(self.state.working_dir))
+    async def _refresh_sidebar_async(self):
+        """Refresh the workflow status sidebar asynchronously."""
+        # Reload state from disk in background thread to avoid blocking UI
+        new_state = await asyncio.to_thread(
+            WorkflowState.load,
+            Path(self.state.working_dir)
+        )
         if new_state:
             self.state = new_state
             self.session.state = new_state
@@ -277,7 +280,7 @@ class CSESChat(App):
 
         # Handle special commands
         if message.lower() == "status":
-            self._refresh_sidebar()
+            await self._refresh_sidebar_async()
             self._add_message("Workflow status refreshed.", "system")
             return
 
@@ -302,7 +305,7 @@ class CSESChat(App):
         self._add_message(response, "assistant")
 
         # Refresh sidebar after response (state may have changed)
-        self._refresh_sidebar()
+        await self._refresh_sidebar_async()
 
     def action_clear(self):
         """Clear the chat view."""

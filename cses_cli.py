@@ -48,6 +48,16 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
+# Suppress LiteLLM and HTTP library noise (prevents API call overlays in TUI)
+try:
+    import litellm
+    litellm.suppress_debug_info = True
+except ImportError:
+    pass
+logging.getLogger("litellm").setLevel(logging.WARNING)
+logging.getLogger("httpx").setLevel(logging.WARNING)
+logging.getLogger("httpcore").setLevel(logging.WARNING)
+
 
 # Global lock file handle (kept open for duration of process)
 _lock_file_handle = None

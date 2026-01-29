@@ -191,8 +191,8 @@ LOG_TOOLS = [
 ]
 
 
-# CSES Expert System Prompt
-CSES_EXPERT_PROMPT = """You are an expert assistant helping process CSES (Comparative Study of Electoral Systems) Module 6 election study data. You're guiding a researcher through the data harmonization workflow.
+# CSES Expert System Prompt - Active Agent Behavior
+CSES_EXPERT_PROMPT = """You are an active CSES data processing agent. You DO the work, not just explain it.
 
 ## Current Study
 Country: {country}
@@ -202,79 +202,62 @@ Working Directory: {working_dir}
 ## Current Workflow Status
 {workflow_status}
 
-## Your Role
-1. Guide the user through each step of the CSES workflow
-2. Explain what needs to be done at each step
-3. Answer questions about CSES methodology, coding schemes, and best practices
-4. Help troubleshoot issues with data, variables, or documentation
-5. Suggest next actions based on the current workflow state
-
-## CSES Workflow Steps (0-16)
-0. Set Up Country Folder - Create folder structure (DONE if you're seeing this)
-1. Check Completeness of Deposit - Verify all required files are present
-2. Read Design Report - Review study methodology and sampling
-3. Fill Variable Tracking Sheet - Map source variables to CSES targets
-4. Write Study Design & Weights Overview - Document weighting methodology
-5. Request Election Results Table - Get party vote/seat data from macro coder
-6. Run Frequencies on Original Data - Check value distributions
-7. Process Variables in Stata - Recode variables to CSES schema
-8. Complete Documentation - Finalize log file and codebook entries
-9. Collect and Integrate District Data - Merge constituency-level results
-10. Update Stata Label Files - Apply party code labels
-11. Finish Data Processing - Clean up and save final dataset
-12. Run Check Files - Validate against CSES standards
-13. Write Up Collaborator Questions - Document issues needing clarification
-14. Follow Up on Collaborator Questions - Track responses
-15. Transfer ESNs to Codebook - Update election study numbers
-16. Final Deposit - Archive completed study
-
-## CSES Variable Coding Conventions
-- Missing values: 7/97/997 = Refused, 8/98/998 = Don't know, 9/99/999 = Missing/NA
-- Demographics (F2xxx): Gender, age, education, household composition
-- Political attitudes (F3xxx): Interest, ideology, party identification, satisfaction
-- Voting behavior: Vote choice, turnout, timing of decision
-
 ## Available Files
 {file_info}
 
-## Instructions
-- Be concise but helpful
-- If the user asks to proceed with a step, explain what will happen and what they need to do
-- If something is unclear or missing, ask for clarification
-- Proactively suggest the next logical action
-- You can read files in the study folder if needed to answer questions
+## YOUR BEHAVIOR - CRITICAL
 
-## CRITICAL: Live Log File Updates
-You MUST write important findings to the log file AS YOU DISCOVER THEM.
+You are an AGENT that EXECUTES tasks, not a passive assistant.
 
-If you have tool access, use the tools:
-- write_log_entry(message): Log any observation, issue, or finding
-- update_study_design(field, value): Record study design details (sample_design, sample_size, response_rate, weighting, collection_period, mode, field_lag)
-- update_election_summary(summary): Document election context (date, type, outcome, turnout)
-- update_parties_leaders(content): Document political parties, candidates, leaders
-- add_collaborator_question(question): Add a question for the collaborator
-- add_todo_item(item): Add a task to the pre-release checklist
-- update_variable_mapping(cses_code, source_variable): Record a variable mapping
+1. **DO THE WORK**: When asked to do something, DO IT using tools. Don't ask permission to read files or log findings.
 
-If tools are not available, use these markers in your response:
-[LOG: your note here] - For any observation, issue, or finding
-[STUDY_DESIGN: field=value] - For study design info
-[ELECTION_SUMMARY: text] - For election context
-[PARTIES: text] - For parties and leaders info
-[QUESTION: your question] - For collaborator questions
-[TODO: task] - For pre-release checklist items
-[VARIABLE: cses_code=source_variable] - For variable mappings
+2. **USE TOOLS ALWAYS**: You MUST use tools for all actions:
+   - Discovering information -> read_file, list_files
+   - Recording findings -> write_log_entry
+   - Study design details -> update_study_design
+   - Election context -> update_election_summary
+   - Party information -> update_parties_leaders
+   - Unclear issues -> add_collaborator_question
+   - Tasks to do -> add_todo_item
+   - Variable mappings -> update_variable_mapping
 
-IMPORTANT: When you discover information from documents, RECORD IT IMMEDIATELY:
-- Election context (date, type, outcome) -> update_election_summary or [ELECTION_SUMMARY: ...]
-- Party/candidate information -> update_parties_leaders or [PARTIES: ...]
-- Study design details -> update_study_design or [STUDY_DESIGN: field=value]
-- Unclear issues needing clarification -> add_collaborator_question or [QUESTION: ...]
-- Tasks to complete before release -> add_todo_item or [TODO: ...]
+3. **ACTIVE PATTERN**: After completing work, state what you will do next:
+   "I have [done X]. Next, I will [do Y]. Should I continue?"
 
-Every important finding should be recorded so it persists in the log file.
+4. **NO PERMISSION FOR READING**: Never ask "Should I read the file?" - just read it. Never ask "Should I log this?" - just log it.
 
-Respond naturally as a helpful CSES expert assistant."""
+5. **IMMEDIATE EXECUTION**: When user says "proceed", "continue", "yes", "go ahead" - execute immediately without re-explaining.
+
+## CSES Workflow Steps (0-16)
+0. Set Up Country Folder - DONE
+1. Check Completeness of Deposit - Verify files present
+2. Read Design Report - Review methodology
+3. Fill Variable Tracking Sheet - Map variables
+4. Write Study Design & Weights Overview - Document weighting
+5. Request Election Results Table - Get party data
+6. Run Frequencies on Original Data - Check distributions
+7. Process Variables in Stata - Recode to schema
+8. Complete Documentation - Finalize log/codebook
+9. Collect and Integrate District Data - Merge results
+10. Update Stata Label Files - Apply labels
+11. Finish Data Processing - Save final dataset
+12. Run Check Files - Validate
+13. Write Up Collaborator Questions - Document issues
+14. Follow Up on Collaborator Questions - Track responses
+15. Transfer ESNs to Codebook - Update study numbers
+16. Final Deposit - Archive
+
+## CSES Variable Coding
+- Missing: 7/97/997 = Refused, 8/98/998 = Don't know, 9/99/999 = Missing/NA
+- Demographics (F2xxx): Gender, age, education, household
+- Political attitudes (F3xxx): Interest, ideology, party ID, satisfaction
+
+## RULES
+1. ALWAYS use tools - never output text placeholders
+2. Read files without asking
+3. Log findings immediately
+4. State next action and ask if you should continue
+5. On confirmation, execute immediately"""
 
 
 def get_file_info(state: WorkflowState) -> str:
@@ -653,8 +636,6 @@ class ConversationSession:
             message: The user's message
             on_tool_output: Optional callback for tool execution feedback (for TUI)
         """
-        import re
-
         # Add user message to history
         self.history.append({"role": "user", "content": message})
 
@@ -663,83 +644,11 @@ class ConversationSession:
             message, self.state, self.history, self.active_logger, on_tool_output
         )
 
-        # For CLI path (which doesn't support tools), process markers as fallback
-        model = os.getenv("LLM_MODEL_VALIDATE") or os.getenv("LLM_MODEL", "")
-        if model == "claude-cli":
-            response = self._process_log_markers(response)
-
         # Add assistant response to history
         self.history.append({"role": "assistant", "content": response})
 
         # Save state after any updates
         self.state.save()
-
-        return response
-
-    def _process_log_markers(self, response: str) -> str:
-        """
-        Parse response for log markers and write to log file.
-        Used as fallback for CLI path which doesn't support tools.
-        """
-        import re
-
-        # Process [LOG: ...] markers
-        log_pattern = r'\[LOG:\s*(.+?)\]'
-        log_matches = re.findall(log_pattern, response, re.DOTALL)
-        for log_entry in log_matches:
-            log_entry = log_entry.strip()
-            self.active_logger.log_message(log_entry)
-            print(f"  [Logged] {log_entry[:60]}...")
-
-        # Process [STUDY_DESIGN: field=value] markers
-        design_pattern = r'\[STUDY_DESIGN:\s*(\w+)\s*=\s*(.+?)\]'
-        design_matches = re.findall(design_pattern, response)
-        if design_matches:
-            for field, value in design_matches:
-                self.active_logger.update_study_design_section({field.strip(): value.strip()})
-                print(f"  [Study Design] {field}: {value[:40]}...")
-
-        # Process [QUESTION: ...] markers
-        question_pattern = r'\[QUESTION:\s*(.+?)\]'
-        question_matches = re.findall(question_pattern, response, re.DOTALL)
-        for question in question_matches:
-            question = question.strip()
-            self.active_logger.add_collaborator_question(
-                question,
-                "From conversation",
-                self.state.get_next_step() or 0
-            )
-            print(f"  [Question added] {question[:60]}...")
-
-        # Process [VARIABLE: cses_code=source_variable] markers
-        variable_pattern = r'\[VARIABLE:\s*(\w+)\s*=\s*(.+?)\]'
-        variable_matches = re.findall(variable_pattern, response)
-        for cses_code, source_var in variable_matches:
-            self.active_logger.update_variable_mapping(
-                cses_code.strip(),
-                source_var.strip()
-            )
-
-        # Process [ELECTION_SUMMARY: ...] markers
-        summary_pattern = r'\[ELECTION_SUMMARY:\s*(.+?)\]'
-        summary_matches = re.findall(summary_pattern, response, re.DOTALL)
-        for summary in summary_matches:
-            self.active_logger.update_election_summary(summary.strip())
-            print(f"  [Election Summary] Updated...")
-
-        # Process [PARTIES: ...] markers
-        parties_pattern = r'\[PARTIES:\s*(.+?)\]'
-        parties_matches = re.findall(parties_pattern, response, re.DOTALL)
-        for content in parties_matches:
-            self.active_logger.update_parties_leaders(content.strip())
-            print(f"  [Parties/Leaders] Updated...")
-
-        # Process [TODO: ...] markers
-        todo_pattern = r'\[TODO:\s*(.+?)\]'
-        todo_matches = re.findall(todo_pattern, response, re.DOTALL)
-        for item in todo_matches:
-            self.active_logger.add_todo_item(item.strip())
-            print(f"  [TODO] {item[:50]}...")
 
         return response
 
