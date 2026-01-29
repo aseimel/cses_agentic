@@ -250,88 +250,76 @@ if ($fullInstallFailed) {
 Write-Host ""
 Write-Host "Verifying installation (testing imports)..." -ForegroundColor Cyan
 
-$verifyScript = @"
-import sys
-failed = []
-modules = [
-    ('dotenv', 'python-dotenv'),
-    ('yaml', 'pyyaml'),
-    ('lxml', 'lxml'),
-    ('reportlab', 'reportlab'),
-    ('pypdf', 'pypdf'),
-    ('docx', 'python-docx'),
-    ('openpyxl', 'openpyxl'),
-    ('pandas', 'pandas'),
-    ('pyreadstat', 'pyreadstat'),
-    ('litellm', 'litellm'),
-    ('anthropic', 'anthropic'),
-    ('openai', 'openai'),
-    ('rich', 'rich'),
-    ('tqdm', 'tqdm'),
-]
-for mod, pkg in modules:
-    try:
-        __import__(mod)
-        print(f'  [OK] {pkg}')
-    except ImportError as e:
-        print(f'  [X] {pkg} - FAILED')
-        failed.append(pkg)
-if failed:
-    print(f'\nMISSING: {", ".join(failed)}')
-    sys.exit(1)
-else:
-    print('\nAll packages verified!')
-    sys.exit(0)
-"@
+# Test each module individually - simpler and more reliable
+$modulesToTest = @(
+    @("dotenv", "python-dotenv"),
+    @("yaml", "pyyaml"),
+    @("lxml", "lxml"),
+    @("reportlab", "reportlab"),
+    @("pypdf", "pypdf"),
+    @("docx", "python-docx"),
+    @("openpyxl", "openpyxl"),
+    @("pandas", "pandas"),
+    @("pyreadstat", "pyreadstat"),
+    @("litellm", "litellm"),
+    @("anthropic", "anthropic"),
+    @("openai", "openai"),
+    @("rich", "rich"),
+    @("tqdm", "tqdm")
+)
 
-$verifyResult = & $pythonExe -c $verifyScript 2>&1
-$verifyExitCode = $LASTEXITCODE
-Write-Host $verifyResult
+$failedModules = @()
+foreach ($item in $modulesToTest) {
+    $mod = $item[0]
+    $pkg = $item[1]
+    & $pythonExe -c "import $mod" 2>&1 | Out-Null
+    if ($LASTEXITCODE -eq 0) {
+        Write-Host "  [OK] $pkg" -ForegroundColor Green
+    } else {
+        Write-Host "  [X] $pkg - FAILED" -ForegroundColor Red
+        $failedModules += $pkg
+    }
+}
 
-if ($verifyExitCode -ne 0) {
+if ($failedModules.Count -gt 0) {
     Write-Host ""
     Write-Host "[X] Some packages failed to install!" -ForegroundColor Red
+    Write-Host "    Missing: $($failedModules -join ', ')" -ForegroundColor Yellow
     Write-Host ""
-    Write-Host "Attempting to install missing packages..." -ForegroundColor Yellow
+    Write-Host "Attempting to reinstall failed packages..." -ForegroundColor Yellow
 
-    # Try to install missing packages again
-    foreach ($pkg in $corePackages) {
-        $testMod = switch ($pkg) {
-            "python-dotenv" { "dotenv" }
-            "pyyaml" { "yaml" }
-            "python-docx" { "docx" }
-            default { $pkg }
-        }
-        $testResult = & $pythonExe -c "import $testMod" 2>&1
-        if ($LASTEXITCODE -ne 0) {
-            Write-Host "  Reinstalling $pkg..." -ForegroundColor Yellow -NoNewline
-            & $pipExe install --upgrade --force-reinstall $pkg 2>&1 | Out-Null
-            if ($LASTEXITCODE -eq 0) {
-                Write-Host " [OK]" -ForegroundColor Green
-            } else {
-                Write-Host " [FAILED]" -ForegroundColor Red
-            }
+    foreach ($pkg in $failedModules) {
+        Write-Host "  Reinstalling $pkg..." -ForegroundColor Yellow -NoNewline
+        & $pipExe install --upgrade --force-reinstall $pkg 2>&1 | Out-Null
+        if ($LASTEXITCODE -eq 0) {
+            Write-Host " [OK]" -ForegroundColor Green
+        } else {
+            Write-Host " [FAILED]" -ForegroundColor Red
         }
     }
 
-    # Final verification
+    # Final check
     Write-Host ""
     Write-Host "Final verification..." -ForegroundColor Cyan
-    $finalResult = & $pythonExe -c $verifyScript 2>&1
-    $finalExitCode = $LASTEXITCODE
-    Write-Host $finalResult
+    $stillFailed = @()
+    foreach ($item in $modulesToTest) {
+        $mod = $item[0]
+        $pkg = $item[1]
+        & $pythonExe -c "import $mod" 2>&1 | Out-Null
+        if ($LASTEXITCODE -ne 0) {
+            $stillFailed += $pkg
+        }
+    }
 
-    if ($finalExitCode -ne 0) {
-        Write-Host ""
-        Write-Host "[X] Installation incomplete - some packages could not be installed." -ForegroundColor Red
-        Write-Host "    The tool may not work correctly." -ForegroundColor Yellow
-        Write-Host ""
-        Write-Host "Try running manually:" -ForegroundColor Cyan
-        Write-Host "  $pythonExe -m pip install python-docx pandas litellm" -ForegroundColor White
+    if ($stillFailed.Count -gt 0) {
+        Write-Host "[X] Still missing: $($stillFailed -join ', ')" -ForegroundColor Red
         Write-Host ""
         Read-Host "Press Enter to continue anyway"
+    } else {
+        Write-Host "[OK] All packages now verified" -ForegroundColor Green
     }
 } else {
+    Write-Host ""
     Write-Host "[OK] All packages verified" -ForegroundColor Green
 }
 
