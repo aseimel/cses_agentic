@@ -116,26 +116,46 @@ class StepExecutor:
     def _step_0(self, **kwargs) -> StepResult:
         """Step 0: Set Up Country Folder"""
         # This is typically done during initialization
-        # Check that folder structure exists
+        # Check that folder structure exists following CSES standard
 
-        required_folders = [
-            self.working_dir / "emails",
-            self.working_dir / "micro",
-            self.working_dir / "macro",
-        ]
+        issues = []
 
-        missing = [f for f in required_folders if not f.exists()]
+        # Check micro/original_deposit/
+        original_deposit = self.working_dir / "micro" / "original_deposit"
+        if not original_deposit.exists():
+            issues.append("Create folder: micro/original_deposit/")
 
-        if missing:
+        # Check micro/ folder exists
+        if not (self.working_dir / "micro").exists():
+            issues.append("Create folder: micro/")
+
+        # Check macro/ folder exists
+        if not (self.working_dir / "macro").exists():
+            issues.append("Create folder: macro/")
+
+        # Check E-mails/ OR emails/ (accept either for backwards compatibility)
+        emails_exists = (
+            (self.working_dir / "E-mails").exists() or
+            (self.working_dir / "emails").exists()
+        )
+        if not emails_exists:
+            issues.append("Create folder: E-mails/")
+
+        # Check Election Results/ folder
+        if not (self.working_dir / "Election Results").exists():
+            issues.append("Create folder: Election Results/")
+
+        if issues:
             return StepResult(
                 success=False,
-                message=f"Missing required folders: {[f.name for f in missing]}",
-                issues=[f"Create folder: {f}" for f in missing]
+                message=f"Missing required folders ({len(issues)} issues)",
+                issues=issues,
+                next_action="Run 'cses migrate' to create missing folders"
             )
 
         return StepResult(
             success=True,
-            message="Folder structure verified",
+            message="Folder structure verified (CSES standard)",
             artifacts=[str(self.working_dir)],
             next_action="Proceed to Step 1: Check deposit completeness"
         )
@@ -144,7 +164,15 @@ class StepExecutor:
         """Step 1: Check Completeness of Deposit"""
         from src.workflow.organizer import FileOrganizer
 
-        organizer = FileOrganizer(self.working_dir)
+        # Look for files in micro/original_deposit/ (CSES standard location)
+        original_deposit = self.working_dir / "micro" / "original_deposit"
+
+        if original_deposit.exists():
+            organizer = FileOrganizer(original_deposit)
+        else:
+            # Fall back to checking working_dir for backwards compatibility
+            organizer = FileOrganizer(self.working_dir)
+
         detected = organizer.detect_files()
 
         issues = []
@@ -356,16 +384,20 @@ class StepExecutor:
 
             # Auto-generate output files
             print("Generating CSES output files...")
-            country_code = self.state.country or "CNT"
+            country_code = self.state.country_code or "CNT"
             year = self.state.year or "YEAR"
             date_str = datetime.now().strftime("%Y%m%d")
 
-            # Ensure micro folder exists
+            # Ensure micro folder structure exists
             micro_dir = self.working_dir / "micro"
             micro_dir.mkdir(exist_ok=True)
 
-            # Generate tracking sheet
-            tracking_path = micro_dir / f"deposited variables-m6_{country_code}_{year}_{date_str}.xlsx"
+            # Create deposited variable list subfolder
+            var_list_dir = micro_dir / "deposited variable list"
+            var_list_dir.mkdir(exist_ok=True)
+
+            # Generate tracking sheet in micro/deposited variable list/
+            tracking_path = var_list_dir / f"deposited variables-m6_{country_code}_{year}_{date_str}.xlsx"
             tracking_result = export_tracking_sheet(
                 mappings=self.state.mappings,
                 output_path=tracking_path,
@@ -374,9 +406,9 @@ class StepExecutor:
             )
             if tracking_result.success:
                 artifacts.append(str(tracking_path))
-                print(f"  Created: {tracking_path.name}")
+                print(f"  Created: deposited variable list/{tracking_path.name}")
 
-            # Generate .do file
+            # Generate .do file in micro/
             do_path = micro_dir / f"cses-m6_micro_{country_code}_{year}_{date_str}.do"
             do_result = export_do_file(
                 mappings=self.state.mappings,

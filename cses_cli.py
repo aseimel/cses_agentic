@@ -267,6 +267,11 @@ def cmd_init(args) -> Path:
     """
     Initialize a new study from files in the current folder.
 
+    Creates folder structure following CSES standard:
+    - Root folder uses full country name (e.g., Sweden_2024)
+    - All original files go to micro/original_deposit/
+    - No working copies in root folder
+
     Returns:
         Path to the study directory (for use by cmd_interactive)
     """
@@ -313,19 +318,21 @@ def cmd_init(args) -> Path:
 
     # Show what we found
     country_code = organizer.COUNTRY_CODES.get(country.lower(), country[:3].upper())
-    print(f"\nSetting up: {country} {year} ({country_code}_{year})")
+    folder_name = organizer.get_study_folder_name(country, year)
+    print(f"\nSetting up: {country} {year}")
+    print(f"  Folder: {folder_name}/")
+    print(f"  File prefix: {country_code}_{year}")
     print(f"\nDetected files:")
     print(f"  Data: {len(detected.data_files)} file(s)")
     print(f"  Questionnaires: {len(detected.questionnaire_files)} file(s)")
     print(f"  Codebooks: {len(detected.codebook_files)} file(s)")
 
     # Determine study directory
-    expected_folder = f"{country_code}_{year}"
-
-    if working_dir.name == expected_folder or (working_dir / ".cses").exists():
+    # Check if we're already in a properly named folder
+    if working_dir.name == folder_name or (working_dir / ".cses").exists():
         study_dir = working_dir
     else:
-        # Create organized folder
+        # Create organized folder with CSES standard structure
         print("\nOrganizing files...")
         study_dir, _ = organizer.initialize_study(
             country=country,
@@ -333,7 +340,7 @@ def cmd_init(args) -> Path:
             copy_files=True
         )
         print(f"[OK] Created: {study_dir.name}/")
-        print(f"   Originals preserved in: {study_dir.name}/original_deposit/")
+        print(f"   Originals preserved in: {study_dir.name}/micro/original_deposit/")
 
     # Create workflow state
     country_code = organizer.COUNTRY_CODES.get(country.lower(), country[:3].upper())
@@ -344,59 +351,39 @@ def cmd_init(args) -> Path:
         working_dir=str(study_dir)
     )
 
-    # Store detected files with new standardized names
-    prefix = organizer.get_study_prefix(country, year)
+    # Store paths to files in micro/original_deposit/ (original names preserved)
+    original_deposit = study_dir / "micro" / "original_deposit"
 
     if detected.data_files:
         if study_dir != working_dir:
-            ext = detected.data_files[0].suffix
-            state.data_file = str(study_dir / f"{prefix}_data{ext}")
+            # File was copied to original_deposit with original name
+            state.data_file = str(original_deposit / detected.data_files[0].name)
         else:
             state.data_file = str(detected.data_files[0])
 
     if detected.questionnaire_files:
         if study_dir != working_dir:
-            state.questionnaire_files = []
-            if len(detected.questionnaire_files) == 1:
-                f = detected.questionnaire_files[0]
-                state.questionnaire_files.append(str(study_dir / f"{prefix}_questionnaire{f.suffix}"))
-            else:
-                # Separate english vs native
-                english_files = [f for f in detected.questionnaire_files
-                                if detect_questionnaire_language(f.name) == "english"]
-                native_files = [f for f in detected.questionnaire_files
-                               if detect_questionnaire_language(f.name) == "native"]
-
-                for i, f in enumerate(english_files):
-                    if len(english_files) == 1:
-                        state.questionnaire_files.append(str(study_dir / f"{prefix}_questionnaire_english{f.suffix}"))
-                    else:
-                        state.questionnaire_files.append(str(study_dir / f"{prefix}_questionnaire_english_{i+1}{f.suffix}"))
-
-                for i, f in enumerate(native_files):
-                    if len(native_files) == 1:
-                        state.questionnaire_files.append(str(study_dir / f"{prefix}_questionnaire_native{f.suffix}"))
-                    else:
-                        state.questionnaire_files.append(str(study_dir / f"{prefix}_questionnaire_native_{i+1}{f.suffix}"))
+            # Files copied to original_deposit with original names
+            state.questionnaire_files = [
+                str(original_deposit / f.name) for f in detected.questionnaire_files
+            ]
         else:
             state.questionnaire_files = [str(f) for f in detected.questionnaire_files]
 
     if detected.codebook_files:
         if study_dir != working_dir:
-            ext = detected.codebook_files[0].suffix
-            state.codebook_file = str(study_dir / f"{prefix}_codebook{ext}")
+            state.codebook_file = str(original_deposit / detected.codebook_files[0].name)
         else:
             state.codebook_file = str(detected.codebook_files[0])
 
     if detected.design_report_files:
         if study_dir != working_dir:
-            ext = detected.design_report_files[0].suffix
-            state.design_report_file = str(study_dir / f"{prefix}_design_report{ext}")
+            state.design_report_file = str(original_deposit / detected.design_report_files[0].name)
         else:
             state.design_report_file = str(detected.design_report_files[0])
 
     # Mark Step 0 as complete
-    state.set_step_status(0, StepStatus.COMPLETED, "Folder initialized")
+    state.set_step_status(0, StepStatus.COMPLETED, "Folder initialized (CSES standard)")
 
     # Save state
     state.save(study_dir / ".cses")
@@ -770,6 +757,162 @@ def cmd_setup(args):
     first_run_setup(force=True)
 
 
+def cmd_migrate(args):
+    """
+    Migrate an old folder structure to CSES standard.
+
+    This command:
+    1. Moves original_deposit/ -> micro/original_deposit/
+    2. Renames emails/ -> E-mails/ (if E-mails/ doesn't exist)
+    3. Creates missing standard folders
+    4. Updates state.json paths if needed
+    """
+    working_dir = Path.cwd()
+
+    print("CSES Folder Migration")
+    print("=" * 40)
+    print()
+
+    # Check if this is a study folder
+    state = WorkflowState.load(working_dir)
+    if not state:
+        # Check subdirectories
+        for subdir in working_dir.iterdir():
+            if subdir.is_dir() and (subdir / ".cses").exists():
+                state = WorkflowState.load(subdir)
+                if state:
+                    working_dir = subdir
+                    break
+
+    if not state:
+        print("[X] No study found in this folder.")
+        print("   Run 'cses init' first to initialize a study.")
+        return
+
+    print(f"Study: {state.country} {state.year}")
+    print(f"Directory: {working_dir}")
+    print()
+
+    # Check for old structure indicators
+    old_deposit = working_dir / "original_deposit"
+    old_emails = working_dir / "emails"
+    new_deposit = working_dir / "micro" / "original_deposit"
+    new_emails = working_dir / "E-mails"
+
+    needs_migration = False
+    if old_deposit.exists() and not new_deposit.exists():
+        print("  [!] Found: original_deposit/ at root (should be micro/original_deposit/)")
+        needs_migration = True
+    if old_emails.exists() and not new_emails.exists():
+        print("  [!] Found: emails/ (should be E-mails/)")
+        needs_migration = True
+
+    if not needs_migration:
+        # Check for missing folders
+        missing = []
+        for folder in ["micro/original_deposit", "micro/FINAL dataset",
+                       "micro/deposited variable list", "macro", "Election Results"]:
+            if not (working_dir / folder).exists():
+                missing.append(folder)
+        if missing:
+            print(f"  [!] Missing folders: {', '.join(missing)}")
+            needs_migration = True
+
+    if not needs_migration:
+        print("[OK] Folder structure is already CSES standard.")
+        return
+
+    print()
+    response = input("Migrate to CSES standard structure? [Y/n]: ").strip().lower()
+    if response == 'n':
+        print("Migration cancelled.")
+        return
+
+    print()
+    print("Migrating...")
+
+    # Perform migration
+    organizer = FileOrganizer(working_dir)
+    results = organizer.migrate_old_structure(working_dir)
+
+    # Update state file paths if files were moved
+    paths_updated = False
+    if results["moved_files"] or results["renamed_folders"]:
+        # Update data_file path if it was in old location
+        if state.data_file:
+            old_path = Path(state.data_file)
+            if "original_deposit" in str(old_path) and "micro" not in str(old_path):
+                new_path = working_dir / "micro" / "original_deposit" / old_path.name
+                if new_path.exists():
+                    state.data_file = str(new_path)
+                    paths_updated = True
+
+        # Update questionnaire paths
+        if state.questionnaire_files:
+            new_questionnaires = []
+            for qf in state.questionnaire_files:
+                old_path = Path(qf)
+                if "original_deposit" in str(old_path) and "micro" not in str(old_path):
+                    new_path = working_dir / "micro" / "original_deposit" / old_path.name
+                    if new_path.exists():
+                        new_questionnaires.append(str(new_path))
+                        paths_updated = True
+                    else:
+                        new_questionnaires.append(qf)
+                else:
+                    new_questionnaires.append(qf)
+            state.questionnaire_files = new_questionnaires
+
+        # Update codebook path
+        if state.codebook_file:
+            old_path = Path(state.codebook_file)
+            if "original_deposit" in str(old_path) and "micro" not in str(old_path):
+                new_path = working_dir / "micro" / "original_deposit" / old_path.name
+                if new_path.exists():
+                    state.codebook_file = str(new_path)
+                    paths_updated = True
+
+        # Update design report path
+        if state.design_report_file:
+            old_path = Path(state.design_report_file)
+            if "original_deposit" in str(old_path) and "micro" not in str(old_path):
+                new_path = working_dir / "micro" / "original_deposit" / old_path.name
+                if new_path.exists():
+                    state.design_report_file = str(new_path)
+                    paths_updated = True
+
+        if paths_updated:
+            state.save()
+
+    # Print results
+    print()
+    if results["renamed_folders"]:
+        print("Moved/renamed folders:")
+        for item in results["renamed_folders"]:
+            print(f"  - {item}")
+
+    if results["moved_files"]:
+        print("Moved files:")
+        for item in results["moved_files"]:
+            print(f"  - {item}")
+
+    if results["created_folders"]:
+        print("Created folders:")
+        for item in results["created_folders"]:
+            print(f"  - {item}/")
+
+    if paths_updated:
+        print("Updated file paths in state.json")
+
+    if results["errors"]:
+        print("Errors:")
+        for item in results["errors"]:
+            print(f"  [!] {item}")
+
+    print()
+    print("[OK] Migration complete.")
+
+
 def cmd_update(args):
     """Update CSES agent from GitHub."""
     import tempfile
@@ -890,6 +1033,7 @@ Examples:
   cses step 7       Work on variable matching
   cses match        Run variable matching with dual-model validation
   cses export       Export approved mappings
+  cses migrate      Migrate old folder structure to CSES standard
   cses setup        Re-run initial configuration
   cses update       Update to latest version from GitHub
         """
@@ -928,6 +1072,9 @@ Examples:
     export_parser.add_argument("--format", "-f", choices=["json", "xlsx", "both"],
                               default="both", help="Export format")
 
+    # migrate command
+    subparsers.add_parser("migrate", help="Migrate old folder structure to CSES standard")
+
     # update command
     subparsers.add_parser("update", help="Update to latest version from GitHub")
 
@@ -965,6 +1112,8 @@ Examples:
             cmd_match(args)
         elif args.command == "export":
             cmd_export(args)
+        elif args.command == "migrate":
+            cmd_migrate(args)
         else:
             # No command - start interactive mode
             cmd_interactive(args)
