@@ -383,15 +383,12 @@ class FileOrganizer:
         """Initialize organizer for a directory."""
         self.working_dir = working_dir or Path.cwd()
 
-    def find_email_folder(self) -> tuple[Path, Path] | None:
+    def find_email_folder(self) -> Path | None:
         """
-        Find email folder and the subfolder containing the data deposit.
-
-        Identifies the deposit folder by finding the subfolder with the largest
-        total file size (the actual deposit will have the most data).
+        Find email folder containing deposited files.
 
         Returns:
-            Tuple of (email_folder, deposit_subfolder) or None if not found
+            Path to email folder or None if not found
         """
         # Match: emails, Emails, E-mails, E-mail, email, etc.
         email_variants = ['emails', 'e-mails', 'e-mail', 'email']
@@ -404,36 +401,50 @@ class FileOrganizer:
             if normalized not in [v.replace('-', '') for v in email_variants]:
                 continue
 
-            # Found email folder - find subfolder with largest total file size
+            # Found email folder - verify it has subfolders with data files
             subfolders = [d for d in item.iterdir() if d.is_dir()]
             if not subfolders:
                 continue
 
-            def folder_size(folder: Path) -> int:
-                return sum(f.stat().st_size for f in folder.iterdir() if f.is_file())
-
-            # Sort by total size descending, pick largest
-            subfolders.sort(key=folder_size, reverse=True)
-            deposit_folder = subfolders[0]
-
-            # Verify it has data files
-            if any(f.suffix.lower() in DATA_EXTENSIONS for f in deposit_folder.iterdir() if f.is_file()):
-                return (item, deposit_folder)
+            # Check if any subfolder has data files
+            for subfolder in subfolders:
+                if any(f.suffix.lower() in DATA_EXTENSIONS for f in subfolder.rglob("*") if f.is_file()):
+                    return item
 
         return None
 
-    def detect_files(self, source_dir: Path = None) -> DetectedFiles:
-        """Detect and classify files in the specified or working directory."""
+    def detect_files(self, source_dir: Path = None, recursive: bool = False) -> DetectedFiles:
+        """
+        Detect and classify files in the specified or working directory.
+
+        Args:
+            source_dir: Directory to scan (defaults to working directory)
+            recursive: If True, scan all subdirectories recursively
+
+        Returns:
+            DetectedFiles with classified files
+        """
         result = DetectedFiles()
         scan_dir = source_dir or self.working_dir
 
-        for item in scan_dir.iterdir():
-            if item.name.startswith("."):
-                continue
-            if item.is_dir():
-                continue
+        if recursive:
+            # Recursively scan all files in all subdirectories
+            for item in scan_dir.rglob("*"):
+                if item.name.startswith("."):
+                    continue
+                if item.is_dir():
+                    continue
 
-            self._classify_file(item, result)
+                self._classify_file(item, result)
+        else:
+            # Only scan immediate directory
+            for item in scan_dir.iterdir():
+                if item.name.startswith("."):
+                    continue
+                if item.is_dir():
+                    continue
+
+                self._classify_file(item, result)
 
         self._detect_study_info(result)
         return result

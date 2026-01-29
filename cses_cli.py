@@ -292,9 +292,9 @@ def cmd_init(args) -> Path:
     organizer = FileOrganizer(working_dir)
 
     # Find email folder with data deposit
-    email_result = organizer.find_email_folder()
+    email_folder = organizer.find_email_folder()
 
-    if not email_result:
+    if not email_folder:
         print("\n[X] No email folder found with data files.")
         print("   Expected structure:")
         print("     SouthKorea_2024/")
@@ -304,11 +304,11 @@ def cmd_init(args) -> Path:
         print("           questionnaire.pdf")
         return None
 
-    email_folder, data_folder = email_result
-    print(f"Found data in: {email_folder.name}/{data_folder.name}/")
+    print(f"Found email folder: {email_folder.name}/")
 
-    # Detect files in the deposit subfolder
-    detected = organizer.detect_files(source_dir=data_folder)
+    # Detect files recursively in the email folder (scan all subfolders)
+    print("Scanning all email subfolders for files...")
+    detected = organizer.detect_files(source_dir=email_folder, recursive=True)
 
     if not detected.data_files:
         print("\n[X] No data files found in deposit folder")
@@ -336,10 +336,12 @@ def cmd_init(args) -> Path:
 
     print(f"\nSetting up: {country} {year}")
     print(f"  File prefix: {country_code}_{year}")
-    print(f"\nDetected files in {email_folder.name}/{data_folder.name}/:")
+    print(f"\nDetected files in {email_folder.name}/:")
     print(f"  Data: {len(detected.data_files)} file(s)")
     print(f"  Questionnaires: {len(detected.questionnaire_files)} file(s)")
     print(f"  Codebooks: {len(detected.codebook_files)} file(s)")
+    print(f"  Design reports: {len(detected.design_report_files)} file(s)")
+    print(f"  Macro reports: {len(detected.macro_report_files)} file(s)")
 
     # Create CSES structure at root level (alongside email folder)
     print("\nCreating folder structure...")
@@ -348,7 +350,7 @@ def cmd_init(args) -> Path:
     # Copy files to micro/ with standardized names
     print("Copying files with standardized names...")
     file_mapping = organizer.copy_files_with_standard_names(
-        detected, data_folder, working_dir, country_code, year
+        detected, email_folder, working_dir, country_code, year
     )
 
     study_dir = working_dir
@@ -667,15 +669,16 @@ def cmd_interactive(args):
 
         # Check for email folder with data
         organizer = FileOrganizer(working_dir)
-        email_result = organizer.find_email_folder()
+        email_folder = organizer.find_email_folder()
 
-        if email_result:
-            email_folder, data_folder = email_result
-            detected = organizer.detect_files(source_dir=data_folder)
-            print(f"Found email folder: {email_folder.name}/{data_folder.name}/")
+        if email_folder:
+            detected = organizer.detect_files(source_dir=email_folder, recursive=True)
+            print(f"Found email folder: {email_folder.name}/")
             print(f"  Data files: {len(detected.data_files)}")
             print(f"  Questionnaires: {len(detected.questionnaire_files)}")
             print(f"  Codebooks: {len(detected.codebook_files)}")
+            print(f"  Design reports: {len(detected.design_report_files)}")
+            print(f"  Macro reports: {len(detected.macro_report_files)}")
             print()
         else:
             print("[X] No email folder found with data files.")
