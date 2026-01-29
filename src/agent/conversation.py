@@ -91,6 +91,12 @@ You MUST write important findings to the log file AS YOU DISCOVER THEM using the
 [QUESTION: your question for collaborator]
 - Use to add a question that needs to be sent to the collaborator
 
+[VARIABLE: cses_code=source_variable]
+- Use to record a variable mapping in the tracking sheet
+- Example: [VARIABLE: F1003_2=respondent_id]
+- Example: [VARIABLE: F2001=gender]
+- The tracking sheet will be updated with this mapping
+
 IMPORTANT: Anything important you say in your response that should be preserved in the log MUST also be written with a [LOG:...] marker. If you mention "152 days field lag" in your discussion, also include [LOG: Field lag of 152 days between election and fieldwork start - unusually long].
 
 Respond naturally as a helpful CSES expert assistant."""
@@ -322,8 +328,17 @@ class ConversationSession:
             )
             print(f"  [Question added] {question[:60]}...")
 
+        # Process [VARIABLE: cses_code=source_variable] markers
+        variable_pattern = r'\[VARIABLE:\s*(\w+)\s*=\s*(.+?)\]'
+        variable_matches = re.findall(variable_pattern, response)
+        for cses_code, source_var in variable_matches:
+            self.active_logger.update_variable_mapping(
+                cses_code.strip(),
+                source_var.strip()
+            )
+
         # Save state after any updates
-        if log_matches or design_matches or question_matches:
+        if log_matches or design_matches or question_matches or variable_matches:
             self.state.save()
 
         return response

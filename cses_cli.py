@@ -440,6 +440,11 @@ def cmd_init(args) -> Path:
     print(f"[OK] Files copied to: micro/")
     print(f"   Email folder preserved: {email_folder.name}/ (raw backup)")
 
+    # Copy blank variable tracking template (CSES standard format)
+    tracking_sheet_path = organizer.copy_variable_tracking_template(study_dir, country_code, year)
+    if tracking_sheet_path:
+        state.variable_tracking_file = str(tracking_sheet_path)
+
     # Mark Step 0 as complete
     state.set_step_status(0, StepStatus.COMPLETED, "Folder initialized (CSES standard)")
 

@@ -639,6 +639,55 @@ class FileOrganizer:
 
         logger.info(f"Created study structure in: {study_dir}")
 
+    def copy_variable_tracking_template(self, study_dir: Path, country_code: str, year: str) -> Optional[Path]:
+        """
+        Copy the blank CSES variable tracking template to the study folder.
+
+        The template is copied to micro/deposited variable list/ with the proper naming.
+        The agent will fill it in as variables are matched.
+
+        Args:
+            study_dir: Study directory
+            country_code: 3-letter country code (e.g., "KOR")
+            year: Election year (e.g., "2024")
+
+        Returns:
+            Path to the copied template, or None if template not found
+        """
+        from datetime import datetime
+
+        # Find the template - check multiple locations
+        template_locations = [
+            Path(__file__).parent.parent.parent / "templates" / "deposited variables-m6_CNT_YEAR_DATE.xlsx",
+            Path(__file__).parent.parent.parent / "templates" / "variable_tracking_template.xlsx",
+        ]
+
+        template_path = None
+        for loc in template_locations:
+            if loc.exists():
+                template_path = loc
+                break
+
+        if not template_path:
+            logger.warning("Variable tracking template not found")
+            return None
+
+        # Create destination filename with proper naming
+        date_str = datetime.now().strftime("%Y%m%d")
+        dest_filename = f"deposited variables-m6_{country_code}_{year}_{date_str}.xlsx"
+        dest_dir = study_dir / "micro" / "deposited variable list"
+        dest_dir.mkdir(parents=True, exist_ok=True)
+        dest_path = dest_dir / dest_filename
+
+        # Copy the template
+        try:
+            shutil.copy2(template_path, dest_path)
+            print(f"  Created variable tracking sheet: {dest_filename}")
+            return dest_path
+        except Exception as e:
+            logger.error(f"Failed to copy variable tracking template: {e}")
+            return None
+
     def _copy_as_pdf(self, src: Path, dst: Path):
         """
         Copy a document file, converting to PDF if necessary.

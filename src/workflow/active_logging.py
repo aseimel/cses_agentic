@@ -561,3 +561,50 @@ class ActiveLogger:
 
         except Exception as e:
             logger.error(f"Failed to update deposited files section: {e}")
+
+    def update_variable_mapping(self, cses_variable: str, source_variable: str, remarks: str = ""):
+        """
+        Update the variable tracking sheet with a mapping.
+
+        Args:
+            cses_variable: The CSES target variable code (e.g., "F1003_2")
+            source_variable: The source variable from the deposited data
+            remarks: Optional remarks about the mapping
+        """
+        tracking_file = self.state.variable_tracking_file
+        if not tracking_file:
+            logger.warning("No variable tracking file set in state")
+            return
+
+        tracking_path = Path(tracking_file)
+        if not tracking_path.exists():
+            logger.warning(f"Variable tracking file not found: {tracking_path}")
+            return
+
+        try:
+            import openpyxl
+            wb = openpyxl.load_workbook(tracking_path)
+            ws = wb['deposited variables']
+
+            # Find the row with the CSES variable code
+            found = False
+            for row_idx, row in enumerate(ws.iter_rows(min_row=1), start=1):
+                # Check column B (index 1) for the CSES variable code
+                cell_b = row[1] if len(row) > 1 else None
+                if cell_b and cell_b.value and str(cell_b.value).strip() == cses_variable:
+                    # Found the row - update column C (CNT_YEAR) with source variable
+                    ws.cell(row=row_idx, column=3, value=source_variable)
+                    # Update column D (REMARKS) if provided
+                    if remarks:
+                        ws.cell(row=row_idx, column=4, value=remarks)
+                    found = True
+                    break
+
+            if found:
+                wb.save(tracking_path)
+                print(f"  [Variable] {cses_variable} <- {source_variable}")
+            else:
+                logger.warning(f"CSES variable {cses_variable} not found in tracking sheet")
+
+        except Exception as e:
+            logger.error(f"Failed to update variable tracking sheet: {e}")

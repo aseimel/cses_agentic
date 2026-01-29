@@ -177,6 +177,7 @@ class WorkflowState:
     # Active logging file paths
     log_file: Optional[str] = None
     collaborator_questions_file: Optional[str] = None
+    variable_tracking_file: Optional[str] = None  # CSES variable tracking sheet
 
     # Step states
     steps: dict[str, StepState] = field(default_factory=dict)
