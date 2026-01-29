@@ -340,12 +340,20 @@ def call_claude_conversation(
     user_message: str,
     state: WorkflowState,
     conversation_history: list = None,
-    active_logger: "ActiveLogger" = None
+    active_logger: "ActiveLogger" = None,
+    on_tool_output: callable = None
 ) -> str:
     """
     Send a message to Claude and get a response.
 
     Uses LiteLLM API with tool support for logging, or CLI if configured.
+
+    Args:
+        user_message: The user's message
+        state: Current workflow state
+        conversation_history: Previous conversation messages
+        active_logger: Logger for writing to CSES log files
+        on_tool_output: Optional callback for tool execution feedback (for TUI)
     """
     system_prompt = build_system_prompt(state)
 
@@ -361,7 +369,7 @@ def call_claude_conversation(
             return "Error: claude-cli configured but Claude CLI not found in PATH"
 
     # Otherwise use LiteLLM with tool support
-    return _call_litellm(user_message, system_prompt, conversation_history, active_logger, state)
+    return _call_litellm(user_message, system_prompt, conversation_history, active_logger, state, on_tool_output)
 
 
 def _call_claude_cli(
@@ -419,7 +427,8 @@ def _call_litellm(
     system_prompt: str,
     conversation_history: list = None,
     active_logger: "ActiveLogger" = None,
-    state: WorkflowState = None
+    state: WorkflowState = None,
+    on_tool_output: callable = None
 ) -> str:
     """Call Claude via LiteLLM API with tool support for logging."""
     try:
@@ -452,7 +461,7 @@ def _call_litellm(
 
         if active_logger and hasattr(message, 'tool_calls') and message.tool_calls:
             # Execute tool calls and continue conversation if needed
-            return _execute_tool_loop(messages, message, active_logger, state, model)
+            return _execute_tool_loop(messages, message, active_logger, state, model, on_tool_output=on_tool_output)
 
         # No tool calls, just return the content
         content = message.content
@@ -468,7 +477,8 @@ def _execute_tool_loop(
     active_logger: "ActiveLogger",
     state: WorkflowState,
     model: str,
-    max_iterations: int = 10
+    max_iterations: int = 10,
+    on_tool_output: callable = None
 ) -> str:
     """
     Execute tool calls in a loop until Claude returns a final text response.
@@ -504,7 +514,7 @@ def _execute_tool_loop(
         # Execute each tool call
         tool_results = []
         for tool_call in current_message.tool_calls:
-            result = _execute_single_tool(tool_call, active_logger, state)
+            result = _execute_single_tool(tool_call, active_logger, state, on_tool_output)
             tool_results.append({
                 "role": "tool",
                 "tool_call_id": tool_call.id,
@@ -529,7 +539,7 @@ def _execute_tool_loop(
     return current_message.content.strip() if current_message.content else ""
 
 
-def _execute_single_tool(tool_call, active_logger: "ActiveLogger", state: WorkflowState) -> str:
+def _execute_single_tool(tool_call, active_logger: "ActiveLogger", state: WorkflowState, on_tool_output: callable = None) -> str:
     """Execute a single tool call and return the result."""
     name = tool_call.function.name
     try:
@@ -537,17 +547,24 @@ def _execute_single_tool(tool_call, active_logger: "ActiveLogger", state: Workfl
     except json.JSONDecodeError:
         return f"Error: Invalid JSON arguments for {name}"
 
+    def notify(msg: str):
+        """Send tool output to callback or print."""
+        if on_tool_output:
+            on_tool_output(msg)
+        else:
+            print(msg)
+
     if name == "write_log_entry":
         message = args.get("message", "")
         active_logger.log_message(message)
-        print(f"  [Logged] {message[:60]}...")
+        notify(f"[Logged] {message[:60]}...")
         return f"Logged: {message}"
 
     elif name == "update_study_design":
         field = args.get("field", "")
         value = args.get("value", "")
         active_logger.update_study_design_section({field: value})
-        print(f"  [Study Design] {field}: {value[:40]}...")
+        notify(f"[Study Design] {field}: {value[:40]}...")
         return f"Updated study design: {field} = {value}"
 
     elif name == "add_collaborator_question":
@@ -557,32 +574,32 @@ def _execute_single_tool(tool_call, active_logger: "ActiveLogger", state: Workfl
             "From conversation",
             state.get_next_step() or 0
         )
-        print(f"  [Question added] {question[:60]}...")
+        notify(f"[Question added] {question[:60]}...")
         return f"Added question: {question}"
 
     elif name == "update_variable_mapping":
         cses_code = args.get("cses_code", "")
         source_variable = args.get("source_variable", "")
         active_logger.update_variable_mapping(cses_code, source_variable)
-        print(f"  [Variable] {cses_code} <- {source_variable}")
+        notify(f"[Variable] {cses_code} <- {source_variable}")
         return f"Mapped variable: {cses_code} = {source_variable}"
 
     elif name == "update_election_summary":
         summary = args.get("summary", "")
         active_logger.update_election_summary(summary)
-        print(f"  [Election Summary] Updated...")
+        notify("[Election Summary] Updated...")
         return f"Updated election summary"
 
     elif name == "update_parties_leaders":
         content = args.get("content", "")
         active_logger.update_parties_leaders(content)
-        print(f"  [Parties/Leaders] Updated...")
+        notify("[Parties/Leaders] Updated...")
         return f"Updated parties and leaders"
 
     elif name == "add_todo_item":
         item = args.get("item", "")
         active_logger.add_todo_item(item)
-        print(f"  [TODO] {item[:50]}...")
+        notify(f"[TODO] {item[:50]}...")
         return f"Added TODO: {item}"
 
     elif name == "read_file":
@@ -595,11 +612,11 @@ def _execute_single_tool(tool_call, active_logger: "ActiveLogger", state: Workfl
                 from pypdf import PdfReader
                 reader = PdfReader(full_path)
                 text = "\n".join(page.extract_text() or "" for page in reader.pages)
-                print(f"  [Read] {path} ({len(text)} chars)")
+                notify(f"[Read] {path} ({len(text)} chars)")
                 return text[:50000]  # Limit for context
             else:
                 content = full_path.read_text(errors='replace')
-                print(f"  [Read] {path} ({len(content)} chars)")
+                notify(f"[Read] {path} ({len(content)} chars)")
                 return content[:50000]
         except Exception as e:
             return f"Error reading file: {e}"
@@ -614,7 +631,7 @@ def _execute_single_tool(tool_call, active_logger: "ActiveLogger", state: Workfl
             if f.is_file():
                 rel_path = f.relative_to(Path(state.working_dir))
                 files.append(str(rel_path))
-        print(f"  [List] {directory or '.'} ({len(files)} files)")
+        notify(f"[Listed] {directory or '.'} ({len(files)} files)")
         return "\n".join(files[:100])  # Limit to 100 files
 
     else:
@@ -629,8 +646,13 @@ class ConversationSession:
         self.history = []
         self.active_logger = ActiveLogger(state)
 
-    def send(self, message: str) -> str:
-        """Send a message and get a response."""
+    def send(self, message: str, on_tool_output: callable = None) -> str:
+        """Send a message and get a response.
+
+        Args:
+            message: The user's message
+            on_tool_output: Optional callback for tool execution feedback (for TUI)
+        """
         import re
 
         # Add user message to history
@@ -638,7 +660,7 @@ class ConversationSession:
 
         # Get response - pass active_logger so tools can write to log directly
         response = call_claude_conversation(
-            message, self.state, self.history, self.active_logger
+            message, self.state, self.history, self.active_logger, on_tool_output
         )
 
         # For CLI path (which doesn't support tools), process markers as fallback
