@@ -231,14 +231,17 @@ $packagesToInstall = @(
 $missingPackages = @()
 $alreadyInstalled = 0
 
+$oldErrorPref = $ErrorActionPreference
+$ErrorActionPreference = "Continue"
 foreach ($item in $packagesToInstall) {
-    $result = & $pythonExe -c "import $($item.mod)" 2>&1
+    & $pythonExe -c "import $($item.mod)" 2>$null
     if ($LASTEXITCODE -eq 0) {
         $alreadyInstalled++
     } else {
         $missingPackages += $item.pkg
     }
 }
+$ErrorActionPreference = $oldErrorPref
 
 Write-Host "  Already installed: $alreadyInstalled" -ForegroundColor Green
 Write-Host "  Missing: $($missingPackages.Count)" -ForegroundColor $(if ($missingPackages.Count -gt 0) { "Yellow" } else { "Green" })
@@ -305,10 +308,12 @@ $modulesToTest = @(
 )
 
 $failedModules = @()
+$oldErrorPref = $ErrorActionPreference
+$ErrorActionPreference = "Continue"
 foreach ($item in $modulesToTest) {
     $mod = $item[0]
     $pkg = $item[1]
-    $result = & $pythonExe -c "import $mod" 2>&1
+    & $pythonExe -c "import $mod" 2>$null
     if ($LASTEXITCODE -eq 0) {
         Write-Host "  [OK] $pkg" -ForegroundColor Green
     } else {
@@ -316,6 +321,7 @@ foreach ($item in $modulesToTest) {
         $failedModules += $pkg
     }
 }
+$ErrorActionPreference = $oldErrorPref
 
 if ($failedModules.Count -gt 0) {
     Write-Host ""
@@ -338,14 +344,17 @@ if ($failedModules.Count -gt 0) {
     Write-Host ""
     Write-Host "Final verification..." -ForegroundColor Cyan
     $stillFailed = @()
+    $oldErrorPref2 = $ErrorActionPreference
+    $ErrorActionPreference = "Continue"
     foreach ($item in $modulesToTest) {
         $mod = $item[0]
         $pkg = $item[1]
-        $result = & $pythonExe -c "import $mod" 2>&1
+        & $pythonExe -c "import $mod" 2>$null
         if ($LASTEXITCODE -ne 0) {
             $stillFailed += $pkg
         }
     }
+    $ErrorActionPreference = $oldErrorPref2
 
     if ($stillFailed.Count -gt 0) {
         Write-Host "[X] Still missing: $($stillFailed -join ', ')" -ForegroundColor Red
