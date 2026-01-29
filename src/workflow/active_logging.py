@@ -97,41 +97,62 @@ class ActiveLogger:
 
         lines = [
             f"{country_code}_{year}_Mod6",
+            "",
             f"Name: [PROCESSOR NAME]",
             f"Date: {date_str}",
+            "",
             f"Country: {country}",
             f"Election Year: {year}",
             f"Most recent update: {date_str}",
             "",
+            "",
             "=" * 75,
             ">>> Log File Instructions",
             "=" * 75,
+            "",
             "This Log File should be used to document any questions, issues, and",
-            "challenges that arose while processing the Individual Datasets.",
+            "challenges that arose while processing the Individual Datasets for",
+            f"inclusion in CSES M6.",
             "Navigation: Section headings can be searched using \">>>\".",
             "Subsections can be searched using \"<<>>\".",
+            "",
+            f">>> Log File Notes: {country_code}_{year}_M6",
+            f">>> Questions for Collaborator: {country_code}_{year}_M6",
+            f">>> Things To Do Before Releasing the Data: {country_code}_{year}_M6",
+            f">>> Election Study Notes and Appendices: {country_code}_{year}_M6",
+            f"    <<>> ELECTION SUMMARY - {country_code}_{year}_M6",
+            f"    <<>> OVERVIEW OF STUDY DESIGN AND WEIGHTS - {country_code}_{year}_M6",
+            f"    <<>> PARTIES AND LEADERS: {country_code}_{year}_M6",
             "",
             "=" * 75,
             f">>> Log File Notes: {country_code}_{year}_M6",
             "=" * 75,
-            "INSTRUCTIONS: List issues encountered, coding decisions, and notes.",
+            "",
+            "Deposited Files:",
+            "",
             "",
             "=" * 75,
             f">>> Questions for Collaborator: {country_code}_{year}_M6",
             "=" * 75,
             "",
+            "",
             "=" * 75,
             f">>> Things To Do Before Releasing the Data: {country_code}_{year}_M6",
             "=" * 75,
-            "- Resolve collaborator questions",
-            "- Complete variable matching validation",
+            "",
             "",
             "=" * 75,
             f">>> Election Study Notes and Appendices: {country_code}_{year}_M6",
             "=" * 75,
+            "",
             f"<<>> ELECTION SUMMARY - {country_code}_{year}_M6:",
+            "",
+            "",
             f"<<>> OVERVIEW OF STUDY DESIGN AND WEIGHTS - {country_code}_{year}_M6:",
+            "",
+            "",
             f"<<>> PARTIES AND LEADERS: {country_code}_{year}_M6",
+            "",
             "",
         ]
 
@@ -353,28 +374,35 @@ class ActiveLogger:
                     lines[i] = f"Most recent update: {datetime.now().strftime('%Y-%m-%d')}"
                     break
 
-            # Find ">>> Log File Notes" section and add entry after INSTRUCTIONS
+            # Find ">>> Log File Notes" section and add entry after "Deposited Files:"
             self._log_entry_count += 1
-            date_str = datetime.now().strftime("%Y-%m-%d")
-            prefix = "[!] " if level in ("WARNING", "ERROR") else ""
-            entry_text = f"{self._log_entry_count:02d}. [{date_str}] {prefix}{message}"
+            prefix = "" if level == "INFO" else "[!] "
+            entry_text = f"{self._log_entry_count:02d}. {prefix}{message}"
 
-            # Find where to insert (after INSTRUCTIONS line in Log File Notes section)
+            # Find where to insert (after "Deposited Files:" or after the section header)
             found_notes = False
+            found_deposited = False
             insert_idx = None
             for i, line in enumerate(lines):
-                if ">>> Log File Notes" in line:
+                if ">>> Log File Notes" in line and "===" in lines[i-1] if i > 0 else False:
                     found_notes = True
-                elif found_notes and line.startswith("INSTRUCTIONS:"):
-                    insert_idx = i + 2  # After instructions and blank line
+                elif found_notes and "Deposited Files:" in line:
+                    found_deposited = True
+                elif found_notes and found_deposited and line.strip() == "":
+                    # Insert after the blank line following "Deposited Files:"
+                    insert_idx = i + 1
+                    break
+                elif found_notes and ">>> Questions for Collaborator" in line:
+                    # Insert before Questions section
+                    insert_idx = i - 2
                     break
 
             if insert_idx and insert_idx < len(lines):
                 lines.insert(insert_idx, entry_text)
             else:
-                # Fallback: append before the Questions section
+                # Fallback: find Questions section and insert before it
                 for i, line in enumerate(lines):
-                    if ">>> Questions for Collaborator" in line:
+                    if ">>> Questions for Collaborator" in line and "===" in lines[i-1] if i > 0 else False:
                         lines.insert(i - 1, entry_text)
                         break
 

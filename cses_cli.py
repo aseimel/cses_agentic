@@ -709,80 +709,131 @@ def cmd_interactive(args):
     print(format_workflow_status(state))
     print()
 
-    # Start conversational mode with Claude
-    print("=" * 60)
-    print("CSES Expert Assistant")
-    print("=" * 60)
-    print()
-    print("I'm here to guide you through the CSES data processing workflow.")
-    print("Ask me anything about the process, or tell me what you'd like to do.")
-    print()
-    print("Type 'quit' to exit, 'status' to see progress.\n")
+    # Step executor for running steps
+    executor = StepExecutor(state)
 
-    # Create conversation session
-    conversation = ConversationSession(state)
-
-    # Send initial greeting to get Claude's guidance
-    next_step = state.get_next_step()
-    if next_step is not None:
-        step_info = WORKFLOW_STEPS[next_step]
-        initial_prompt = f"The study is initialized. The next step is Step {next_step}: {step_info['name']}. Briefly explain what this step involves and ask if the user is ready to proceed."
-        try:
-            print("Connecting to Claude...", end="", flush=True)
-            response = conversation.send(initial_prompt)
-            print("\r" + " " * 30 + "\r", end="")  # Clear the line
-            print(f"Assistant: {response}\n")
-        except Exception as e:
-            print("\r" + " " * 30 + "\r", end="")  # Clear the line
-            print(f"Note: Could not connect to Claude ({e})")
-            print(f"Next step: Step {next_step} - {step_info['name']}\n")
-
+    # Main workflow loop
     while True:
+        next_step = state.get_next_step()
+        if next_step is None:
+            print("All steps completed!")
+            break
+
+        step_info = WORKFLOW_STEPS[next_step]
+
+        # Present the step
+        print("=" * 60)
+        print(f"Step {next_step}: {step_info['name']}")
+        print("=" * 60)
+        print()
+        print(f"Description: {step_info['description']}")
+        print()
+
+        # Show what this step will do
+        guidance = executor.get_step_guidance(next_step)
+        print("What this step does:")
+        print(guidance)
+        print()
+
+        # Ask for confirmation
+        print("Options:")
+        print("  [Y] Yes, proceed with this step")
+        print("  [N] No, I'll do this manually")
+        print("  [S] Skip this step")
+        print("  [Q] Quit")
+        print()
+
         try:
-            user_input = input("You: ").strip()
+            choice = input("Your choice [Y/n/s/q]: ").strip().lower()
         except (EOFError, KeyboardInterrupt):
             print("\nGoodbye!")
             break
 
-        if not user_input:
-            continue
-
-        # Handle special commands
-        cmd_lower = user_input.lower()
-
-        if cmd_lower in ["quit", "exit", "q"]:
+        if choice in ['q', 'quit', 'exit']:
             print("Goodbye!")
             break
 
-        elif cmd_lower == "status":
-            conversation.refresh_state()
+        elif choice in ['n', 'no']:
+            # Show manual instructions
             print()
-            print(format_workflow_status(conversation.state))
+            print("Manual instructions:")
+            print("-" * 40)
+            print(f"To complete Step {next_step} manually:")
             print()
-            continue
-
-        elif cmd_lower == "help":
-            print("""
-Just chat naturally! You can ask things like:
-  - "What should I do next?"
-  - "Explain step 3"
-  - "I'm having trouble with the questionnaire"
-  - "What are the CSES coding conventions?"
-
-Commands: status, quit
-""")
-            continue
-
-        # Send everything else to Claude
-        try:
+            if next_step == 1:
+                print("1. Verify all required files are in the micro/ folder:")
+                print("   - Data file (.dta, .sav, .csv)")
+                print("   - Questionnaire (English and native)")
+                print("   - Codebook (if available)")
+                print("   - Design report")
+                print("2. Note any missing files in the log file")
+            elif next_step == 7:
+                print("1. Open the questionnaire and codebook")
+                print("2. Compare each survey question to CSES Module 6 schema")
+                print("3. Fill in the deposited variables tracking sheet:")
+                print("   micro/deposited variable list/deposited variables-m6_XXX_YYYY.xlsx")
+                print("4. Create the Stata .do file for recoding")
+            else:
+                print("Please complete this step according to CSES guidelines.")
+                print("Update the log file with your progress.")
             print()
-            print("Thinking...", end="", flush=True)
-            response = conversation.send(user_input)
-            print("\r" + " " * 20 + "\r", end="")  # Clear the line
-            print(f"Assistant: {response}\n")
-        except Exception as e:
-            print("\r" + " " * 20 + "\r", end="")  # Clear the line
-            print(f"Error: {e}\n")
+            print("Press Enter when done to mark this step complete,")
+            print("or type 'skip' to move to the next step.")
+            print()
+
+            try:
+                done = input("> ").strip().lower()
+            except (EOFError, KeyboardInterrupt):
+                print("\nGoodbye!")
+                break
+
+            if done == 'skip':
+                state.set_step_status(next_step, StepStatus.COMPLETED, "Skipped by user")
+            else:
+                state.set_step_status(next_step, StepStatus.COMPLETED, "Completed manually")
+            state.save()
+            print(f"[OK] Step {next_step} marked as complete.")
+            print()
+
+        elif choice in ['s', 'skip']:
+            state.set_step_status(next_step, StepStatus.COMPLETED, "Skipped")
+            state.save()
+            print(f"[OK] Step {next_step} skipped.")
+            print()
+
+        else:
+            # Yes, proceed
+            print()
+            print(f"Executing Step {next_step}...")
+            print()
+
+            result = executor.execute_step(next_step)
+
+            if result.success:
+                print(f"[OK] {result.message}")
+                state.set_step_status(next_step, StepStatus.COMPLETED, result.message)
+            else:
+                print(f"[!] {result.message}")
+                state.set_step_status(next_step, StepStatus.IN_PROGRESS, result.message)
+
+            if result.artifacts:
+                print(f"\nFiles created:")
+                for a in result.artifacts:
+                    print(f"  - {a}")
+
+            if result.issues:
+                print(f"\nIssues to address:")
+                for i in result.issues:
+                    print(f"  [!] {i}")
+
+            if result.next_action:
+                print(f"\nNext: {result.next_action}")
+
+            state.save()
+            print()
+
+    print()
+    print("Workflow session ended.")
 
 
 def cmd_setup(args):

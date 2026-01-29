@@ -187,7 +187,7 @@ def _call_claude_cli(
             input=full_prompt,
             capture_output=True,
             text=True,
-            timeout=120,
+            timeout=300,  # 5 minutes for longer operations
             encoding='utf-8',
             errors='replace'
         )

@@ -222,6 +222,7 @@ Return ONLY valid JSON."""
                     model=self.model,
                     max_tokens=4096,
                     temperature=self.temperature,
+                    timeout=120,  # 2 minutes per codebook chunk
                     messages=[{"role": "user", "content": prompt}]
                 )
 
@@ -386,6 +387,7 @@ RULES:
             model=self.model,
             max_tokens=8192,
             temperature=self.temperature,
+            timeout=300,  # 5 minutes for matching all variables
             messages=[{"role": "user", "content": prompt}]
         )
 

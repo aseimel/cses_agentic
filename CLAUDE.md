@@ -2,6 +2,18 @@
 
 This file provides guidance to Claude Code when working with this repository.
 
+## CRITICAL - READ FIRST
+
+**EXAMPLES ARE JUST EXAMPLES - NEVER HARDCODE FOR SPECIFIC COUNTRIES OR FILES**
+
+When the user mentions a specific country (Korea, Germany, etc.) or specific folder (SouthKorea_2024, etc.), this is ONLY an example to illustrate the requirement. The code must:
+- Work for ANY country, ANY year, ANY folder structure
+- NEVER contain hardcoded country names, paths, or country-specific logic
+- NEVER treat one country differently from another
+- Use generic patterns that work universally
+
+If you find yourself writing code that mentions a specific country name, STOP and make it generic.
+
 ## Project Overview
 
 CLI tool for harmonizing election study data to a standardized schema using LLM-powered variable matching.

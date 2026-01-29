@@ -628,6 +628,78 @@ class FileOrganizer:
 
         logger.info(f"Created study structure in: {study_dir}")
 
+    def _copy_as_pdf(self, src: Path, dst: Path):
+        """
+        Copy a document file, converting to PDF if necessary.
+
+        Handles: .pdf (direct copy), .docx/.doc (convert via python-docx + reportlab)
+        If conversion fails, copies the original with .pdf extension as fallback.
+
+        Args:
+            src: Source file path
+            dst: Destination path (should end in .pdf)
+        """
+        src_ext = src.suffix.lower()
+
+        if src_ext == '.pdf':
+            # Direct copy
+            shutil.copy2(src, dst)
+            return
+
+        # Try to convert .docx to PDF
+        if src_ext in ['.docx', '.doc']:
+            try:
+                from docx import Document
+                from reportlab.lib.pagesizes import letter
+                from reportlab.pdfgen import canvas
+                from reportlab.lib.units import inch
+
+                # Read docx
+                doc = Document(src)
+
+                # Create PDF
+                c = canvas.Canvas(str(dst), pagesize=letter)
+                width, height = letter
+                y_position = height - inch
+
+                for para in doc.paragraphs:
+                    text = para.text.strip()
+                    if text:
+                        # Wrap long lines
+                        words = text.split()
+                        line = ""
+                        for word in words:
+                            test_line = f"{line} {word}".strip()
+                            if len(test_line) > 80:  # Approximate line length
+                                c.drawString(inch, y_position, line)
+                                y_position -= 14
+                                line = word
+                            else:
+                                line = test_line
+
+                        if line:
+                            c.drawString(inch, y_position, line)
+                            y_position -= 14
+
+                        # New page if needed
+                        if y_position < inch:
+                            c.showPage()
+                            y_position = height - inch
+
+                c.save()
+                logger.info(f"Converted {src_ext} to PDF: {src.name}")
+                return
+
+            except ImportError:
+                logger.warning(f"Cannot convert {src_ext} to PDF - missing reportlab")
+            except Exception as e:
+                logger.warning(f"Failed to convert {src_ext} to PDF: {e}")
+
+        # Fallback: copy with original extension warning
+        fallback_dst = dst.with_suffix(src_ext)
+        shutil.copy2(src, fallback_dst)
+        logger.warning(f"Could not convert to PDF, kept original format: {fallback_dst.name}")
+
     def copy_files_with_standard_names(
         self,
         detected: DetectedFiles,
@@ -671,13 +743,35 @@ class FileOrganizer:
                 mapping[f"data_{i}"] = str(dst)
                 logger.info(f"Copied data: {src.name} -> {dst.name}")
 
-        # Copy questionnaire(s)
-        for i, src in enumerate(detected.questionnaire_files):
-            suffix = "" if i == 0 else f"_{i+1}"
-            dst = micro_dir / f"{prefix}_questionnaire{suffix}{src.suffix}"
-            shutil.copy2(src, dst)
-            mapping[f"questionnaire{suffix}"] = str(dst)
-            logger.info(f"Copied questionnaire: {src.name} -> {dst.name}")
+        # Copy questionnaires - one English, one native (both as PDF)
+        if detected.questionnaire_files:
+            english_questionnaires = []
+            native_questionnaires = []
+
+            for src in detected.questionnaire_files:
+                lang = detect_questionnaire_language(src.name)
+                if lang == "english":
+                    english_questionnaires.append(src)
+                else:
+                    native_questionnaires.append(src)
+
+            # Select best English questionnaire (prefer PDF)
+            if english_questionnaires:
+                english_questionnaires.sort(key=lambda f: (f.suffix.lower() != '.pdf', f.name))
+                src = english_questionnaires[0]
+                dst = micro_dir / f"{prefix}_questionnaire_english.pdf"
+                self._copy_as_pdf(src, dst)
+                mapping["questionnaire_english"] = str(dst)
+                logger.info(f"Copied English questionnaire: {src.name} -> {dst.name}")
+
+            # Select best native questionnaire (prefer PDF)
+            if native_questionnaires:
+                native_questionnaires.sort(key=lambda f: (f.suffix.lower() != '.pdf', f.name))
+                src = native_questionnaires[0]
+                dst = micro_dir / f"{prefix}_questionnaire_native.pdf"
+                self._copy_as_pdf(src, dst)
+                mapping["questionnaire_native"] = str(dst)
+                logger.info(f"Copied native questionnaire: {src.name} -> {dst.name}")
 
         # Copy codebook
         if detected.codebook_files:
