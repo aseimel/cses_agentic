@@ -1063,18 +1063,28 @@ def cmd_update(args):
                 env_file.write_text(env_content)
                 print("Configuration restored.")
 
-            # Check if requirements changed and update
-            print("Checking dependencies...")
+            # Install any new dependencies
+            print("Installing dependencies...")
             venv_python = install_dir / ".venv" / ("Scripts" if os.name == "nt" else "bin") / "python"
             if venv_python.exists():
                 import subprocess
                 result = subprocess.run(
-                    [str(venv_python), "-m", "pip", "install", "-q", "-r", str(install_dir / "requirements.txt")],
+                    [str(venv_python), "-m", "pip", "install", "--upgrade", "-r", str(install_dir / "requirements.txt")],
                     capture_output=True,
                     text=True
                 )
                 if result.returncode != 0:
-                    print(f"Warning: pip install had issues: {result.stderr}")
+                    print(f"[!] pip install had issues: {result.stderr}")
+                else:
+                    # Count newly installed packages
+                    installed = [line for line in result.stdout.split('\n') if 'Successfully installed' in line]
+                    if installed:
+                        print(f"[OK] {installed[0]}")
+                    else:
+                        print("[OK] All dependencies up to date")
+            else:
+                print("[!] No virtual environment found at .venv/")
+                print("    Run: pip install -r requirements.txt")
 
     except Exception as e:
         print(f"Update failed: {e}")
