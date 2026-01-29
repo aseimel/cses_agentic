@@ -267,10 +267,8 @@ def cmd_init(args) -> Path:
     """
     Initialize a new study from files in the current folder.
 
-    Supports two modes:
-    1. Email folder mode: Run in existing country folder (e.g., SouthKorea_2024/)
-       that has an email subfolder with deposited files
-    2. Legacy mode: Run in folder with loose files (creates Country_Year/ folder)
+    Expects to be run in a country folder (e.g., SouthKorea_2024/) that has
+    an email subfolder (emails/, E-mails/, etc.) containing deposited files.
 
     Returns:
         Path to the study directory (for use by cmd_interactive)
@@ -289,180 +287,97 @@ def cmd_init(args) -> Path:
             if existing_state:
                 return subdir
 
-    print("Scanning for files...")
+    print("Scanning for email folder...")
 
     organizer = FileOrganizer(working_dir)
 
-    # Try to find email folder with data deposit
+    # Find email folder with data deposit
     email_result = organizer.find_email_folder()
 
-    if email_result:
-        # Email folder mode: existing country folder with email subfolder
-        email_folder, data_folder = email_result
-        print(f"Found data in: {email_folder.name}/{data_folder.name}/")
+    if not email_result:
+        print("\n[X] No email folder found with data files.")
+        print("   Expected structure:")
+        print("     SouthKorea_2024/")
+        print("       emails/           <- or 'E-mails', 'email', etc.")
+        print("         20250303/       <- subfolder with deposited files")
+        print("           data.dta")
+        print("           questionnaire.pdf")
+        return None
 
-        # Detect files in the deposit subfolder
-        detected = organizer.detect_files(source_dir=data_folder)
+    email_folder, data_folder = email_result
+    print(f"Found data in: {email_folder.name}/{data_folder.name}/")
 
-        if not detected.data_files:
-            print("\n[X] No data files found in deposit folder")
+    # Detect files in the deposit subfolder
+    detected = organizer.detect_files(source_dir=data_folder)
+
+    if not detected.data_files:
+        print("\n[X] No data files found in deposit folder")
+        return None
+
+    # Parse country/year from folder name or use args
+    folder_country, folder_year = parse_country_year_from_folder(working_dir.name)
+    country = args.country or folder_country
+    year = args.year or folder_year or detected.year
+
+    if not country:
+        country = input("\nCountry name: ").strip()
+        if not country:
+            print("Country name is required.")
             return None
 
-        # Parse country/year from folder name or use args
-        folder_country, folder_year = parse_country_year_from_folder(working_dir.name)
-        country = args.country or folder_country
-        year = args.year or folder_year or detected.year
-
-        if not country:
-            country = input("\nCountry name: ").strip()
-            if not country:
-                print("Country name is required.")
-                return None
-
+    if not year:
+        year = input("Election year: ").strip()
         if not year:
-            year = input("Election year: ").strip()
-            if not year:
-                print("Election year is required.")
-                return None
-
-        # Get country code
-        country_code = organizer.COUNTRY_CODES.get(country.lower(), country[:3].upper())
-
-        print(f"\nSetting up: {country} {year}")
-        print(f"  File prefix: {country_code}_{year}")
-        print(f"\nDetected files in {email_folder.name}/{data_folder.name}/:")
-        print(f"  Data: {len(detected.data_files)} file(s)")
-        print(f"  Questionnaires: {len(detected.questionnaire_files)} file(s)")
-        print(f"  Codebooks: {len(detected.codebook_files)} file(s)")
-
-        # Create CSES structure at root level (alongside email folder)
-        print("\nCreating folder structure...")
-        organizer.create_study_structure(working_dir)
-
-        # Copy files to micro/ with standardized names
-        print("Copying files with standardized names...")
-        file_mapping = organizer.copy_files_with_standard_names(
-            detected, data_folder, working_dir, country_code, year
-        )
-
-        study_dir = working_dir
-
-        # Create workflow state with paths to standardized copies
-        state = WorkflowState(
-            country=country,
-            country_code=country_code,
-            year=year,
-            working_dir=str(study_dir)
-        )
-
-        # Store paths to standardized copies in micro/
-        if "data" in file_mapping:
-            state.data_file = file_mapping["data"]
-
-        # Collect all questionnaire paths
-        questionnaire_paths = [v for k, v in file_mapping.items() if k.startswith("questionnaire")]
-        if questionnaire_paths:
-            state.questionnaire_files = questionnaire_paths
-
-        if "codebook" in file_mapping:
-            state.codebook_file = file_mapping["codebook"]
-
-        if "design_report" in file_mapping:
-            state.design_report_file = file_mapping["design_report"]
-
-        print(f"[OK] Files copied to: micro/")
-        print(f"   Email folder preserved: {email_folder.name}/ (raw backup)")
-
-    else:
-        # Legacy mode: loose files in current directory
-        detected = organizer.detect_files()
-
-        if not detected.data_files:
-            print("\n[X] No data files found (.dta, .sav, .csv, .xlsx)")
-            print("   Please run this in a folder containing the collaborator's data files")
-            print("   or in a country folder with an email subfolder (e.g., SouthKorea_2024/emails/).")
+            print("Election year is required.")
             return None
 
-        # Get country/year (use detected or prompt)
-        country = args.country or detected.country
-        year = args.year or detected.year
+    # Get country code
+    country_code = organizer.COUNTRY_CODES.get(country.lower(), country[:3].upper())
 
-        if not country:
-            country = input("\nCountry name: ").strip()
-            if not country:
-                print("Country name is required.")
-                return None
+    print(f"\nSetting up: {country} {year}")
+    print(f"  File prefix: {country_code}_{year}")
+    print(f"\nDetected files in {email_folder.name}/{data_folder.name}/:")
+    print(f"  Data: {len(detected.data_files)} file(s)")
+    print(f"  Questionnaires: {len(detected.questionnaire_files)} file(s)")
+    print(f"  Codebooks: {len(detected.codebook_files)} file(s)")
 
-        if not year:
-            year = input("Election year: ").strip()
-            if not year:
-                print("Election year is required.")
-                return None
+    # Create CSES structure at root level (alongside email folder)
+    print("\nCreating folder structure...")
+    organizer.create_study_structure(working_dir)
 
-        # Show what we found
-        country_code = organizer.COUNTRY_CODES.get(country.lower(), country[:3].upper())
-        folder_name = organizer.get_study_folder_name(country, year)
-        print(f"\nSetting up: {country} {year}")
-        print(f"  Folder: {folder_name}/")
-        print(f"  File prefix: {country_code}_{year}")
-        print(f"\nDetected files:")
-        print(f"  Data: {len(detected.data_files)} file(s)")
-        print(f"  Questionnaires: {len(detected.questionnaire_files)} file(s)")
-        print(f"  Codebooks: {len(detected.codebook_files)} file(s)")
+    # Copy files to micro/ with standardized names
+    print("Copying files with standardized names...")
+    file_mapping = organizer.copy_files_with_standard_names(
+        detected, data_folder, working_dir, country_code, year
+    )
 
-        # Determine study directory
-        # Check if we're already in a properly named folder
-        if working_dir.name == folder_name or (working_dir / ".cses").exists():
-            study_dir = working_dir
-        else:
-            # Create organized folder with CSES standard structure
-            print("\nOrganizing files...")
-            study_dir, _ = organizer.initialize_study(
-                country=country,
-                year=year,
-                copy_files=True
-            )
-            print(f"[OK] Created: {study_dir.name}/")
-            print(f"   Originals preserved in: {study_dir.name}/micro/original_deposit/")
+    study_dir = working_dir
 
-        # Create workflow state
-        state = WorkflowState(
-            country=country,
-            country_code=country_code,
-            year=year,
-            working_dir=str(study_dir)
-        )
+    # Create workflow state with paths to standardized copies
+    state = WorkflowState(
+        country=country,
+        country_code=country_code,
+        year=year,
+        working_dir=str(study_dir)
+    )
 
-        # Store paths to files in micro/original_deposit/ (original names preserved)
-        original_deposit = study_dir / "micro" / "original_deposit"
+    # Store paths to standardized copies in micro/
+    if "data" in file_mapping:
+        state.data_file = file_mapping["data"]
 
-        if detected.data_files:
-            if study_dir != working_dir:
-                # File was copied to original_deposit with original name
-                state.data_file = str(original_deposit / detected.data_files[0].name)
-            else:
-                state.data_file = str(detected.data_files[0])
+    # Collect all questionnaire paths
+    questionnaire_paths = [v for k, v in file_mapping.items() if k.startswith("questionnaire")]
+    if questionnaire_paths:
+        state.questionnaire_files = questionnaire_paths
 
-        if detected.questionnaire_files:
-            if study_dir != working_dir:
-                # Files copied to original_deposit with original names
-                state.questionnaire_files = [
-                    str(original_deposit / f.name) for f in detected.questionnaire_files
-                ]
-            else:
-                state.questionnaire_files = [str(f) for f in detected.questionnaire_files]
+    if "codebook" in file_mapping:
+        state.codebook_file = file_mapping["codebook"]
 
-        if detected.codebook_files:
-            if study_dir != working_dir:
-                state.codebook_file = str(original_deposit / detected.codebook_files[0].name)
-            else:
-                state.codebook_file = str(detected.codebook_files[0])
+    if "design_report" in file_mapping:
+        state.design_report_file = file_mapping["design_report"]
 
-        if detected.design_report_files:
-            if study_dir != working_dir:
-                state.design_report_file = str(original_deposit / detected.design_report_files[0].name)
-            else:
-                state.design_report_file = str(detected.design_report_files[0])
+    print(f"[OK] Files copied to: micro/")
+    print(f"   Email folder preserved: {email_folder.name}/ (raw backup)")
 
     # Mark Step 0 as complete
     state.set_step_status(0, StepStatus.COMPLETED, "Folder initialized (CSES standard)")
@@ -483,18 +398,6 @@ def cmd_init(args) -> Path:
     print(f"\n[OK] Study initialized: {country} {year}")
     print(f"   Session ID: {state.session_id}")
     print(f"   Working directory: {study_dir}")
-
-    # Clean up source files from root directory only in legacy mode
-    # (email folder mode doesn't need cleanup - email folder is the raw backup)
-    if not email_result and study_dir != working_dir:
-        print("\nCleaning up source files from root directory...")
-        cleanup_results = organizer.cleanup_source_files(working_dir, study_dir)
-        if cleanup_results["deleted"]:
-            print(f"   Removed {len(cleanup_results['deleted'])} file(s)")
-            active_logger.log_message(f"Cleaned up {len(cleanup_results['deleted'])} source files from root")
-        if cleanup_results["errors"]:
-            for e in cleanup_results["errors"]:
-                print(f"   [!] {e}")
 
     return study_dir
 
@@ -761,9 +664,24 @@ def cmd_interactive(args):
 
     if not state:
         print("No study initialized in this folder.\n")
-        print("Scanning files...")
-        print(detect_and_summarize(working_dir))
-        print()
+
+        # Check for email folder with data
+        organizer = FileOrganizer(working_dir)
+        email_result = organizer.find_email_folder()
+
+        if email_result:
+            email_folder, data_folder = email_result
+            detected = organizer.detect_files(source_dir=data_folder)
+            print(f"Found email folder: {email_folder.name}/{data_folder.name}/")
+            print(f"  Data files: {len(detected.data_files)}")
+            print(f"  Questionnaires: {len(detected.questionnaire_files)}")
+            print(f"  Codebooks: {len(detected.codebook_files)}")
+            print()
+        else:
+            print("[X] No email folder found with data files.")
+            print("   Run this in a country folder (e.g., SouthKorea_2024/)")
+            print("   that contains an email subfolder with deposited files.")
+            return
 
         response = input("Initialize a new study? [Y/n]: ").strip().lower()
         if response == 'n':
