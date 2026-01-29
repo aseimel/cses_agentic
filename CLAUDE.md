@@ -60,6 +60,12 @@ install.ps1          # Windows installer
    - Never leave users waiting with no output - they will think the tool is frozen
    - NO emojis (Windows cp1252 encoding compatibility)
 
+4. **NEVER allow skipping workflow steps**
+   - Every step in the CSES workflow is required
+   - Do NOT implement "skip" options for steps
+   - Users can either proceed with a step or provide custom instructions
+   - This is similar to Claude Code plan mode: approve or provide feedback
+
 ## Key Files
 
 | File | Purpose |

@@ -735,16 +735,15 @@ def cmd_interactive(args):
         print(guidance)
         print()
 
-        # Ask for confirmation
-        print("Options:")
-        print("  [Y] Yes, proceed with this step")
-        print("  [N] No, I'll do this manually")
-        print("  [S] Skip this step")
-        print("  [Q] Quit")
+        # Ask for confirmation (like Claude Code plan mode)
+        print("Proceed with this step? [Y/n/q]")
+        print("  Y or Enter = Yes, proceed")
+        print("  N = No, provide custom instructions")
+        print("  Q = Quit")
         print()
 
         try:
-            choice = input("Your choice [Y/n/s/q]: ").strip().lower()
+            choice = input("> ").strip().lower()
         except (EOFError, KeyboardInterrupt):
             print("\nGoodbye!")
             break
@@ -754,55 +753,58 @@ def cmd_interactive(args):
             break
 
         elif choice in ['n', 'no']:
-            # Show manual instructions
+            # User wants to provide custom instructions
             print()
-            print("Manual instructions:")
-            print("-" * 40)
-            print(f"To complete Step {next_step} manually:")
-            print()
-            if next_step == 1:
-                print("1. Verify all required files are in the micro/ folder:")
-                print("   - Data file (.dta, .sav, .csv)")
-                print("   - Questionnaire (English and native)")
-                print("   - Codebook (if available)")
-                print("   - Design report")
-                print("2. Note any missing files in the log file")
-            elif next_step == 7:
-                print("1. Open the questionnaire and codebook")
-                print("2. Compare each survey question to CSES Module 6 schema")
-                print("3. Fill in the deposited variables tracking sheet:")
-                print("   micro/deposited variable list/deposited variables-m6_XXX_YYYY.xlsx")
-                print("4. Create the Stata .do file for recoding")
-            else:
-                print("Please complete this step according to CSES guidelines.")
-                print("Update the log file with your progress.")
-            print()
-            print("Press Enter when done to mark this step complete,")
-            print("or type 'skip' to move to the next step.")
+            print("Enter your instructions for this step:")
+            print("(What should be done differently? Press Enter twice when done)")
             print()
 
+            custom_lines = []
             try:
-                done = input("> ").strip().lower()
+                while True:
+                    line = input()
+                    if line == "" and custom_lines and custom_lines[-1] == "":
+                        break
+                    custom_lines.append(line)
             except (EOFError, KeyboardInterrupt):
                 print("\nGoodbye!")
                 break
 
-            if done == 'skip':
-                state.set_step_status(next_step, StepStatus.COMPLETED, "Skipped by user")
-            else:
-                state.set_step_status(next_step, StepStatus.COMPLETED, "Completed manually")
-            state.save()
-            print(f"[OK] Step {next_step} marked as complete.")
-            print()
+            custom_instructions = "\n".join(custom_lines).strip()
 
-        elif choice in ['s', 'skip']:
-            state.set_step_status(next_step, StepStatus.COMPLETED, "Skipped")
-            state.save()
-            print(f"[OK] Step {next_step} skipped.")
+            if custom_instructions:
+                print()
+                print(f"Executing Step {next_step} with custom instructions...")
+                print()
+
+                # Execute step with custom instructions passed as kwargs
+                result = executor.execute_step(next_step, custom_instructions=custom_instructions)
+
+                if result.success:
+                    print(f"[OK] {result.message}")
+                    state.set_step_status(next_step, StepStatus.COMPLETED, result.message)
+                else:
+                    print(f"[!] {result.message}")
+                    state.set_step_status(next_step, StepStatus.IN_PROGRESS, result.message)
+
+                if result.artifacts:
+                    print(f"\nFiles created:")
+                    for a in result.artifacts:
+                        print(f"  - {a}")
+
+                if result.issues:
+                    print(f"\nIssues to address:")
+                    for i in result.issues:
+                        print(f"  [!] {i}")
+
+                state.save()
+            else:
+                print("No instructions provided. Returning to step.")
+
             print()
 
         else:
-            # Yes, proceed
+            # Yes, proceed (default)
             print()
             print(f"Executing Step {next_step}...")
             print()
