@@ -163,27 +163,51 @@ if ($script:PythonArgs.Length -gt 0) {
 Write-Host "Installing dependencies (this may take a few minutes)..." -ForegroundColor Cyan
 Write-Host ""
 
-try {
-    & "$InstallDir\.venv\Scripts\python.exe" -m pip install --upgrade pip
-    if ($LASTEXITCODE -ne 0) {
-        throw "pip upgrade failed"
-    }
+$pipExe = "$InstallDir\.venv\Scripts\pip.exe"
 
-    & "$InstallDir\.venv\Scripts\python.exe" -m pip install -r requirements.txt
-    if ($LASTEXITCODE -ne 0) {
-        throw "pip install requirements failed"
-    }
-} catch {
-    Write-Host ""
-    Write-Host "[X] Failed to install dependencies: $_" -ForegroundColor Red
-    Write-Host ""
-    Write-Host "This may be because Python 3.14 is too new." -ForegroundColor Yellow
-    Write-Host "Some packages may not support Python 3.14 yet." -ForegroundColor Yellow
-    Write-Host ""
-    Write-Host "Try installing Python 3.12 from python.org and run the installer again." -ForegroundColor Yellow
-    Write-Host ""
-    Read-Host "Press Enter to continue anyway (may not work)"
+# Upgrade pip first
+& "$InstallDir\.venv\Scripts\python.exe" -m pip install --upgrade pip --quiet
+if ($LASTEXITCODE -ne 0) {
+    Write-Host "[!] Warning: pip upgrade failed, continuing..." -ForegroundColor Yellow
 }
+
+# Try installing with pre-release packages allowed (helps with Python 3.14)
+Write-Host "Installing packages..." -ForegroundColor Cyan
+& $pipExe install --pre -r requirements.txt 2>&1 | ForEach-Object {
+    if ($_ -match "error|Error|ERROR|failed|Failed") {
+        Write-Host $_ -ForegroundColor Red
+    } elseif ($_ -match "Successfully|Requirement already") {
+        Write-Host $_ -ForegroundColor Green
+    } else {
+        Write-Host $_
+    }
+}
+
+if ($LASTEXITCODE -ne 0) {
+    Write-Host ""
+    Write-Host "[!] Some packages failed to install. Trying alternative approach..." -ForegroundColor Yellow
+
+    # Try installing core packages one by one
+    $corePackages = @("pandas", "polars", "numpy", "pyreadstat", "python-docx", "pypdf", "litellm", "python-dotenv", "reportlab")
+
+    foreach ($pkg in $corePackages) {
+        Write-Host "  Installing $pkg..." -ForegroundColor Cyan
+        & $pipExe install --pre $pkg 2>&1 | Out-Null
+        if ($LASTEXITCODE -eq 0) {
+            Write-Host "    [OK] $pkg" -ForegroundColor Green
+        } else {
+            Write-Host "    [!] $pkg failed - trying without pre-release..." -ForegroundColor Yellow
+            & $pipExe install $pkg 2>&1 | Out-Null
+            if ($LASTEXITCODE -eq 0) {
+                Write-Host "    [OK] $pkg" -ForegroundColor Green
+            } else {
+                Write-Host "    [X] $pkg could not be installed" -ForegroundColor Red
+            }
+        }
+    }
+}
+
+Write-Host ""
 
 # Create batch file launcher
 Write-Host "Creating 'cses' command..." -ForegroundColor Cyan
