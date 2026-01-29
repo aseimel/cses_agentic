@@ -1065,26 +1065,38 @@ def cmd_update(args):
 
             # Install any new dependencies
             print("Installing dependencies...")
-            venv_python = install_dir / ".venv" / ("Scripts" if os.name == "nt" else "bin") / "python"
+            import subprocess
+
+            # Try multiple Python locations
+            venv_python = install_dir / ".venv" / ("Scripts" if os.name == "nt" else "bin") / ("python.exe" if os.name == "nt" else "python")
+
+            python_cmd = None
             if venv_python.exists():
-                import subprocess
-                result = subprocess.run(
-                    [str(venv_python), "-m", "pip", "install", "--upgrade", "-r", str(install_dir / "requirements.txt")],
-                    capture_output=True,
-                    text=True
-                )
-                if result.returncode != 0:
-                    print(f"[!] pip install had issues: {result.stderr}")
-                else:
-                    # Count newly installed packages
-                    installed = [line for line in result.stdout.split('\n') if 'Successfully installed' in line]
-                    if installed:
-                        print(f"[OK] {installed[0]}")
-                    else:
-                        print("[OK] All dependencies up to date")
+                python_cmd = str(venv_python)
+                print(f"  Using venv: {venv_python}")
             else:
-                print("[!] No virtual environment found at .venv/")
-                print("    Run: pip install -r requirements.txt")
+                # Try system Python
+                python_cmd = sys.executable
+                print(f"  Using system Python: {python_cmd}")
+
+            result = subprocess.run(
+                [python_cmd, "-m", "pip", "install", "--upgrade", "-r", str(install_dir / "requirements.txt")],
+                capture_output=True,
+                text=True
+            )
+            if result.returncode != 0:
+                print(f"[!] pip install failed:")
+                print(f"    {result.stderr}")
+                print()
+                print("Manual fix: Run this command:")
+                print(f"    pip install reportlab")
+            else:
+                # Count newly installed packages
+                installed = [line for line in result.stdout.split('\n') if 'Successfully installed' in line]
+                if installed:
+                    print(f"[OK] {installed[0]}")
+                else:
+                    print("[OK] All dependencies up to date")
 
     except Exception as e:
         print(f"Update failed: {e}")
