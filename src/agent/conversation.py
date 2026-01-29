@@ -251,7 +251,14 @@ Logged to file. Next: Read questionnaire to identify variables. Proceed?"
 - USE TOOLS for every action
 - NEVER ask permission to read files
 - ALWAYS end with "Proceed?" after proposing next step
-- Keep responses SHORT and action-focused"""
+
+## RESPONSE DETAIL
+When reading documents, provide DETAILED findings:
+- List specific values found (sample size, dates, response rates, modes)
+- Quote relevant passages when appropriate
+- Name specific parties, candidates, institutions mentioned
+- Report what you logged to the file and confirm success
+- Be thorough in your analysis, not brief"""
 
 
 def get_file_info(state: WorkflowState) -> str:
@@ -517,42 +524,52 @@ def _execute_tool_loop(
 
 
 def _execute_single_tool(tool_call, active_logger: "ActiveLogger", state: WorkflowState, on_tool_output: callable = None) -> str:
-    """Execute a single tool call and return the result."""
+    """Execute a single tool call with verification. Returns result string."""
     name = tool_call.function.name
     try:
         args = json.loads(tool_call.function.arguments)
     except json.JSONDecodeError:
-        return f"Error: Invalid JSON arguments for {name}"
+        return f"FAILED: Invalid JSON arguments for {name}"
 
     def notify(msg: str):
         """Send tool output to callback or print."""
         if on_tool_output:
             on_tool_output(msg)
-        else:
-            print(msg)
 
     if name == "write_log_entry":
         message = args.get("message", "")
-        active_logger.log_message(message)
-        notify(f"[Logged] {message[:60]}...")
-        return f"Logged: {message}"
+        success, status = active_logger.log_message(message)
+        if success:
+            notify(f"[OK] {status}")
+            return f"SUCCESS: {status}"
+        else:
+            notify(f"[FAILED] {status}")
+            return f"FAILED: {status}"
 
     elif name == "update_study_design":
         field = args.get("field", "")
         value = args.get("value", "")
-        active_logger.update_study_design_section({field: value})
-        notify(f"[Study Design] {field}: {value[:40]}...")
-        return f"Updated study design: {field} = {value}"
+        success, status = active_logger.update_study_design_section({field: value})
+        if success:
+            notify(f"[OK] Study design: {field} = {value[:30]}...")
+            return f"SUCCESS: Updated {field} = {value}"
+        else:
+            notify(f"[FAILED] {status}")
+            return f"FAILED to update study design: {status}"
 
     elif name == "add_collaborator_question":
         question = args.get("question", "")
-        active_logger.add_collaborator_question(
+        success, status = active_logger.add_collaborator_question(
             question,
             "From conversation",
             state.get_next_step() or 0
         )
-        notify(f"[Question added] {question[:60]}...")
-        return f"Added question: {question}"
+        if success:
+            notify(f"[OK] {status}")
+            return f"SUCCESS: {status}"
+        else:
+            notify(f"[FAILED] {status}")
+            return f"FAILED: {status}"
 
     elif name == "update_variable_mapping":
         cses_code = args.get("cses_code", "")
@@ -563,21 +580,33 @@ def _execute_single_tool(tool_call, active_logger: "ActiveLogger", state: Workfl
 
     elif name == "update_election_summary":
         summary = args.get("summary", "")
-        active_logger.update_election_summary(summary)
-        notify("[Election Summary] Updated...")
-        return f"Updated election summary"
+        success, status = active_logger.update_election_summary(summary)
+        if success:
+            notify(f"[OK] {status}")
+            return f"SUCCESS: {status}"
+        else:
+            notify(f"[FAILED] {status}")
+            return f"FAILED: {status}"
 
     elif name == "update_parties_leaders":
         content = args.get("content", "")
-        active_logger.update_parties_leaders(content)
-        notify("[Parties/Leaders] Updated...")
-        return f"Updated parties and leaders"
+        success, status = active_logger.update_parties_leaders(content)
+        if success:
+            notify(f"[OK] {status}")
+            return f"SUCCESS: {status}"
+        else:
+            notify(f"[FAILED] {status}")
+            return f"FAILED: {status}"
 
     elif name == "add_todo_item":
         item = args.get("item", "")
-        active_logger.add_todo_item(item)
-        notify(f"[TODO] {item[:50]}...")
-        return f"Added TODO: {item}"
+        success, status = active_logger.add_todo_item(item)
+        if success:
+            notify(f"[OK] {status}")
+            return f"SUCCESS: {status}"
+        else:
+            notify(f"[FAILED] {status}")
+            return f"FAILED: {status}"
 
     elif name == "read_file":
         path = args.get("path", "")

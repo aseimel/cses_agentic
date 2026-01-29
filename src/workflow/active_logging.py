@@ -237,36 +237,32 @@ class ActiveLogger:
         if is_question or any(kw in issue.lower() for kw in question_keywords):
             self.add_collaborator_question(issue, f"Step {step_num}", step_num)
 
-    def add_collaborator_question(self, question: str, context: str, step_num: int) -> str:
+    def add_collaborator_question(self, question: str, context: str, step_num: int) -> tuple:
         """
         Add a question for the collaborator.
-
-        Args:
-            question: The question text
-            context: Context for the question
-            step_num: Step number where question arose
-
-        Returns:
-            Question ID (e.g., "CQ AA1")
+        Returns (success, message) tuple. Message includes question ID.
         """
         from .state import WORKFLOW_STEPS
 
-        # Add to state
-        question_id = self.state.add_collaborator_question(question, context, step_num)
+        try:
+            # Add to state
+            question_id = self.state.add_collaborator_question(question, context, step_num)
 
-        # Get step name
-        step_name = WORKFLOW_STEPS.get(step_num, {}).get("name", f"Step {step_num}")
+            # Get step name
+            step_name = WORKFLOW_STEPS.get(step_num, {}).get("name", f"Step {step_num}")
 
-        # Write to questions file
-        if self.questions_file_path and self.questions_file_path.exists():
-            self._add_question_to_file(question_id, question, context, step_num, step_name)
+            # Write to questions file
+            if self.questions_file_path and self.questions_file_path.exists():
+                self._add_question_to_file(question_id, question, context, step_num, step_name)
 
-        # Also add to log file's Questions section
-        if self.log_file_path and self.log_file_path.exists():
-            self._add_question_to_log(question_id, question)
+            # Also add to log file's Questions section
+            if self.log_file_path and self.log_file_path.exists():
+                self._add_question_to_log(question_id, question)
 
-        print(f"[Question {question_id}] Added: {question[:50]}...")
-        return question_id
+            return True, f"Question {question_id} added: {question[:50]}..."
+
+        except Exception as e:
+            return False, f"Failed to add question: {e}"
 
     def _add_question_to_file(self, question_id: str, question: str, context: str,
                                step_num: int, step_name: str):
@@ -328,13 +324,10 @@ class ActiveLogger:
         except Exception as e:
             logger.error(f"Failed to add question to log: {e}")
 
-    def log_message(self, message: str, level: str = "INFO"):
+    def log_message(self, message: str, level: str = "INFO") -> tuple:
         """
         Log a message to the log file.
-
-        Args:
-            message: Message to log
-            level: Log level (INFO, WARNING, ERROR)
+        Returns (success, status_message) tuple.
         """
         if not self.log_file_path:
             # Try to initialize files if not already done
@@ -342,12 +335,12 @@ class ActiveLogger:
                 self._initialize_files()
 
         if not self.log_file_path or not self.log_file_path.exists():
-            return
+            return False, "Log file does not exist"
 
         try:
             # Read current content
-            content = self.log_file_path.read_text()
-            lines = content.split("\n")
+            original_content = self.log_file_path.read_text()
+            lines = original_content.split("\n")
 
             # Update "Most recent update" line
             for i, line in enumerate(lines):
@@ -378,19 +371,34 @@ class ActiveLogger:
                     insert_idx = i - 2
                     break
 
+            inserted = False
             if insert_idx and insert_idx < len(lines):
                 lines.insert(insert_idx, entry_text)
+                inserted = True
             else:
                 # Fallback: find Questions section and insert before it
                 for i, line in enumerate(lines):
                     if ">>> Questions for Collaborator" in line and "===" in lines[i-1] if i > 0 else False:
                         lines.insert(i - 1, entry_text)
+                        inserted = True
                         break
+
+            if not inserted:
+                return False, "Could not find insertion point in log file"
 
             self.log_file_path.write_text("\n".join(lines))
 
+            # Verify the entry was written
+            verify_content = self.log_file_path.read_text()
+            if entry_text not in verify_content:
+                self.log_file_path.write_text(original_content)
+                return False, "Verification failed - entry not found after write"
+
+            return True, f"Logged: {message[:50]}..."
+
         except Exception as e:
             logger.error(f"Failed to write to log file: {e}")
+            return False, f"Error writing to log: {e}"
 
     def update_log_file_path(self):
         """Update state with current log file path."""
@@ -402,18 +410,13 @@ class ActiveLogger:
         if self.questions_file_path:
             self.state.collaborator_questions_file = str(self.questions_file_path)
 
-    def update_study_design_section(self, info: dict):
+    def update_study_design_section(self, info: dict) -> tuple:
         """
         Update the OVERVIEW OF STUDY DESIGN AND WEIGHTS section in the log file.
-
-        This method preserves existing values and only updates fields provided in info.
-
-        Args:
-            info: Dictionary with keys: sample_design, sample_size, weighting,
-                  collection_period, mode, response_rate, field_lag
+        Returns (success, message) tuple.
         """
         if not self.log_file_path or not self.log_file_path.exists():
-            return
+            return False, "Log file does not exist"
 
         country_code = self.state.country_code or self.state.country[:3].upper()
         year = self.state.year
@@ -436,7 +439,11 @@ class ActiveLogger:
             f"Field Lag: {merged.get('field_lag', 'TBD')}",
         ]
 
-        self._update_log_section(section_marker, "\n".join(content_lines))
+        success, msg = self._update_log_section(section_marker, "\n".join(content_lines))
+        if success:
+            fields_updated = ", ".join(info.keys())
+            return True, f"Study design updated: {fields_updated}"
+        return success, msg
 
     def _read_study_design_values(self, section_marker: str) -> dict:
         """
@@ -483,56 +490,53 @@ class ActiveLogger:
 
         return values
 
-    def update_election_summary(self, summary: str):
+    def update_election_summary(self, summary: str) -> tuple:
         """
         Update the ELECTION SUMMARY section in the log file.
-
-        Args:
-            summary: Election summary text (date, type, outcome, turnout, etc.)
+        Returns (success, message) tuple.
         """
         if not self.log_file_path or not self.log_file_path.exists():
-            return
+            return False, "Log file does not exist"
 
         country_code = self.state.country_code or self.state.country[:3].upper()
         year = self.state.year
-        self._update_log_section(
+        success, msg = self._update_log_section(
             f"<<>> ELECTION SUMMARY - {country_code}_{year}_M6:",
             summary
         )
+        if success:
+            return True, "Election summary updated"
+        return success, msg
 
-    def update_parties_leaders(self, content: str):
+    def update_parties_leaders(self, content: str) -> tuple:
         """
         Update the PARTIES AND LEADERS section in the log file.
-
-        Args:
-            content: Information about political parties, candidates, and leaders
+        Returns (success, message) tuple.
         """
         if not self.log_file_path or not self.log_file_path.exists():
-            return
+            return False, "Log file does not exist"
 
         country_code = self.state.country_code or self.state.country[:3].upper()
         year = self.state.year
-        self._update_log_section(
+        success, msg = self._update_log_section(
             f"<<>> PARTIES AND LEADERS: {country_code}_{year}_M6",
             content
         )
+        if success:
+            return True, "Parties and leaders updated"
+        return success, msg
 
-    def add_todo_item(self, item: str):
+    def add_todo_item(self, item: str) -> tuple:
         """
         Add an item to the Things To Do Before Releasing section.
-
-        Args:
-            item: Task description to add to pre-release checklist
+        Returns (success, message) tuple.
         """
         if not self.log_file_path or not self.log_file_path.exists():
-            return
-
-        country_code = self.state.country_code or self.state.country[:3].upper()
-        year = self.state.year
+            return False, "Log file does not exist"
 
         try:
-            content = self.log_file_path.read_text()
-            lines = content.split("\n")
+            original_content = self.log_file_path.read_text()
+            lines = original_content.split("\n")
 
             # Find ">>> Things To Do Before Releasing" and insert before next section
             found_section = False
@@ -545,11 +549,23 @@ class ActiveLogger:
                     break
 
             if insert_idx:
-                lines.insert(insert_idx, f"- {item}")
+                todo_entry = f"- {item}"
+                lines.insert(insert_idx, todo_entry)
                 self.log_file_path.write_text("\n".join(lines))
+
+                # Verify
+                verify = self.log_file_path.read_text()
+                if todo_entry not in verify:
+                    self.log_file_path.write_text(original_content)
+                    return False, "Verification failed - TODO not found after write"
+
+                return True, f"TODO added: {item[:30]}..."
+
+            return False, "Could not find TODO section in log file"
 
         except Exception as e:
             logger.error(f"Failed to add TODO item: {e}")
+            return False, f"Error adding TODO: {e}"
 
     def update_deposit_inventory(self, data_files: list, questionnaires: list,
                                   codebooks: list, design_reports: list, macro_reports: list):
@@ -601,68 +617,120 @@ class ActiveLogger:
 
         self._update_deposited_files_section("\n".join(lines))
 
-    def _update_log_section(self, section_marker: str, content: str):
+    def _update_log_section(self, section_marker: str, content: str) -> tuple:
         """
         Update a specific section in the log file.
-
-        Args:
-            section_marker: The section header to find (e.g., "<<>> OVERVIEW OF STUDY DESIGN")
-            content: Content to insert after the section header
+        SAFE: Only replaces content between section marker and next marker.
+        Returns (success, message) tuple.
         """
+        if not self.log_file_path or not self.log_file_path.exists():
+            return False, "Log file does not exist"
+
         try:
-            log_content = self.log_file_path.read_text()
-            lines = log_content.split("\n")
+            # Read and preserve original for rollback
+            original_content = self.log_file_path.read_text()
+            lines = original_content.split("\n")
 
-            # Find the section and replace content until next section
-            found_section = False
+            # Find section start
             start_idx = None
-            end_idx = None
-
             for i, line in enumerate(lines):
                 if section_marker in line:
-                    found_section = True
-                    start_idx = i + 1  # Start after the marker
-                elif found_section and (line.startswith("<<>>") or line.startswith(">>>") or line.startswith("=")):
+                    start_idx = i + 1  # Content starts after marker
+                    break
+
+            if start_idx is None:
+                return False, f"Section marker not found: {section_marker}"
+
+            # Find section end - look for next section marker (<<>> or >>> or ===)
+            end_idx = None
+            for i in range(start_idx, len(lines)):
+                line = lines[i].strip()
+                if line.startswith("<<>>") or line.startswith(">>>") or line.startswith("=" * 10):
                     end_idx = i
                     break
 
-            if start_idx is not None:
+            # SAFE FALLBACK: If no end marker, only replace until next blank line
+            if end_idx is None:
+                for i in range(start_idx, len(lines)):
+                    if lines[i].strip() == "" and i > start_idx:
+                        end_idx = i
+                        break
+                # Last resort: only replace content area, not beyond
                 if end_idx is None:
-                    end_idx = len(lines)
+                    end_idx = min(start_idx + 5, len(lines))  # Max 5 lines
 
-                # Replace content between markers
-                new_lines = lines[:start_idx] + ["", content, ""] + lines[end_idx:]
-                self.log_file_path.write_text("\n".join(new_lines))
+            # Build new content - preserve everything before and after
+            new_lines = lines[:start_idx] + ["", content, ""] + lines[end_idx:]
+            new_content = "\n".join(new_lines)
+
+            # Write new content
+            self.log_file_path.write_text(new_content)
+
+            # VERIFY: Read back and check
+            verify_content = self.log_file_path.read_text()
+            if content not in verify_content:
+                # Restore original
+                self.log_file_path.write_text(original_content)
+                return False, "Verification failed - content not found after write"
+
+            if len(verify_content) < len(original_content) * 0.5:
+                # File shrunk by more than 50% - something went wrong
+                self.log_file_path.write_text(original_content)
+                return False, "Verification failed - file size decreased significantly"
+
+            return True, "Section updated successfully"
 
         except Exception as e:
             logger.error(f"Failed to update log section: {e}")
+            return False, f"Error updating section: {e}"
 
-    def _update_deposited_files_section(self, content: str):
-        """Update the Deposited Files section in the log file."""
+    def _update_deposited_files_section(self, content: str) -> tuple:
+        """Update the Deposited Files section - SAFE version with verification."""
+        if not self.log_file_path or not self.log_file_path.exists():
+            return False, "Log file does not exist"
+
         try:
-            log_content = self.log_file_path.read_text()
-            lines = log_content.split("\n")
+            original_content = self.log_file_path.read_text()
+            lines = original_content.split("\n")
 
-            # Find "Deposited Files:" and replace until next blank line or section
+            # Find "Deposited Files:" line
             start_idx = None
-            end_idx = None
-
             for i, line in enumerate(lines):
                 if "Deposited Files:" in line:
                     start_idx = i
-                elif start_idx is not None and (line.startswith(">>>") or line.startswith("=")):
+                    break
+
+            if start_idx is None:
+                return False, "Deposited Files section not found"
+
+            # Find end - next section marker
+            end_idx = None
+            for i in range(start_idx + 1, len(lines)):
+                line = lines[i].strip()
+                if line.startswith(">>>") or line.startswith("=" * 10):
                     end_idx = i
                     break
 
-            if start_idx is not None:
-                if end_idx is None:
-                    end_idx = start_idx + 1
+            # Safe fallback
+            if end_idx is None:
+                end_idx = start_idx + 1
 
-                new_lines = lines[:start_idx] + [content, ""] + lines[end_idx:]
-                self.log_file_path.write_text("\n".join(new_lines))
+            new_lines = lines[:start_idx] + [content, ""] + lines[end_idx:]
+            new_content = "\n".join(new_lines)
+
+            self.log_file_path.write_text(new_content)
+
+            # Verify
+            verify = self.log_file_path.read_text()
+            if "Deposited Files:" not in verify:
+                self.log_file_path.write_text(original_content)
+                return False, "Verification failed"
+
+            return True, "Deposited files updated"
 
         except Exception as e:
             logger.error(f"Failed to update deposited files section: {e}")
+            return False, f"Error: {e}"
 
     def update_variable_mapping(self, cses_variable: str, source_variable: str, remarks: str = ""):
         """

@@ -1,6 +1,6 @@
-"""CSES Chat TUI using Textual with three-panel layout."""
+"""CSES Chat TUI using Textual with two-panel layout."""
 from textual.app import App, ComposeResult
-from textual.containers import Horizontal, Vertical, VerticalScroll
+from textual.containers import Horizontal, VerticalScroll
 from textual.widgets import Header, Footer, Input, Static, Label
 from textual.binding import Binding
 import asyncio
@@ -88,40 +88,13 @@ class WorkflowPanel(Static):
         self.query_one("#file-info", Static).update("\n".join(file_lines) if file_lines else "(none)")
 
 
-class ToolLog(Static):
-    """Bottom panel showing recent tool execution output."""
-
-    DEFAULT_CSS = """
-    ToolLog {
-        height: 5;
-        border-top: solid $secondary;
-        padding: 0 1;
-        background: $surface-darken-2;
-    }
-    """
-
-    def __init__(self, **kwargs):
-        super().__init__(**kwargs)
-        self._entries = []
-
-    def add_entry(self, msg: str):
-        """Add a tool output entry."""
-        self._entries.append(msg)
-        # Keep only last 10 entries
-        if len(self._entries) > 10:
-            self._entries = self._entries[-10:]
-        # Show last 3 entries in the panel
-        display_entries = self._entries[-3:]
-        self.update("\n".join(display_entries))
-
-
 class Message(Static):
     """A chat message."""
     pass
 
 
 class CSESChat(App):
-    """CSES Assistant Terminal Interface with three-panel layout."""
+    """CSES Assistant Terminal Interface with two-panel layout."""
 
     CSS = """
     /* Main layout */
@@ -136,20 +109,10 @@ class CSESChat(App):
         background: $surface-darken-1;
     }
 
-    #chat-container {
-        width: 1fr;
-    }
-
     #chat-view {
+        width: 1fr;
         height: 1fr;
         padding: 0 1;
-    }
-
-    #tool-log {
-        height: 5;
-        border-top: solid $secondary;
-        padding: 0 1;
-        background: $surface-darken-2;
     }
 
     #input {
@@ -223,9 +186,7 @@ class CSESChat(App):
         yield Header()
         with Horizontal(id="main-container"):
             yield WorkflowPanel(self.state, id="sidebar")
-            with Vertical(id="chat-container"):
-                yield VerticalScroll(id="chat-view")
-                yield ToolLog(id="tool-log")
+            yield VerticalScroll(id="chat-view")
         yield Input(placeholder="Type message... (Ctrl+C to quit)", id="input")
         yield Footer()
 
@@ -247,8 +208,6 @@ class CSESChat(App):
                 f"All steps completed! Type 'status' to review progress."
             )
         self._add_message(welcome, role="system")
-        # Initial tool log message
-        self.query_one("#tool-log", ToolLog).update("Tool activity will appear here...")
 
     def _add_message(self, content: str, role: str = "user"):
         """Add a message to the chat view."""
@@ -256,15 +215,6 @@ class CSESChat(App):
         msg = Message(content, classes=role)
         chat.mount(msg)
         msg.scroll_visible()
-
-    def on_tool_output(self, msg: str):
-        """Callback for tool execution feedback - called from background thread."""
-        # Use call_from_thread to safely update UI from background thread
-        self.call_from_thread(self._update_tool_log, msg)
-
-    def _update_tool_log(self, msg: str):
-        """Update tool log from main thread."""
-        self.query_one("#tool-log", ToolLog).add_entry(msg)
 
     async def _refresh_sidebar_async(self):
         """Refresh the workflow status sidebar asynchronously."""
@@ -300,11 +250,10 @@ class CSESChat(App):
         # Show thinking indicator
         self._add_message("Thinking...", "system")
 
-        # Get response in background thread, passing our callback
+        # Get response in background thread (no tool callback needed now)
         response = await asyncio.to_thread(
             self.session.send,
-            message,
-            on_tool_output=self.on_tool_output
+            message
         )
 
         # Remove "Thinking..." and show response
