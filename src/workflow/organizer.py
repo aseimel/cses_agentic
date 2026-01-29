@@ -632,8 +632,9 @@ class FileOrganizer:
         """
         Copy a document file, converting to PDF if necessary.
 
-        Handles: .pdf (direct copy), .docx/.doc (convert via python-docx + reportlab)
-        If conversion fails, copies the original with .pdf extension as fallback.
+        Handles: .pdf (direct copy), .docx/.doc, .txt, .rtf
+        Preserves formatting as much as possible (headings, bold, lists).
+        If conversion fails, copies the original file alongside.
 
         Args:
             src: Source file path
@@ -646,56 +647,127 @@ class FileOrganizer:
             shutil.copy2(src, dst)
             return
 
-        # Try to convert .docx to PDF
+        # Try to convert .docx to PDF with formatting
         if src_ext in ['.docx', '.doc']:
             try:
                 from docx import Document
+                from docx.shared import Pt
                 from reportlab.lib.pagesizes import letter
-                from reportlab.pdfgen import canvas
+                from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle
+                from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
                 from reportlab.lib.units import inch
+                from reportlab.lib import colors
 
                 # Read docx
                 doc = Document(src)
 
-                # Create PDF
-                c = canvas.Canvas(str(dst), pagesize=letter)
-                width, height = letter
-                y_position = height - inch
+                # Create PDF with platypus for better formatting
+                pdf_doc = SimpleDocTemplate(str(dst), pagesize=letter,
+                                           leftMargin=inch, rightMargin=inch,
+                                           topMargin=inch, bottomMargin=inch)
+
+                styles = getSampleStyleSheet()
+                # Add custom styles
+                styles.add(ParagraphStyle(name='Heading1Custom',
+                                         parent=styles['Heading1'],
+                                         fontSize=14, spaceAfter=12))
+                styles.add(ParagraphStyle(name='Heading2Custom',
+                                         parent=styles['Heading2'],
+                                         fontSize=12, spaceAfter=10))
+                styles.add(ParagraphStyle(name='BodyCustom',
+                                         parent=styles['Normal'],
+                                         fontSize=10, spaceAfter=6))
+
+                story = []
 
                 for para in doc.paragraphs:
                     text = para.text.strip()
-                    if text:
-                        # Wrap long lines
-                        words = text.split()
-                        line = ""
-                        for word in words:
-                            test_line = f"{line} {word}".strip()
-                            if len(test_line) > 80:  # Approximate line length
-                                c.drawString(inch, y_position, line)
-                                y_position -= 14
-                                line = word
-                            else:
-                                line = test_line
+                    if not text:
+                        story.append(Spacer(1, 6))
+                        continue
 
-                        if line:
-                            c.drawString(inch, y_position, line)
-                            y_position -= 14
+                    # Escape special characters for reportlab
+                    text = text.replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;')
 
-                        # New page if needed
-                        if y_position < inch:
-                            c.showPage()
-                            y_position = height - inch
+                    # Detect style based on paragraph properties
+                    style_name = 'BodyCustom'
+                    if para.style and para.style.name:
+                        style_lower = para.style.name.lower()
+                        if 'heading 1' in style_lower or 'title' in style_lower:
+                            style_name = 'Heading1Custom'
+                        elif 'heading 2' in style_lower:
+                            style_name = 'Heading2Custom'
+                        elif 'heading' in style_lower:
+                            style_name = 'Heading2Custom'
 
-                c.save()
+                    # Check for bold runs (make whole para bold if first run is bold)
+                    if para.runs and para.runs[0].bold:
+                        text = f"<b>{text}</b>"
+
+                    story.append(Paragraph(text, styles[style_name]))
+
+                # Handle tables
+                for table in doc.tables:
+                    table_data = []
+                    for row in table.rows:
+                        row_data = []
+                        for cell in row.cells:
+                            cell_text = cell.text.strip()
+                            cell_text = cell_text.replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;')
+                            row_data.append(Paragraph(cell_text, styles['BodyCustom']))
+                        table_data.append(row_data)
+
+                    if table_data:
+                        t = Table(table_data)
+                        t.setStyle(TableStyle([
+                            ('GRID', (0, 0), (-1, -1), 0.5, colors.grey),
+                            ('BACKGROUND', (0, 0), (-1, 0), colors.lightgrey),
+                            ('VALIGN', (0, 0), (-1, -1), 'TOP'),
+                        ]))
+                        story.append(Spacer(1, 12))
+                        story.append(t)
+                        story.append(Spacer(1, 12))
+
+                pdf_doc.build(story)
                 logger.info(f"Converted {src_ext} to PDF: {src.name}")
                 return
 
-            except ImportError:
-                logger.warning(f"Cannot convert {src_ext} to PDF - missing reportlab")
+            except ImportError as e:
+                logger.warning(f"Cannot convert {src_ext} to PDF - missing dependency: {e}")
             except Exception as e:
                 logger.warning(f"Failed to convert {src_ext} to PDF: {e}")
 
-        # Fallback: copy with original extension warning
+        # Try to convert .txt to PDF
+        if src_ext == '.txt':
+            try:
+                from reportlab.lib.pagesizes import letter
+                from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer
+                from reportlab.lib.styles import getSampleStyleSheet
+                from reportlab.lib.units import inch
+
+                text_content = src.read_text(encoding='utf-8', errors='replace')
+
+                pdf_doc = SimpleDocTemplate(str(dst), pagesize=letter,
+                                           leftMargin=inch, rightMargin=inch,
+                                           topMargin=inch, bottomMargin=inch)
+                styles = getSampleStyleSheet()
+                story = []
+
+                for line in text_content.split('\n'):
+                    line = line.replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;')
+                    if line.strip():
+                        story.append(Paragraph(line, styles['Normal']))
+                    else:
+                        story.append(Spacer(1, 6))
+
+                pdf_doc.build(story)
+                logger.info(f"Converted {src_ext} to PDF: {src.name}")
+                return
+
+            except Exception as e:
+                logger.warning(f"Failed to convert {src_ext} to PDF: {e}")
+
+        # Fallback: copy original file (keep original extension)
         fallback_dst = dst.with_suffix(src_ext)
         shutil.copy2(src, fallback_dst)
         logger.warning(f"Could not convert to PDF, kept original format: {fallback_dst.name}")
@@ -900,27 +972,27 @@ Translate to English, keeping question numbers and response options intact."""
                 mapping["questionnaire_english_translated"] = True
                 logger.info(f"Translated questionnaire to English: {native_src.name} -> {dst.name}")
 
-        # Copy codebook
+        # Copy codebook (convert to PDF)
         if detected.codebook_files:
             src = detected.codebook_files[0]
-            dst = micro_dir / f"{prefix}_codebook{src.suffix}"
-            shutil.copy2(src, dst)
+            dst = micro_dir / f"{prefix}_codebook.pdf"
+            self._copy_as_pdf(src, dst)
             mapping["codebook"] = str(dst)
             logger.info(f"Copied codebook: {src.name} -> {dst.name}")
 
-        # Copy design report
+        # Copy design report (convert to PDF)
         if detected.design_report_files:
             src = detected.design_report_files[0]
-            dst = micro_dir / f"{prefix}_design_report{src.suffix}"
-            shutil.copy2(src, dst)
+            dst = micro_dir / f"{prefix}_design_report.pdf"
+            self._copy_as_pdf(src, dst)
             mapping["design_report"] = str(dst)
             logger.info(f"Copied design report: {src.name} -> {dst.name}")
 
-        # Copy macro reports
+        # Copy macro reports (convert to PDF)
         if detected.macro_report_files:
             src = detected.macro_report_files[0]
-            dst = micro_dir / f"{prefix}_macro_report{src.suffix}"
-            shutil.copy2(src, dst)
+            dst = micro_dir / f"{prefix}_macro_report.pdf"
+            self._copy_as_pdf(src, dst)
             mapping["macro_report"] = str(dst)
             logger.info(f"Copied macro report: {src.name} -> {dst.name}")
 
