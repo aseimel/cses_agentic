@@ -74,10 +74,10 @@ echo "Setting up Python environment..."
 cd "$INSTALL_DIR"
 $PYTHON_CMD -m venv .venv
 
-# Install dependencies
+# Install dependencies with --upgrade to get latest Python 3.14-compatible versions
 echo "Installing dependencies..."
-.venv/bin/python -m pip install --upgrade pip -q
-.venv/bin/python -m pip install -r requirements.txt
+.venv/bin/python -m pip install --upgrade pip setuptools wheel -q
+.venv/bin/python -m pip install --upgrade -r requirements.txt
 
 # Create launcher script
 echo "Creating 'cses' command..."

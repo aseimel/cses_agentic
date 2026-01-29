@@ -643,7 +643,7 @@ def cmd_export(args):
 
 
 def cmd_interactive(args):
-    """Start interactive conversation mode."""
+    """Start interactive conversation mode with Claude."""
     working_dir = Path.cwd()
     study_dir = None
     state = None
@@ -712,133 +712,85 @@ def cmd_interactive(args):
     print(format_workflow_status(state))
     print()
 
-    # Step executor for running steps
-    executor = StepExecutor(state)
+    # Start conversational mode with Claude
+    print("=" * 60)
+    print("CSES Expert Assistant")
+    print("=" * 60)
+    print()
+    print("I'm here to guide you through the CSES data processing workflow.")
+    print("Ask me anything about the process, or tell me what you'd like to do.")
+    print()
+    print("Type 'quit' to exit, 'status' to see progress.")
+    print()
 
-    # Main workflow loop
-    while True:
-        next_step = state.get_next_step()
-        if next_step is None:
-            print("All steps completed!")
-            break
+    # Create conversation session
+    conversation = ConversationSession(state)
 
+    # Send initial greeting to get Claude's guidance
+    next_step = state.get_next_step()
+    if next_step is not None:
         step_info = WORKFLOW_STEPS[next_step]
-
-        # Present the step
-        print("=" * 60)
-        print(f"Step {next_step}: {step_info['name']}")
-        print("=" * 60)
-        print()
-        print(f"Description: {step_info['description']}")
-        print()
-
-        # Show what this step will do
-        guidance = executor.get_step_guidance(next_step)
-        print("What this step does:")
-        print(guidance)
-        print()
-
-        # Ask for confirmation (like Claude Code plan mode)
-        print("Proceed with this step? [Y/n/q]")
-        print("  Y or Enter = Yes, proceed")
-        print("  N = No, provide custom instructions")
-        print("  Q = Quit")
-        print()
-
+        initial_prompt = f"The study is initialized. The next step is Step {next_step}: {step_info['name']}. Briefly explain what this step involves and ask if the user is ready to proceed."
+        print("Connecting to Claude...")
         try:
-            choice = input("> ").strip().lower()
+            response = conversation.send(initial_prompt)
+            print()
+            print(f"Assistant: {response}")
+            print()
+        except Exception as e:
+            print(f"Note: Could not connect to Claude ({e})")
+            print(f"Next step: Step {next_step} - {step_info['name']}")
+            print()
+
+    while True:
+        try:
+            user_input = input("You: ").strip()
         except (EOFError, KeyboardInterrupt):
             print("\nGoodbye!")
             break
 
-        if choice in ['q', 'quit', 'exit']:
+        if not user_input:
+            continue
+
+        # Handle special commands
+        cmd_lower = user_input.lower()
+
+        if cmd_lower in ["quit", "exit", "q"]:
             print("Goodbye!")
             break
 
-        elif choice in ['n', 'no']:
-            # User wants to provide custom instructions
+        elif cmd_lower == "status":
+            conversation.refresh_state()
             print()
-            print("Enter your instructions for this step:")
-            print("(What should be done differently? Press Enter twice when done)")
+            print(format_workflow_status(conversation.state))
             print()
+            continue
 
-            custom_lines = []
-            try:
-                while True:
-                    line = input()
-                    if line == "" and custom_lines and custom_lines[-1] == "":
-                        break
-                    custom_lines.append(line)
-            except (EOFError, KeyboardInterrupt):
-                print("\nGoodbye!")
-                break
+        elif cmd_lower == "help":
+            print("""
+Just chat naturally! You can ask things like:
+  - "What should I do next?"
+  - "Explain step 3"
+  - "I'm having trouble with the questionnaire"
+  - "What are the CSES coding conventions?"
+  - "Proceed with this step"
+  - "Skip this step"
 
-            custom_instructions = "\n".join(custom_lines).strip()
+Commands: status, quit, help
+""")
+            continue
 
-            if custom_instructions:
-                print()
-                print(f"Executing Step {next_step} with custom instructions...")
-                print()
-
-                # Execute step with custom instructions passed as kwargs
-                result = executor.execute_step(next_step, custom_instructions=custom_instructions)
-
-                if result.success:
-                    print(f"[OK] {result.message}")
-                    state.set_step_status(next_step, StepStatus.COMPLETED, result.message)
-                else:
-                    print(f"[!] {result.message}")
-                    state.set_step_status(next_step, StepStatus.IN_PROGRESS, result.message)
-
-                if result.artifacts:
-                    print(f"\nFiles created:")
-                    for a in result.artifacts:
-                        print(f"  - {a}")
-
-                if result.issues:
-                    print(f"\nIssues to address:")
-                    for i in result.issues:
-                        print(f"  [!] {i}")
-
-                state.save()
-            else:
-                print("No instructions provided. Returning to step.")
-
+        # Send everything else to Claude
+        try:
             print()
-
-        else:
-            # Yes, proceed (default)
+            print("Thinking...")
+            response = conversation.send(user_input)
             print()
-            print(f"Executing Step {next_step}...")
+            print(f"Assistant: {response}")
             print()
-
-            result = executor.execute_step(next_step)
-
-            if result.success:
-                print(f"[OK] {result.message}")
-                state.set_step_status(next_step, StepStatus.COMPLETED, result.message)
-            else:
-                print(f"[!] {result.message}")
-                state.set_step_status(next_step, StepStatus.IN_PROGRESS, result.message)
-
-            if result.artifacts:
-                print(f"\nFiles created:")
-                for a in result.artifacts:
-                    print(f"  - {a}")
-
-            if result.issues:
-                print(f"\nIssues to address:")
-                for i in result.issues:
-                    print(f"  [!] {i}")
-
-            if result.next_action:
-                print(f"\nNext: {result.next_action}")
-
-            state.save()
+        except Exception as e:
+            print(f"Error: {e}")
             print()
-
-    print()
-    print("Workflow session ended.")
 
 
 def cmd_setup(args):

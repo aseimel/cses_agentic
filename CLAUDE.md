@@ -44,41 +44,44 @@ install.ps1          # Windows installer
 
 ## Critical Rules
 
-1. **ALWAYS TEST CODE BEFORE RETURNING TO USER**
+1. **NEVER REMOVE THE CONVERSATIONAL CLAUDE MODE - THIS IS THE CORE FEATURE**
+   - The interactive mode in `cmd_interactive()` uses `ConversationSession` from `src/agent/conversation.py`
+   - Users chat naturally with Claude who guides them through the CSES workflow
+   - Claude has CSES expert knowledge embedded in the system prompt
+   - This is THE ENTIRE POINT of this tool - it's an AI assistant, not a menu system
+   - NEVER replace it with a menu-based or Y/N confirmation system
+   - NEVER remove or simplify the conversational interface
+   - If you touch `cmd_interactive()`, you MUST preserve the Claude conversation loop
+
+2. **ALWAYS TEST CODE BEFORE RETURNING TO USER**
    - NEVER return untested code - this is strictly forbidden
    - Run the code locally and verify it works
    - Test the full flow, not just individual functions
    - If you cannot test, explicitly tell the user and explain why
    - Broken code wastes the user's time and destroys trust
 
-2. **FIX THE ENTIRE PROCESS, NOT JUST SYMPTOMS**
+3. **FIX THE ENTIRE PROCESS, NOT JUST SYMPTOMS**
    - "Immediate fixes" or workarounds are strictly forbidden
    - When something is broken, fix the root cause in the proper place
    - The install script, update command, and CLI must all work correctly
    - Never tell the user to run manual commands as a workaround
    - If the install process is broken, fix the install process
 
-3. **NEVER write format-specific document parsing code**
+4. **NEVER write format-specific document parsing code**
    - NO regex patterns to parse collaborator documents
    - NO assumptions about document structure
    - Pass FULL document text to LLM and let it interpret semantically
 
-4. **Keep solutions simple**
+5. **Keep solutions simple**
    - Don't over-engineer
    - Don't add features beyond what's requested
 
-5. **ALWAYS provide user feedback during operations**
+6. **ALWAYS provide user feedback during operations**
    - Users are non-technical and need to know the tool is working
    - Print progress messages before any operation that takes time
    - Examples: "Loading data file...", "Connecting to Claude...", "Processing documents..."
    - Never leave users waiting with no output - they will think the tool is frozen
    - NO emojis (Windows cp1252 encoding compatibility)
-
-6. **NEVER allow skipping workflow steps**
-   - Every step in the CSES workflow is required
-   - Do NOT implement "skip" options for steps
-   - Users can either proceed with a step or provide custom instructions
-   - This is similar to Claude Code plan mode: approve or provide feedback
 
 ## Key Files
 

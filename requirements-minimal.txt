@@ -1,34 +1,30 @@
 # CSES Data Harmonization Agent - Minimal Requirements
-# For Python 3.14+ compatibility (pure Python packages preferred)
+# For Python 3.14 compatibility (uses specific minimum versions)
 
 # =============================================================================
-# Core - These are essential and should work on any Python 3.10+
+# Core - Essential utilities
 # =============================================================================
 python-dotenv>=1.0.0   # Environment variable management
 pyyaml>=6.0.0          # YAML parsing
 
 # =============================================================================
-# Document Parsing (Pure Python)
+# Document Parsing
 # =============================================================================
+lxml>=6.0.1            # Required for Python 3.14 wheels
 pypdf>=4.0.0           # For PDF files
-python-docx>=1.0.0     # For DOCX files
+python-docx>=1.0.0     # For DOCX files (uses lxml)
 striprtf>=0.0.26       # For RTF files
+reportlab>=4.4.0       # For creating PDF files
 
 # =============================================================================
 # LLM Integration
 # =============================================================================
-litellm>=1.52.0        # Unified LLM API
+litellm>=1.60.0        # Required for Python 3.14 (PR #17666)
 openai>=1.0.0          # OpenAI API client
-httpx>=0.24.0          # HTTP client (dependency)
 
 # =============================================================================
-# PDF Generation
+# Data Processing
 # =============================================================================
-reportlab>=4.0.0       # For creating PDF files
-
-# =============================================================================
-# Data Processing - Try these, they may work on Python 3.14
-# =============================================================================
-pandas                 # No version pin - use latest for best compatibility
-openpyxl>=3.1.0        # For Excel files (.xlsx) - pure Python
-pyreadstat             # For .dta/.sav files - may need compilation
+pandas>=3.0.0          # Required for Python 3.14 wheels
+openpyxl>=3.1.0        # For Excel files (.xlsx)
+pyreadstat>=1.3.2      # Required for Python 3.14 support

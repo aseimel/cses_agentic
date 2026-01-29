@@ -15,9 +15,9 @@ Write-Host ""
 $InstallDir = "$env:USERPROFILE\.cses-agent"
 $RepoUrl = "https://github.com/aseimel/cses_agentic/archive/refs/heads/main.zip"
 
-# Check Python (3.10, 3.11, 3.12, 3.13 all work)
+# Check Python (3.10-3.14 all work - 3.14 requires latest package versions)
 function Test-Python {
-    $pythonCmds = @("python", "python3", "py -3.12", "py -3.13", "py -3.11", "py -3", "py")
+    $pythonCmds = @("python", "python3", "py -3.14", "py -3.13", "py -3.12", "py -3.11", "py -3", "py")
 
     foreach ($cmd in $pythonCmds) {
         try {
@@ -25,7 +25,7 @@ function Test-Python {
             $version = & $cmdParts[0] $cmdParts[1..99] --version 2>&1
             if ($version -match "Python 3\.(\d+)") {
                 $minor = [int]$Matches[1]
-                if ($minor -ge 10 -and $minor -le 13) {
+                if ($minor -ge 10 -and $minor -le 14) {
                     Write-Host "[OK] $version" -ForegroundColor Green
                     $script:PythonCmd = $cmdParts[0]
                     if ($cmdParts.Length -gt 1) {
@@ -33,41 +33,17 @@ function Test-Python {
                     } else {
                         $script:PythonArgs = @()
                     }
-                    return $true
-                } elseif ($minor -ge 14) {
-                    Write-Host "[!] $version detected - too new, some packages may not work" -ForegroundColor Yellow
-                    Write-Host "    Trying to find Python 3.12 or 3.13..." -ForegroundColor Yellow
-                    # Continue searching for older Python
-                }
-            }
-        } catch {}
-    }
-
-    # If we get here, check if we found Python 3.14+ as a fallback
-    foreach ($cmd in $pythonCmds) {
-        try {
-            $cmdParts = $cmd.Split()
-            $version = & $cmdParts[0] $cmdParts[1..99] --version 2>&1
-            if ($version -match "Python 3\.(\d+)") {
-                $minor = [int]$Matches[1]
-                if ($minor -ge 10) {
-                    Write-Host "[!] Using $version (may have compatibility issues)" -ForegroundColor Yellow
-                    $script:PythonCmd = $cmdParts[0]
-                    if ($cmdParts.Length -gt 1) {
-                        $script:PythonArgs = $cmdParts[1..99]
-                    } else {
-                        $script:PythonArgs = @()
-                    }
+                    $script:PythonMinor = $minor
                     return $true
                 }
             }
         } catch {}
     }
 
-    Write-Host "[X] Python 3.10-3.13 required" -ForegroundColor Red
+    Write-Host "[X] Python 3.10+ required" -ForegroundColor Red
     Write-Host ""
-    Write-Host "Please install Python 3.12 from:" -ForegroundColor Yellow
-    Write-Host "https://www.python.org/downloads/release/python-3129/" -ForegroundColor Yellow
+    Write-Host "Please install Python from:" -ForegroundColor Yellow
+    Write-Host "https://www.python.org/downloads/" -ForegroundColor Yellow
     Write-Host ""
     Write-Host "IMPORTANT: Make sure 'Add Python to PATH' is enabled!" -ForegroundColor Yellow
     return $false
@@ -172,9 +148,9 @@ if ($LASTEXITCODE -ne 0) {
     Write-Host "[!] Warning: pip upgrade had issues, continuing..." -ForegroundColor Yellow
 }
 
-# Try full requirements first
-Write-Host "Installing packages (full requirements)..." -ForegroundColor Cyan
-& $pipExe install -r requirements.txt 2>&1 | Tee-Object -Variable pipOutput | ForEach-Object {
+# Install requirements with --upgrade to get latest Python 3.14-compatible versions
+Write-Host "Installing packages..." -ForegroundColor Cyan
+& $pipExe install --upgrade -r requirements.txt 2>&1 | Tee-Object -Variable pipOutput | ForEach-Object {
     if ($_ -match "error|Error|ERROR") {
         Write-Host $_ -ForegroundColor Red
     } elseif ($_ -match "Successfully installed") {
@@ -186,61 +162,48 @@ $fullInstallFailed = $LASTEXITCODE -ne 0
 
 if ($fullInstallFailed) {
     Write-Host ""
-    Write-Host "[!] Full requirements failed. Trying minimal requirements for Python 3.14..." -ForegroundColor Yellow
+    Write-Host "[!] Full requirements failed. Installing core packages one by one..." -ForegroundColor Yellow
     Write-Host ""
 
-    # Try minimal requirements
-    & $pipExe install -r requirements-minimal.txt 2>&1 | ForEach-Object {
-        if ($_ -match "error|Error|ERROR") {
-            Write-Host $_ -ForegroundColor Red
-        } elseif ($_ -match "Successfully installed") {
-            Write-Host $_ -ForegroundColor Green
+    # Essential packages with Python 3.14-compatible minimum versions
+    $corePackages = @(
+        "python-dotenv>=1.0.0",
+        "pyyaml>=6.0.0",
+        "lxml>=6.0.1",
+        "reportlab>=4.4.0",
+        "pypdf>=4.0.0",
+        "python-docx>=1.0.0",
+        "openpyxl>=3.1.0",
+        "pandas>=3.0.0",
+        "pyreadstat>=1.3.2",
+        "litellm>=1.60.0",
+        "anthropic>=0.39.0",
+        "openai>=1.0.0"
+    )
+
+    $installedCount = 0
+    $failedPackages = @()
+
+    foreach ($pkg in $corePackages) {
+        $pkgName = $pkg -replace ">=.*", ""
+        Write-Host "  Installing $pkgName..." -ForegroundColor Cyan -NoNewline
+        $result = & $pipExe install --upgrade $pkg 2>&1
+        if ($LASTEXITCODE -eq 0) {
+            Write-Host " [OK]" -ForegroundColor Green
+            $installedCount++
+        } else {
+            Write-Host " [FAILED]" -ForegroundColor Red
+            $failedPackages += $pkgName
         }
     }
 
-    if ($LASTEXITCODE -ne 0) {
+    Write-Host ""
+    Write-Host "Installed $installedCount of $($corePackages.Count) packages" -ForegroundColor Cyan
+
+    if ($failedPackages.Count -gt 0) {
+        Write-Host "Failed packages: $($failedPackages -join ', ')" -ForegroundColor Yellow
         Write-Host ""
-        Write-Host "[!] Minimal requirements also failed. Installing core packages one by one..." -ForegroundColor Yellow
-
-        # Essential packages in order of importance
-        $corePackages = @(
-            "python-dotenv",
-            "pyyaml",
-            "httpx",
-            "openai",
-            "litellm",
-            "pypdf",
-            "python-docx",
-            "reportlab",
-            "openpyxl",
-            "pandas",
-            "pyreadstat"
-        )
-
-        $installedCount = 0
-        $failedPackages = @()
-
-        foreach ($pkg in $corePackages) {
-            Write-Host "  Installing $pkg..." -ForegroundColor Cyan -NoNewline
-            $result = & $pipExe install $pkg 2>&1
-            if ($LASTEXITCODE -eq 0) {
-                Write-Host " [OK]" -ForegroundColor Green
-                $installedCount++
-            } else {
-                Write-Host " [FAILED]" -ForegroundColor Red
-                $failedPackages += $pkg
-            }
-        }
-
-        Write-Host ""
-        Write-Host "Installed $installedCount of $($corePackages.Count) packages" -ForegroundColor Cyan
-
-        if ($failedPackages.Count -gt 0) {
-            Write-Host "Failed packages: $($failedPackages -join ', ')" -ForegroundColor Yellow
-            Write-Host ""
-            Write-Host "The tool may still work with limited functionality." -ForegroundColor Yellow
-            Write-Host "If pyreadstat failed, you won't be able to read .dta/.sav files directly." -ForegroundColor Yellow
-        }
+        Write-Host "The tool may still work with limited functionality." -ForegroundColor Yellow
     }
 }
 
