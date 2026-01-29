@@ -71,8 +71,35 @@ if (Test-Path $InstallDir) {
         $ExistingEnv = Get-Content "$InstallDir\.env" -Raw
     }
 
-    # Remove old installation
-    Remove-Item -Recurse -Force $InstallDir
+    # Stop any Python processes that might lock the venv
+    Write-Host "Stopping Python processes..." -ForegroundColor Cyan
+    Get-Process python -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
+    Start-Sleep -Seconds 2
+
+    # Try to remove old installation
+    try {
+        Remove-Item -Recurse -Force $InstallDir -ErrorAction Stop
+    } catch {
+        Write-Host "Cannot remove old installation (files locked)." -ForegroundColor Yellow
+        Write-Host "Moving to backup location..." -ForegroundColor Cyan
+
+        # Move to backup instead
+        $BackupDir = "$InstallDir.old"
+        if (Test-Path $BackupDir) {
+            Remove-Item -Recurse -Force $BackupDir -ErrorAction SilentlyContinue
+        }
+
+        try {
+            Rename-Item $InstallDir $BackupDir -ErrorAction Stop
+            Write-Host "Old installation moved to $BackupDir" -ForegroundColor Gray
+        } catch {
+            Write-Host "[X] Cannot move or delete old installation." -ForegroundColor Red
+            Write-Host "    Please close all terminals and try again." -ForegroundColor Yellow
+            Write-Host "    Or manually delete: $InstallDir" -ForegroundColor Yellow
+            Read-Host "Press Enter to exit"
+            exit 1
+        }
+    }
 }
 
 # Download and extract
