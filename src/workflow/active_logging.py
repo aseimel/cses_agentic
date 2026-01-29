@@ -1,9 +1,9 @@
 """
 Active Logging for CSES Workflow.
 
-Provides real-time logging to Word documents following CSES naming conventions:
-- Log file: micro/cses-m6_log-file_{CODE}_{YEAR}_{DATE}.docx
-- Questions file: micro/Collaborator Questions/{Country}_{Year}_micro_collaborator_questions_{DATE}.docx
+Provides real-time logging following CSES naming conventions:
+- Log file: micro/cses-m6_log-file_{CODE}_{YEAR}_{DATE}.txt (plain text)
+- Questions file: micro/Collaborator Questions/{Country}_{Year}_micro_collaborator_questions_{DATE}.docx (Word)
 """
 
 import logging
@@ -13,7 +13,6 @@ from typing import Optional, TYPE_CHECKING
 
 from docx import Document
 from docx.shared import Pt, RGBColor
-from docx.enum.text import WD_PARAGRAPH_ALIGNMENT
 
 if TYPE_CHECKING:
     from .state import WorkflowState
@@ -65,8 +64,8 @@ class ActiveLogger:
         micro_dir = self.working_dir / "micro"
         micro_dir.mkdir(parents=True, exist_ok=True)
 
-        # Log file path
-        log_filename = f"cses-m6_log-file_{country_code}_{year}_{date_str}.docx"
+        # Log file path (plain text)
+        log_filename = f"cses-m6_log-file_{country_code}_{year}_{date_str}.txt"
         self.log_file_path = micro_dir / log_filename
 
         # Questions file path
@@ -90,74 +89,53 @@ class ActiveLogger:
         self.state.collaborator_questions_file = str(self.questions_file_path)
 
     def _create_log_file(self):
-        """Create a new log file with CSES standard structure."""
-        doc = Document()
-
+        """Create a new log file with CSES standard structure (plain text)."""
         country_code = self.state.country_code or self.state.country[:3].upper()
         year = self.state.year
         country = self.state.country
         date_str = datetime.now().strftime("%Y-%m-%d")
 
-        # Header
-        title = doc.add_paragraph()
-        title_run = title.add_run(f"{country_code}_{year}_Mod6")
-        title_run.bold = True
-        title_run.font.size = Pt(14)
+        lines = [
+            f"{country_code}_{year}_Mod6",
+            f"Name: [PROCESSOR NAME]",
+            f"Date: {date_str}",
+            f"Country: {country}",
+            f"Election Year: {year}",
+            f"Most recent update: {date_str}",
+            "",
+            "=" * 75,
+            ">>> Log File Instructions",
+            "=" * 75,
+            "This Log File should be used to document any questions, issues, and",
+            "challenges that arose while processing the Individual Datasets.",
+            "Navigation: Section headings can be searched using \">>>\".",
+            "Subsections can be searched using \"<<>>\".",
+            "",
+            "=" * 75,
+            f">>> Log File Notes: {country_code}_{year}_M6",
+            "=" * 75,
+            "INSTRUCTIONS: List issues encountered, coding decisions, and notes.",
+            "",
+            "=" * 75,
+            f">>> Questions for Collaborator: {country_code}_{year}_M6",
+            "=" * 75,
+            "",
+            "=" * 75,
+            f">>> Things To Do Before Releasing the Data: {country_code}_{year}_M6",
+            "=" * 75,
+            "- Resolve collaborator questions",
+            "- Complete variable matching validation",
+            "",
+            "=" * 75,
+            f">>> Election Study Notes and Appendices: {country_code}_{year}_M6",
+            "=" * 75,
+            f"<<>> ELECTION SUMMARY - {country_code}_{year}_M6:",
+            f"<<>> OVERVIEW OF STUDY DESIGN AND WEIGHTS - {country_code}_{year}_M6:",
+            f"<<>> PARTIES AND LEADERS: {country_code}_{year}_M6",
+            "",
+        ]
 
-        # Metadata
-        doc.add_paragraph(f"Name: [PROCESSOR NAME]")
-        doc.add_paragraph(f"Date: {date_str}")
-        doc.add_paragraph(f"Country: {country}")
-        doc.add_paragraph(f"Election Year: {year}")
-        doc.add_paragraph(f"Most recent update: {date_str}")
-
-        # Separator
-        doc.add_paragraph("=" * 75)
-
-        # Log File Instructions section
-        doc.add_paragraph(">>> Log File Instructions")
-        doc.add_paragraph("=" * 75)
-        doc.add_paragraph(
-            "This Log File should be used to document any questions, issues, and "
-            "challenges that arose while processing the Individual Datasets. "
-            "Navigation: Section headings can be searched using \">>>\". "
-            "Subsections can be searched using \"<<>>\"."
-        )
-        doc.add_paragraph()
-
-        # Log File Notes section
-        doc.add_paragraph("=" * 75)
-        doc.add_paragraph(f">>> Log File Notes: {country_code}_{year}_M6")
-        doc.add_paragraph("=" * 75)
-        doc.add_paragraph(
-            "INSTRUCTIONS: List issues encountered, coding decisions, and notes. "
-            "Notes numbered in descending order. Red = unresolved, Green = resolved."
-        )
-        doc.add_paragraph()
-
-        # Questions for Collaborator section
-        doc.add_paragraph("=" * 75)
-        doc.add_paragraph(f">>> Questions for Collaborator: {country_code}_{year}_M6")
-        doc.add_paragraph("=" * 75)
-        doc.add_paragraph()
-
-        # Things To Do section
-        doc.add_paragraph("=" * 75)
-        doc.add_paragraph(f">>> Things To Do Before Releasing the Data: {country_code}_{year}_M6")
-        doc.add_paragraph("=" * 75)
-        doc.add_paragraph("- Resolve collaborator questions")
-        doc.add_paragraph("- Complete variable matching validation")
-        doc.add_paragraph()
-
-        # Election Study Notes section
-        doc.add_paragraph("=" * 75)
-        doc.add_paragraph(f">>> Election Study Notes and Appendices: {country_code}_{year}_M6")
-        doc.add_paragraph("=" * 75)
-        doc.add_paragraph(f"<<>> ELECTION SUMMARY - {country_code}_{year}_M6:")
-        doc.add_paragraph(f"<<>> OVERVIEW OF STUDY DESIGN AND WEIGHTS - {country_code}_{year}_M6:")
-        doc.add_paragraph(f"<<>> PARTIES AND LEADERS: {country_code}_{year}_M6")
-
-        doc.save(self.log_file_path)
+        self.log_file_path.write_text("\n".join(lines))
 
     def _create_questions_file(self):
         """Create a new collaborator questions file."""
@@ -325,25 +303,28 @@ class ActiveLogger:
         if not self.log_file_path or not self.log_file_path.exists():
             return
 
-        doc = Document(self.log_file_path)
+        try:
+            content = self.log_file_path.read_text()
+            lines = content.split("\n")
 
-        # Find ">>> Questions for Collaborator" section and append
-        found_section = False
-        insert_para = None
+            # Find ">>> Questions for Collaborator" section and insert before next section
+            found_section = False
+            insert_idx = None
 
-        for i, para in enumerate(doc.paragraphs):
-            if ">>> Questions for Collaborator" in para.text:
-                found_section = True
-            elif found_section and para.text.startswith("==="):
-                # Found next section, insert before it
-                break
-            elif found_section and para.text.strip() == "":
-                insert_para = para
+            for i, line in enumerate(lines):
+                if ">>> Questions for Collaborator" in line:
+                    found_section = True
+                elif found_section and line.startswith("=" * 10):
+                    # Found next section separator, insert before it
+                    insert_idx = i
+                    break
 
-        # Add question reference
-        q_para = doc.add_paragraph(f"{question_id}: {question}")
+            if insert_idx:
+                lines.insert(insert_idx, f"{question_id}: {question}")
+                self.log_file_path.write_text("\n".join(lines))
 
-        doc.save(self.log_file_path)
+        except Exception as e:
+            logger.error(f"Failed to add question to log: {e}")
 
     def log_message(self, message: str, level: str = "INFO"):
         """
@@ -362,41 +343,42 @@ class ActiveLogger:
             return
 
         try:
-            doc = Document(self.log_file_path)
+            # Read current content
+            content = self.log_file_path.read_text()
+            lines = content.split("\n")
 
             # Update "Most recent update" line
-            for para in doc.paragraphs:
-                if para.text.startswith("Most recent update:"):
-                    para.clear()
-                    para.add_run(f"Most recent update: {datetime.now().strftime('%Y-%m-%d')}")
+            for i, line in enumerate(lines):
+                if line.startswith("Most recent update:"):
+                    lines[i] = f"Most recent update: {datetime.now().strftime('%Y-%m-%d')}"
                     break
 
-            # Find ">>> Log File Notes" section and add entry
-            found_section = False
-            insert_index = None
-
-            for i, para in enumerate(doc.paragraphs):
-                if ">>> Log File Notes" in para.text:
-                    found_section = True
-                elif found_section and "INSTRUCTIONS:" in para.text:
-                    # Insert after the instructions paragraph
-                    insert_index = i + 2  # Skip instructions and blank line
-                    break
-
-            # Increment counter and format entry
+            # Find ">>> Log File Notes" section and add entry after INSTRUCTIONS
             self._log_entry_count += 1
             date_str = datetime.now().strftime("%Y-%m-%d")
-            entry_text = f"{self._log_entry_count:02d}. [{date_str}] {message}"
+            prefix = "[!] " if level in ("WARNING", "ERROR") else ""
+            entry_text = f"{self._log_entry_count:02d}. [{date_str}] {prefix}{message}"
 
-            # Add the entry
-            new_para = doc.add_paragraph(entry_text)
+            # Find where to insert (after INSTRUCTIONS line in Log File Notes section)
+            found_notes = False
+            insert_idx = None
+            for i, line in enumerate(lines):
+                if ">>> Log File Notes" in line:
+                    found_notes = True
+                elif found_notes and line.startswith("INSTRUCTIONS:"):
+                    insert_idx = i + 2  # After instructions and blank line
+                    break
 
-            # Color based on level
-            if level == "WARNING" or level == "ERROR":
-                for run in new_para.runs:
-                    run.font.color.rgb = RGBColor(255, 0, 0)  # Red for unresolved
+            if insert_idx and insert_idx < len(lines):
+                lines.insert(insert_idx, entry_text)
+            else:
+                # Fallback: append before the Questions section
+                for i, line in enumerate(lines):
+                    if ">>> Questions for Collaborator" in line:
+                        lines.insert(i - 1, entry_text)
+                        break
 
-            doc.save(self.log_file_path)
+            self.log_file_path.write_text("\n".join(lines))
 
         except Exception as e:
             logger.error(f"Failed to write to log file: {e}")
