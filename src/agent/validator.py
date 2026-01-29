@@ -22,16 +22,32 @@ from typing import Optional
 from enum import Enum
 from pathlib import Path
 
-from litellm import completion
+logger = logging.getLogger(__name__)
 
-# Import existing modules
+# Optional import - litellm for API calls
+try:
+    from litellm import completion
+    LITELLM_AVAILABLE = True
+except ImportError:
+    LITELLM_AVAILABLE = False
+    completion = None
+    logger.warning("litellm not available - LLM validation will not work")
+
+# Import existing modules - may fail if dependencies missing
 import sys
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
-from src.matching.llm_matcher import MatchProposal, CSES_TARGET_VARIABLES
-from src.ingest.context_extractor import ExtractionResult, SourceVariableContext
+try:
+    from src.matching.llm_matcher import MatchProposal, CSES_TARGET_VARIABLES
+except ImportError:
+    MatchProposal = None
+    CSES_TARGET_VARIABLES = []
 
-logger = logging.getLogger(__name__)
+try:
+    from src.ingest.context_extractor import ExtractionResult, SourceVariableContext
+except ImportError:
+    ExtractionResult = None
+    SourceVariableContext = None
 
 
 class ValidationVerdict(Enum):

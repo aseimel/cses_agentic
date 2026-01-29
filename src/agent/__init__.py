@@ -11,20 +11,39 @@ Key components:
 - cses_agent.py: Main agent orchestration
 - tool_wrappers.py: Wrappers for existing modules
 """
+import logging
 
-from .validator import (
-    ValidationResult,
-    ValidationVerdict,
-    validate_proposal,
-    validate_proposals,
-    format_validation_result,
-)
+logger = logging.getLogger(__name__)
 
-from .cses_agent import (
-    CSESAgent,
-    DualModelResult,
-    run_harmonization,
-)
+# Validator - requires litellm
+try:
+    from .validator import (
+        ValidationResult,
+        ValidationVerdict,
+        validate_proposal,
+        validate_proposals,
+        format_validation_result,
+    )
+except ImportError as e:
+    logger.warning(f"Validator not available: {e}")
+    ValidationResult = None
+    ValidationVerdict = None
+    validate_proposal = None
+    validate_proposals = None
+    format_validation_result = None
+
+# Agent - requires litellm and other modules
+try:
+    from .cses_agent import (
+        CSESAgent,
+        DualModelResult,
+        run_harmonization,
+    )
+except ImportError as e:
+    logger.warning(f"CSES Agent not available: {e}")
+    CSESAgent = None
+    DualModelResult = None
+    run_harmonization = None
 
 __all__ = [
     # Validator

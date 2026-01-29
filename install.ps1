@@ -165,44 +165,81 @@ Write-Host ""
 
 $pipExe = "$InstallDir\.venv\Scripts\pip.exe"
 
-# Upgrade pip first
-& "$InstallDir\.venv\Scripts\python.exe" -m pip install --upgrade pip --quiet
+# Upgrade pip and setuptools first
+Write-Host "Upgrading pip and setuptools..." -ForegroundColor Cyan
+& "$InstallDir\.venv\Scripts\python.exe" -m pip install --upgrade pip setuptools wheel --quiet
 if ($LASTEXITCODE -ne 0) {
-    Write-Host "[!] Warning: pip upgrade failed, continuing..." -ForegroundColor Yellow
+    Write-Host "[!] Warning: pip upgrade had issues, continuing..." -ForegroundColor Yellow
 }
 
-# Try installing with pre-release packages allowed (helps with Python 3.14)
-Write-Host "Installing packages..." -ForegroundColor Cyan
-& $pipExe install --pre -r requirements.txt 2>&1 | ForEach-Object {
-    if ($_ -match "error|Error|ERROR|failed|Failed") {
+# Try full requirements first
+Write-Host "Installing packages (full requirements)..." -ForegroundColor Cyan
+& $pipExe install -r requirements.txt 2>&1 | Tee-Object -Variable pipOutput | ForEach-Object {
+    if ($_ -match "error|Error|ERROR") {
         Write-Host $_ -ForegroundColor Red
-    } elseif ($_ -match "Successfully|Requirement already") {
+    } elseif ($_ -match "Successfully installed") {
         Write-Host $_ -ForegroundColor Green
-    } else {
-        Write-Host $_
     }
 }
 
-if ($LASTEXITCODE -ne 0) {
+$fullInstallFailed = $LASTEXITCODE -ne 0
+
+if ($fullInstallFailed) {
     Write-Host ""
-    Write-Host "[!] Some packages failed to install. Trying alternative approach..." -ForegroundColor Yellow
+    Write-Host "[!] Full requirements failed. Trying minimal requirements for Python 3.14..." -ForegroundColor Yellow
+    Write-Host ""
 
-    # Try installing core packages one by one
-    $corePackages = @("pandas", "polars", "numpy", "pyreadstat", "python-docx", "pypdf", "litellm", "python-dotenv", "reportlab")
+    # Try minimal requirements
+    & $pipExe install -r requirements-minimal.txt 2>&1 | ForEach-Object {
+        if ($_ -match "error|Error|ERROR") {
+            Write-Host $_ -ForegroundColor Red
+        } elseif ($_ -match "Successfully installed") {
+            Write-Host $_ -ForegroundColor Green
+        }
+    }
 
-    foreach ($pkg in $corePackages) {
-        Write-Host "  Installing $pkg..." -ForegroundColor Cyan
-        & $pipExe install --pre $pkg 2>&1 | Out-Null
-        if ($LASTEXITCODE -eq 0) {
-            Write-Host "    [OK] $pkg" -ForegroundColor Green
-        } else {
-            Write-Host "    [!] $pkg failed - trying without pre-release..." -ForegroundColor Yellow
-            & $pipExe install $pkg 2>&1 | Out-Null
+    if ($LASTEXITCODE -ne 0) {
+        Write-Host ""
+        Write-Host "[!] Minimal requirements also failed. Installing core packages one by one..." -ForegroundColor Yellow
+
+        # Essential packages in order of importance
+        $corePackages = @(
+            "python-dotenv",
+            "pyyaml",
+            "httpx",
+            "openai",
+            "litellm",
+            "pypdf",
+            "python-docx",
+            "reportlab",
+            "openpyxl",
+            "pandas",
+            "pyreadstat"
+        )
+
+        $installedCount = 0
+        $failedPackages = @()
+
+        foreach ($pkg in $corePackages) {
+            Write-Host "  Installing $pkg..." -ForegroundColor Cyan -NoNewline
+            $result = & $pipExe install $pkg 2>&1
             if ($LASTEXITCODE -eq 0) {
-                Write-Host "    [OK] $pkg" -ForegroundColor Green
+                Write-Host " [OK]" -ForegroundColor Green
+                $installedCount++
             } else {
-                Write-Host "    [X] $pkg could not be installed" -ForegroundColor Red
+                Write-Host " [FAILED]" -ForegroundColor Red
+                $failedPackages += $pkg
             }
+        }
+
+        Write-Host ""
+        Write-Host "Installed $installedCount of $($corePackages.Count) packages" -ForegroundColor Cyan
+
+        if ($failedPackages.Count -gt 0) {
+            Write-Host "Failed packages: $($failedPackages -join ', ')" -ForegroundColor Yellow
+            Write-Host ""
+            Write-Host "The tool may still work with limited functionality." -ForegroundColor Yellow
+            Write-Host "If pyreadstat failed, you won't be able to read .dta/.sav files directly." -ForegroundColor Yellow
         }
     }
 }

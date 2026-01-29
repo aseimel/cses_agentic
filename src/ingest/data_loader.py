@@ -9,9 +9,25 @@ import logging
 from pathlib import Path
 from dataclasses import dataclass, field
 from typing import Optional
-import pandas as pd
 
 logger = logging.getLogger(__name__)
+
+# Optional imports - handle gracefully if not available
+try:
+    import pandas as pd
+    PANDAS_AVAILABLE = True
+except ImportError:
+    PANDAS_AVAILABLE = False
+    pd = None
+    logger.warning("pandas not available - data file reading will be limited")
+
+try:
+    import pyreadstat
+    PYREADSTAT_AVAILABLE = True
+except ImportError:
+    PYREADSTAT_AVAILABLE = False
+    pyreadstat = None
+    logger.warning("pyreadstat not available - cannot read .dta/.sav files directly")
 
 
 @dataclass
@@ -156,7 +172,12 @@ class DataLoader:
 
     def _load_stata(self, file_path: Path) -> DatasetInfo:
         """Load Stata .dta file with full metadata."""
-        import pyreadstat
+        if not PYREADSTAT_AVAILABLE:
+            raise ImportError(
+                "pyreadstat is required to read Stata (.dta) files but is not installed. "
+                "This may be due to Python 3.14 compatibility issues. "
+                "Try: pip install pyreadstat"
+            )
 
         df, meta = pyreadstat.read_dta(str(file_path))
 
@@ -191,7 +212,12 @@ class DataLoader:
 
     def _load_spss(self, file_path: Path) -> DatasetInfo:
         """Load SPSS .sav file with full metadata."""
-        import pyreadstat
+        if not PYREADSTAT_AVAILABLE:
+            raise ImportError(
+                "pyreadstat is required to read SPSS (.sav) files but is not installed. "
+                "This may be due to Python 3.14 compatibility issues. "
+                "Try: pip install pyreadstat"
+            )
 
         # Try different encodings - SPSS files can have various encodings
         df = None
