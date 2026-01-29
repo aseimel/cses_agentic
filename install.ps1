@@ -192,39 +192,59 @@ Write-Host "Upgrading pip..." -ForegroundColor Cyan
     if ($_ -match "Successfully") { Write-Host $_ -ForegroundColor Green }
 }
 
-# Install packages one by one to show progress and handle failures
+# Check which packages need to be installed (only install missing ones)
 Write-Host ""
-Write-Host "Installing required packages..." -ForegroundColor Cyan
+Write-Host "Checking installed packages..." -ForegroundColor Cyan
 
-$corePackages = @(
-    "python-dotenv",
-    "pyyaml",
-    "lxml",
-    "reportlab",
-    "pypdf",
-    "python-docx",
-    "openpyxl",
-    "pandas",
-    "pyreadstat",
-    "litellm",
-    "anthropic",
-    "openai",
-    "rich",
-    "tqdm"
+$packagesToInstall = @(
+    @{pkg="python-dotenv"; mod="dotenv"},
+    @{pkg="pyyaml"; mod="yaml"},
+    @{pkg="lxml"; mod="lxml"},
+    @{pkg="reportlab"; mod="reportlab"},
+    @{pkg="pypdf"; mod="pypdf"},
+    @{pkg="python-docx"; mod="docx"},
+    @{pkg="openpyxl"; mod="openpyxl"},
+    @{pkg="pandas"; mod="pandas"},
+    @{pkg="pyreadstat"; mod="pyreadstat"},
+    @{pkg="litellm"; mod="litellm"},
+    @{pkg="anthropic"; mod="anthropic"},
+    @{pkg="openai"; mod="openai"},
+    @{pkg="rich"; mod="rich"},
+    @{pkg="tqdm"; mod="tqdm"}
 )
 
-$installedCount = 0
+$missingPackages = @()
+$alreadyInstalled = 0
+
+foreach ($item in $packagesToInstall) {
+    & $pythonExe -c "import $($item.mod)" 2>&1 | Out-Null
+    if ($LASTEXITCODE -eq 0) {
+        $alreadyInstalled++
+    } else {
+        $missingPackages += $item.pkg
+    }
+}
+
+Write-Host "  Already installed: $alreadyInstalled" -ForegroundColor Green
+Write-Host "  Missing: $($missingPackages.Count)" -ForegroundColor $(if ($missingPackages.Count -gt 0) { "Yellow" } else { "Green" })
+
+$installedCount = $alreadyInstalled
 $failedPackages = @()
 
-foreach ($pkg in $corePackages) {
-    Write-Host "  Installing $pkg..." -ForegroundColor Cyan -NoNewline
-    $output = & $pipExe install --upgrade $pkg 2>&1
-    if ($LASTEXITCODE -eq 0) {
-        Write-Host " [OK]" -ForegroundColor Green
-        $installedCount++
-    } else {
-        Write-Host " [FAILED]" -ForegroundColor Red
-        $failedPackages += $pkg
+if ($missingPackages.Count -gt 0) {
+    Write-Host ""
+    Write-Host "Installing missing packages..." -ForegroundColor Cyan
+
+    foreach ($pkg in $missingPackages) {
+        Write-Host "  Installing $pkg..." -ForegroundColor Cyan -NoNewline
+        $output = & $pipExe install $pkg 2>&1
+        if ($LASTEXITCODE -eq 0) {
+            Write-Host " [OK]" -ForegroundColor Green
+            $installedCount++
+        } else {
+            Write-Host " [FAILED]" -ForegroundColor Red
+            $failedPackages += $pkg
+        }
     }
 }
 
