@@ -78,16 +78,20 @@ def first_run_setup(force: bool = False) -> bool:
 
     # Check if already configured via setup wizard (unless forced)
     if not force and env_file.exists():
-        from dotenv import dotenv_values
-        config = dotenv_values(env_file)
-        # Check for setup wizard marker
-        if config.get("CSES_SETUP_COMPLETE") == "true":
-            return True  # Setup wizard was completed
-        if config.get("OPENAI_API_KEY") and config.get("OPENAI_API_KEY") not in ["your-key-here", ""]:
-            # Has API key but no setup marker - prompt to complete setup
-            print("\nExisting configuration found but setup was not completed.")
-            print("Running setup wizard to verify settings...\n")
-            # Continue to setup wizard
+        try:
+            from dotenv import dotenv_values
+            config = dotenv_values(env_file)
+            # Check for setup wizard marker
+            if config.get("CSES_SETUP_COMPLETE") == "true":
+                return True  # Setup wizard was completed
+            if config.get("OPENAI_API_KEY") and config.get("OPENAI_API_KEY") not in ["your-key-here", ""]:
+                # Has API key but no setup marker - prompt to complete setup
+                print("\nExisting configuration found but setup was not completed.")
+                print("Running setup wizard to verify settings...\n")
+                # Continue to setup wizard
+        except ImportError:
+            # dotenv not available - continue to setup
+            pass
 
     print("""
 ╔══════════════════════════════════════════════════════════════╗
@@ -228,8 +232,11 @@ def check_validation_setup() -> tuple[bool, str]:
     Returns:
         Tuple of (is_ready: bool, status_message: str)
     """
-    from dotenv import load_dotenv
-    load_dotenv()
+    try:
+        from dotenv import load_dotenv
+        load_dotenv()
+    except ImportError:
+        pass  # dotenv not available, env vars should be loaded by main()
 
     validation_model = os.getenv("LLM_MODEL_VALIDATE", "")
 

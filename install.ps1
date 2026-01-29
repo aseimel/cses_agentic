@@ -135,76 +135,82 @@ if ($script:PythonArgs.Length -gt 0) {
     & $script:PythonCmd -m venv .venv
 }
 
+# Check venv was created
+$pipExe = "$InstallDir\.venv\Scripts\pip.exe"
+$pythonExe = "$InstallDir\.venv\Scripts\python.exe"
+
+if (-not (Test-Path $pythonExe)) {
+    Write-Host "[X] Failed to create Python virtual environment" -ForegroundColor Red
+    Write-Host "    Try running: $script:PythonCmd -m venv $InstallDir\.venv" -ForegroundColor Yellow
+    Read-Host "Press Enter to exit"
+    exit 1
+}
+
+Write-Host "[OK] Virtual environment created" -ForegroundColor Green
+
 # Install dependencies
+Write-Host ""
 Write-Host "Installing dependencies (this may take a few minutes)..." -ForegroundColor Cyan
 Write-Host ""
 
-$pipExe = "$InstallDir\.venv\Scripts\pip.exe"
-
-# Upgrade pip and setuptools first
-Write-Host "Upgrading pip and setuptools..." -ForegroundColor Cyan
-& "$InstallDir\.venv\Scripts\python.exe" -m pip install --upgrade pip setuptools wheel --quiet
-if ($LASTEXITCODE -ne 0) {
-    Write-Host "[!] Warning: pip upgrade had issues, continuing..." -ForegroundColor Yellow
+# Upgrade pip first
+Write-Host "Upgrading pip..." -ForegroundColor Cyan
+& $pythonExe -m pip install --upgrade pip setuptools wheel 2>&1 | ForEach-Object {
+    if ($_ -match "Successfully") { Write-Host $_ -ForegroundColor Green }
 }
 
-# Install requirements with --upgrade to get latest Python 3.14-compatible versions
-Write-Host "Installing packages..." -ForegroundColor Cyan
-& $pipExe install --upgrade -r requirements.txt 2>&1 | Tee-Object -Variable pipOutput | ForEach-Object {
-    if ($_ -match "error|Error|ERROR") {
-        Write-Host $_ -ForegroundColor Red
-    } elseif ($_ -match "Successfully installed") {
-        Write-Host $_ -ForegroundColor Green
+# Install packages one by one to show progress and handle failures
+Write-Host ""
+Write-Host "Installing required packages..." -ForegroundColor Cyan
+
+$corePackages = @(
+    "python-dotenv",
+    "pyyaml",
+    "lxml",
+    "reportlab",
+    "pypdf",
+    "python-docx",
+    "openpyxl",
+    "pandas",
+    "pyreadstat",
+    "litellm",
+    "anthropic",
+    "openai",
+    "rich",
+    "tqdm"
+)
+
+$installedCount = 0
+$failedPackages = @()
+
+foreach ($pkg in $corePackages) {
+    Write-Host "  Installing $pkg..." -ForegroundColor Cyan -NoNewline
+    $output = & $pipExe install --upgrade $pkg 2>&1
+    if ($LASTEXITCODE -eq 0) {
+        Write-Host " [OK]" -ForegroundColor Green
+        $installedCount++
+    } else {
+        Write-Host " [FAILED]" -ForegroundColor Red
+        $failedPackages += $pkg
     }
 }
 
-$fullInstallFailed = $LASTEXITCODE -ne 0
+Write-Host ""
+Write-Host "Installed $installedCount of $($corePackages.Count) packages" -ForegroundColor Cyan
+
+if ($failedPackages.Count -gt 0) {
+    Write-Host "Failed packages: $($failedPackages -join ', ')" -ForegroundColor Yellow
+}
+
+$fullInstallFailed = $failedPackages.Count -gt 3
 
 if ($fullInstallFailed) {
     Write-Host ""
-    Write-Host "[!] Full requirements failed. Installing core packages one by one..." -ForegroundColor Yellow
+    Write-Host "[!] Too many packages failed to install." -ForegroundColor Red
+    Write-Host "    The tool may not work correctly." -ForegroundColor Yellow
     Write-Host ""
-
-    # Essential packages with Python 3.14-compatible minimum versions
-    $corePackages = @(
-        "python-dotenv>=1.0.0",
-        "pyyaml>=6.0.0",
-        "lxml>=6.0.1",
-        "reportlab>=4.4.0",
-        "pypdf>=4.0.0",
-        "python-docx>=1.0.0",
-        "openpyxl>=3.1.0",
-        "pandas>=3.0.0",
-        "pyreadstat>=1.3.2",
-        "litellm>=1.60.0",
-        "anthropic>=0.39.0",
-        "openai>=1.0.0"
-    )
-
-    $installedCount = 0
-    $failedPackages = @()
-
-    foreach ($pkg in $corePackages) {
-        $pkgName = $pkg -replace ">=.*", ""
-        Write-Host "  Installing $pkgName..." -ForegroundColor Cyan -NoNewline
-        $result = & $pipExe install --upgrade $pkg 2>&1
-        if ($LASTEXITCODE -eq 0) {
-            Write-Host " [OK]" -ForegroundColor Green
-            $installedCount++
-        } else {
-            Write-Host " [FAILED]" -ForegroundColor Red
-            $failedPackages += $pkgName
-        }
-    }
-
-    Write-Host ""
-    Write-Host "Installed $installedCount of $($corePackages.Count) packages" -ForegroundColor Cyan
-
-    if ($failedPackages.Count -gt 0) {
-        Write-Host "Failed packages: $($failedPackages -join ', ')" -ForegroundColor Yellow
-        Write-Host ""
-        Write-Host "The tool may still work with limited functionality." -ForegroundColor Yellow
-    }
+    Write-Host "Try running manually:" -ForegroundColor Cyan
+    Write-Host "  $pythonExe -m pip install python-dotenv litellm pandas" -ForegroundColor White
 }
 
 Write-Host ""
