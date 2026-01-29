@@ -1,5 +1,5 @@
 #!/bin/bash
-# Activate CSES Agent environment
+# Activate CSES Assistant environment
 # Usage: source activate_cses.sh
 
 SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
@@ -18,7 +18,7 @@ export PYTHONPATH="$SCRIPT_DIR:$PYTHONPATH"
 
 echo ""
 echo "╔══════════════════════════════════════════════════════════════╗"
-echo "║           CSES Data Harmonization Agent                      ║"
+echo "║           CSES Assistant                                      ║"
 echo "║           Environment Activated                              ║"
 echo "╚══════════════════════════════════════════════════════════════╝"
 echo ""

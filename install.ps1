@@ -1,4 +1,4 @@
-# CSES Agent - One-line installer for Windows
+# CSES Assistant - One-line installer for Windows
 # Usage: irm https://raw.githubusercontent.com/aseimel/cses_agentic/main/install.ps1 | iex
 # Or: powershell -ExecutionPolicy Bypass -File install.ps1
 
@@ -6,7 +6,7 @@ $ErrorActionPreference = "Stop"
 
 Write-Host ""
 Write-Host "======================================================================" -ForegroundColor Cyan
-Write-Host "           CSES Data Harmonization Agent                              " -ForegroundColor Cyan
+Write-Host "           CSES Assistant                                              " -ForegroundColor Cyan
 Write-Host "           Windows Installation                                       " -ForegroundColor Cyan
 Write-Host "======================================================================" -ForegroundColor Cyan
 Write-Host ""
@@ -76,7 +76,7 @@ if (Test-Path $InstallDir) {
 }
 
 # Download and extract
-Write-Host "Downloading CSES Agent..." -ForegroundColor Cyan
+Write-Host "Downloading CSES Assistant..." -ForegroundColor Cyan
 $ZipFile = "$env:TEMP\cses_agentic.zip"
 try {
     Invoke-WebRequest -Uri $RepoUrl -OutFile $ZipFile -UseBasicParsing

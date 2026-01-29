@@ -1,4 +1,4 @@
-# CSES Data Harmonization Agent
+# CSES Assistant
 
 A command-line tool that helps process CSES (Comparative Study of Electoral Systems) Module 6 election studies. It guides you through the 16-step workflow with LLM-assisted variable matching.
 

@@ -1,11 +1,11 @@
 #!/bin/bash
-# CSES Agent - One-line installer for Unix/Mac/Linux
+# CSES Assistant - One-line installer for Unix/Mac/Linux
 # Usage: curl -sSL https://raw.githubusercontent.com/YOUR_ORG/cses_agentic/main/install.sh | bash
 
 set -e
 
 echo "╔══════════════════════════════════════════════════════════════╗"
-echo "║           CSES Data Harmonization Agent                      ║"
+echo "║           CSES Assistant                                      ║"
 echo "║           Installation Script                                ║"
 echo "╚══════════════════════════════════════════════════════════════╝"
 echo ""
@@ -65,7 +65,7 @@ if [ -d "$INSTALL_DIR" ]; then
 fi
 
 # Clone repository
-echo "Downloading CSES Agent..."
+echo "Downloading CSES Assistant..."
 git clone --depth 1 "$REPO_URL" "$INSTALL_DIR"
 
 # Create virtual environment
