@@ -224,7 +224,8 @@ $packagesToInstall = @(
     @{pkg="anthropic"; mod="anthropic"},
     @{pkg="openai"; mod="openai"},
     @{pkg="rich"; mod="rich"},
-    @{pkg="tqdm"; mod="tqdm"}
+    @{pkg="tqdm"; mod="tqdm"},
+    @{pkg="textual"; mod="textual"}
 )
 
 $missingPackages = @()
@@ -299,7 +300,8 @@ $modulesToTest = @(
     @("anthropic", "anthropic"),
     @("openai", "openai"),
     @("rich", "rich"),
-    @("tqdm", "tqdm")
+    @("tqdm", "tqdm"),
+    @("textual", "textual")
 )
 
 $failedModules = @()
