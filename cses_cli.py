@@ -1045,27 +1045,26 @@ def cmd_update(args):
             print(f"[X] Download failed: {e}")
             return
 
-        print("Running update...")
-        print("(This window will close after update completes)")
+        print("Launching installer...")
+        print()
+        print("The installer will run in a NEW window.")
+        print("This window will close now.")
         print()
 
         try:
-            # Run PowerShell script - this replaces the current installation
-            # so we exit immediately after starting it
-            result = subprocess.run(
-                ["powershell", "-ExecutionPolicy", "Bypass", "-File", script_path],
-                check=False
+            # Launch PowerShell in a NEW WINDOW and exit immediately
+            # We MUST NOT wait - the installer needs to replace our files
+            import subprocess
+            subprocess.Popen(
+                ["powershell", "-ExecutionPolicy", "Bypass", "-Command",
+                 f"Start-Process powershell -ArgumentList '-ExecutionPolicy','Bypass','-File','{script_path}' -Wait; Remove-Item '{script_path}' -ErrorAction SilentlyContinue"],
+                creationflags=subprocess.CREATE_NEW_CONSOLE if os.name == 'nt' else 0
             )
-            if result.returncode != 0:
-                print(f"[!] Update script returned error code {result.returncode}")
         except Exception as e:
-            print(f"[X] Failed to run update script: {e}")
-        finally:
-            try:
-                os.unlink(script_path)
-            except:
-                pass
-        # Exit after update to avoid running old code
+            print(f"[X] Failed to launch installer: {e}")
+            sys.exit(1)
+
+        # Exit IMMEDIATELY - do not wait for installer
         sys.exit(0)
     else:
         # Linux/Mac - download and run bash install script
@@ -1081,23 +1080,25 @@ def cmd_update(args):
             print(f"[X] Download failed: {e}")
             return
 
-        print("Running update...")
-        print("(This window will close after update completes)")
+        print("Launching installer...")
+        print()
+        print("The installer will run. This process will exit now.")
         print()
 
         try:
             os.chmod(script_path, 0o755)
-            result = subprocess.run(["bash", script_path], check=False)
-            if result.returncode != 0:
-                print(f"[!] Update script returned error code {result.returncode}")
+            # Launch in background and exit immediately
+            # We MUST NOT wait - the installer needs to replace our files
+            import subprocess
+            subprocess.Popen(
+                ["bash", "-c", f"'{script_path}'; rm -f '{script_path}'"],
+                start_new_session=True
+            )
         except Exception as e:
-            print(f"[X] Failed to run update script: {e}")
-        finally:
-            try:
-                os.unlink(script_path)
-            except:
-                pass
-        # Exit after update to avoid running old code
+            print(f"[X] Failed to launch installer: {e}")
+            sys.exit(1)
+
+        # Exit IMMEDIATELY - do not wait for installer
         sys.exit(0)
 
 
