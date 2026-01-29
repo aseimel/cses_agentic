@@ -420,3 +420,144 @@ class ActiveLogger:
         """Update state with current questions file path."""
         if self.questions_file_path:
             self.state.collaborator_questions_file = str(self.questions_file_path)
+
+    def update_study_design_section(self, info: dict):
+        """
+        Update the OVERVIEW OF STUDY DESIGN AND WEIGHTS section in the log file.
+
+        Args:
+            info: Dictionary with keys: sample_design, sample_size, weighting,
+                  collection_period, mode, response_rate
+        """
+        if not self.log_file_path or not self.log_file_path.exists():
+            return
+
+        country_code = self.state.country_code or self.state.country[:3].upper()
+        year = self.state.year
+
+        content_lines = [
+            f"Sample Design: {info.get('sample_design', 'TBD')}",
+            f"Sample Size: {info.get('sample_size', 'TBD')}",
+            f"Response Rate: {info.get('response_rate', 'TBD')}",
+            f"Weighting Methodology: {info.get('weighting', 'TBD')}",
+            f"Data Collection Period: {info.get('collection_period', 'TBD')}",
+            f"Mode of Interview: {info.get('mode', 'TBD')}",
+        ]
+
+        self._update_log_section(
+            f"<<>> OVERVIEW OF STUDY DESIGN AND WEIGHTS - {country_code}_{year}_M6:",
+            "\n".join(content_lines)
+        )
+
+    def update_deposit_inventory(self, data_files: list, questionnaires: list,
+                                  codebooks: list, design_reports: list, macro_reports: list):
+        """
+        Update the Deposited Files section in the log file.
+
+        Args:
+            data_files: List of data file paths
+            questionnaires: List of questionnaire paths
+            codebooks: List of codebook paths
+            design_reports: List of design report paths
+            macro_reports: List of macro report paths
+        """
+        if not self.log_file_path or not self.log_file_path.exists():
+            return
+
+        lines = ["Deposited Files:"]
+        lines.append(f"  Data file(s): {len(data_files)}")
+        for f in data_files:
+            lines.append(f"    - {Path(f).name}")
+
+        lines.append(f"  Questionnaire(s): {len(questionnaires)}")
+        for f in questionnaires:
+            lines.append(f"    - {Path(f).name}")
+
+        lines.append(f"  Codebook(s): {len(codebooks)}")
+        for f in codebooks:
+            lines.append(f"    - {Path(f).name}")
+
+        lines.append(f"  Design report(s): {len(design_reports)}")
+        for f in design_reports:
+            lines.append(f"    - {Path(f).name}")
+
+        if macro_reports:
+            lines.append(f"  Macro report(s): {len(macro_reports)}")
+            for f in macro_reports:
+                lines.append(f"    - {Path(f).name}")
+
+        missing = []
+        if not data_files:
+            missing.append("DATA FILE")
+        if not questionnaires:
+            missing.append("QUESTIONNAIRE")
+        if not design_reports:
+            missing.append("DESIGN REPORT")
+
+        if missing:
+            lines.append(f"  MISSING: {', '.join(missing)}")
+
+        self._update_deposited_files_section("\n".join(lines))
+
+    def _update_log_section(self, section_marker: str, content: str):
+        """
+        Update a specific section in the log file.
+
+        Args:
+            section_marker: The section header to find (e.g., "<<>> OVERVIEW OF STUDY DESIGN")
+            content: Content to insert after the section header
+        """
+        try:
+            log_content = self.log_file_path.read_text()
+            lines = log_content.split("\n")
+
+            # Find the section and replace content until next section
+            found_section = False
+            start_idx = None
+            end_idx = None
+
+            for i, line in enumerate(lines):
+                if section_marker in line:
+                    found_section = True
+                    start_idx = i + 1  # Start after the marker
+                elif found_section and (line.startswith("<<>>") or line.startswith(">>>") or line.startswith("=")):
+                    end_idx = i
+                    break
+
+            if start_idx is not None:
+                if end_idx is None:
+                    end_idx = len(lines)
+
+                # Replace content between markers
+                new_lines = lines[:start_idx] + ["", content, ""] + lines[end_idx:]
+                self.log_file_path.write_text("\n".join(new_lines))
+
+        except Exception as e:
+            logger.error(f"Failed to update log section: {e}")
+
+    def _update_deposited_files_section(self, content: str):
+        """Update the Deposited Files section in the log file."""
+        try:
+            log_content = self.log_file_path.read_text()
+            lines = log_content.split("\n")
+
+            # Find "Deposited Files:" and replace until next blank line or section
+            start_idx = None
+            end_idx = None
+
+            for i, line in enumerate(lines):
+                if "Deposited Files:" in line:
+                    start_idx = i
+                elif start_idx is not None and (line.startswith(">>>") or line.startswith("=")):
+                    end_idx = i
+                    break
+
+            if start_idx is not None:
+                if end_idx is None:
+                    end_idx = start_idx + 1
+
+                new_lines = lines[:start_idx] + [content, ""] + lines[end_idx:]
+                self.log_file_path.write_text("\n".join(new_lines))
+
+        except Exception as e:
+            logger.error(f"Failed to update deposited files section: {e}")

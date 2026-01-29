@@ -227,10 +227,20 @@ class StepExecutor:
         print(f"  Design reports: {len(detected.design_report_files)}")
         print(f"  Codebooks: {len(detected.codebook_files)}")
 
+        # UPDATE LOG FILE with deposit inventory
+        self.active_logger.update_deposit_inventory(
+            data_files=[str(f) for f in detected.data_files],
+            questionnaires=[str(f) for f in detected.questionnaire_files],
+            codebooks=[str(f) for f in detected.codebook_files],
+            design_reports=[str(f) for f in detected.design_report_files],
+            macro_reports=[str(f) for f in detected.macro_report_files] if hasattr(detected, 'macro_report_files') else []
+        )
+        print("  Log file updated with deposit inventory")
+
         if detected.has_minimum_requirements():
             return StepResult(
                 success=True,
-                message=f"Deposit complete. Found {len(detected.data_files)} data file(s), "
+                message=f"Deposit complete and logged. Found {len(detected.data_files)} data file(s), "
                         f"{len(detected.questionnaire_files)} questionnaire(s)",
                 artifacts=[str(f) for f in detected.data_files + detected.questionnaire_files],
                 issues=issues if issues else None,
@@ -246,7 +256,7 @@ class StepExecutor:
             )
 
     def _step_2(self, **kwargs) -> StepResult:
-        """Step 2: Read Design Report"""
+        """Step 2: Read Design Report and update log file with study design info."""
         design_report = self.state.design_report_file
 
         if not design_report or not Path(design_report).exists():
@@ -257,37 +267,84 @@ class StepExecutor:
                 next_action="Cannot proceed without design report"
             )
 
-        # If LLM available, analyze the design report
-        if self.llm_callback:
-            from src.ingest.doc_parser import DocumentParser
-            parser = DocumentParser()
-            doc_info = parser.parse(Path(design_report))
+        print("Reading design report...")
+        self.active_logger.log_message("Reading design report...")
 
-            if doc_info and doc_info.full_text:
-                # Ask LLM to analyze
-                analysis = self.llm_callback(
-                    f"Analyze this CSES design report and check if it meets standards:\n\n"
-                    f"{doc_info.full_text[:10000]}\n\n"
-                    f"Check for: sample size, sampling method, response rate, fieldwork dates, "
-                    f"mode of data collection. Flag any concerns."
-                )
-                return StepResult(
-                    success=True,
-                    message="Design report analyzed",
-                    artifacts=[design_report],
-                    next_action=f"Review analysis:\n{analysis}"
-                )
+        # Parse the design report
+        from src.ingest.doc_parser import DocumentParser
+        parser = DocumentParser()
+        doc_info = parser.parse(Path(design_report))
+
+        if not doc_info or not doc_info.full_text:
+            return StepResult(
+                success=False,
+                message="Could not parse design report",
+                issues=["Design report could not be read"],
+                next_action="Check file format"
+            )
+
+        # Extract study design information using LLM
+        extracted_info = {
+            'sample_design': 'TBD',
+            'sample_size': 'TBD',
+            'response_rate': 'TBD',
+            'weighting': 'TBD',
+            'collection_period': 'TBD',
+            'mode': 'TBD'
+        }
+
+        if self.llm_callback:
+            print("Analyzing design report with LLM...")
+            extraction_prompt = f"""Extract the following information from this CSES design report.
+Return ONLY a JSON object with these exact keys:
+- sample_design: sampling methodology (e.g., "stratified random sampling", "multi-stage cluster")
+- sample_size: target and/or achieved sample size (e.g., "N=1500")
+- response_rate: response rate percentage (e.g., "45%")
+- weighting: weighting methodology (e.g., "post-stratification weights for age/gender")
+- collection_period: fieldwork dates (e.g., "April 15 - May 30, 2024")
+- mode: data collection mode (e.g., "CAPI", "online panel", "telephone")
+
+If information is not found, use "Not specified in report".
+
+Design Report Content:
+{doc_info.full_text[:12000]}
+
+Return ONLY valid JSON, no other text."""
+
+            try:
+                response = self.llm_callback(extraction_prompt)
+                # Parse JSON from response
+                import json
+                import re
+                # Extract JSON from response
+                json_match = re.search(r'\{[^{}]*\}', response, re.DOTALL)
+                if json_match:
+                    extracted_info = json.loads(json_match.group())
+            except Exception as e:
+                print(f"  LLM extraction failed: {e}, using manual entry")
+                self.active_logger.log_message(f"LLM extraction failed: {e}")
+
+        # UPDATE LOG FILE with study design section
+        print("Updating log file with study design information...")
+        self.active_logger.update_study_design_section(extracted_info)
+
+        # Log what was extracted
+        log_msg = "Study design info extracted from design report:\n"
+        for key, value in extracted_info.items():
+            log_msg += f"  {key}: {value}\n"
+        self.active_logger.log_message(log_msg)
 
         return StepResult(
             success=True,
-            message="Design report located - manual review required",
+            message="Design report analyzed and log file updated",
             artifacts=[design_report],
-            next_action="Please review the design report manually and note any issues in the logfile"
+            next_action="Review study design section in log file, then proceed to Step 3"
         )
 
     def _step_3(self, **kwargs) -> StepResult:
-        """Step 3: Fill Variable Tracking Sheet"""
-        # This step uses the variable matching functionality
+        """Step 3: Create initial Variable Tracking Sheet with all CSES target variables."""
+        from datetime import datetime
+
         data_file = self.state.data_file
 
         if not data_file or not Path(data_file).exists():
@@ -298,6 +355,7 @@ class StepExecutor:
             )
 
         # Load data and check variables
+        print("Loading data file to get variable list...")
         from src.ingest.data_loader import DataLoader
         loader = DataLoader()
         dataset_info = loader.load(Path(data_file))
@@ -310,13 +368,89 @@ class StepExecutor:
             )
 
         n_vars = len(dataset_info.variables)
+        print(f"  Found {n_vars} variables in deposited data")
 
-        return StepResult(
-            success=True,
-            message=f"Found {n_vars} variables in deposited data",
-            artifacts=[data_file],
-            next_action="Run variable matching (Step 7) to fill tracking sheet"
-        )
+        # Create the initial tracking sheet
+        print("Creating variable tracking sheet...")
+
+        # Get CSES target variables
+        try:
+            from src.matching.llm_matcher import CSES_TARGET_VARIABLES
+        except ImportError:
+            CSES_TARGET_VARIABLES = {}
+
+        # Create tracking sheet directory
+        var_list_dir = self.working_dir / "micro" / "deposited variable list"
+        var_list_dir.mkdir(parents=True, exist_ok=True)
+
+        # Generate filename
+        country_code = self.state.country_code or self.state.country[:3].upper()
+        year = self.state.year
+        date_str = datetime.now().strftime("%Y%m%d")
+        tracking_filename = f"deposited variables-m6_{country_code}_{year}_{date_str}.xlsx"
+        tracking_path = var_list_dir / tracking_filename
+
+        # Create Excel file with CSES format
+        try:
+            import openpyxl
+            from openpyxl.styles import Font, Alignment, PatternFill
+
+            wb = openpyxl.Workbook()
+            ws = wb.active
+            ws.title = "deposited variables"
+
+            # Header row
+            headers = ["VARIABLES", "CSES code", f"{country_code}_{year}", "REMARKS"]
+            header_fill = PatternFill(start_color="CCCCCC", end_color="CCCCCC", fill_type="solid")
+            for col, header in enumerate(headers, 1):
+                cell = ws.cell(row=1, column=col, value=header)
+                cell.font = Font(bold=True)
+                cell.fill = header_fill
+
+            # Subheader row
+            subheaders = ["QUESTIONNAIRE", "CSES M6", "(X = missing)", ""]
+            for col, subheader in enumerate(subheaders, 1):
+                cell = ws.cell(row=2, column=col, value=subheader)
+                cell.font = Font(italic=True)
+
+            # Add all CSES target variables
+            row = 3
+            for var_code, var_description in CSES_TARGET_VARIABLES.items():
+                ws.cell(row=row, column=1, value=var_description)  # Variable description
+                ws.cell(row=row, column=2, value=var_code)  # CSES code
+                ws.cell(row=row, column=3, value="[not yet matched]")  # Source variable
+                ws.cell(row=row, column=4, value="")  # Remarks
+                row += 1
+
+            # Set column widths
+            ws.column_dimensions['A'].width = 50
+            ws.column_dimensions['B'].width = 15
+            ws.column_dimensions['C'].width = 25
+            ws.column_dimensions['D'].width = 30
+
+            wb.save(tracking_path)
+            print(f"  Created: {tracking_path.name}")
+
+            # Log the creation
+            self.active_logger.log_message(
+                f"Created variable tracking sheet: {tracking_filename}\n"
+                f"  CSES target variables: {len(CSES_TARGET_VARIABLES)}\n"
+                f"  Source variables available: {n_vars}"
+            )
+
+            return StepResult(
+                success=True,
+                message=f"Variable tracking sheet created with {len(CSES_TARGET_VARIABLES)} CSES variables",
+                artifacts=[str(tracking_path)],
+                next_action="Proceed to Step 7 to match variables and fill the tracking sheet"
+            )
+
+        except Exception as e:
+            return StepResult(
+                success=False,
+                message=f"Failed to create tracking sheet: {e}",
+                issues=[str(e)]
+            )
 
     def _step_6(self, **kwargs) -> StepResult:
         """Step 6: Run Frequencies on Original Data"""
@@ -475,6 +609,50 @@ class StepExecutor:
             if do_result.success:
                 artifacts.append(str(do_path))
                 print(f"  Created: {do_path.name}")
+
+            # VERIFY output files exist and have content
+            issues = []
+
+            # Check tracking sheet
+            if not tracking_path.exists():
+                issues.append("Tracking sheet was not created")
+            else:
+                try:
+                    import openpyxl
+                    wb = openpyxl.load_workbook(tracking_path)
+                    ws = wb.active
+                    if ws.max_row < 5:
+                        issues.append("Tracking sheet is empty - no variable mappings recorded")
+                except Exception as e:
+                    issues.append(f"Could not verify tracking sheet: {e}")
+
+            # Check .do file
+            if not do_path.exists():
+                issues.append("Stata .do file was not created")
+            else:
+                do_content = do_path.read_text()
+                if len(do_content) < 100:
+                    issues.append("Stata .do file is empty or has no recode syntax")
+                elif "recode" not in do_content.lower() and "gen" not in do_content.lower():
+                    issues.append("Stata .do file has no recode or generate commands")
+
+            if issues:
+                self.active_logger.log_message(f"Step 7 issues: {', '.join(issues)}")
+                return StepResult(
+                    success=False,
+                    message="Variable matching incomplete - output files missing or empty",
+                    issues=issues,
+                    artifacts=artifacts,
+                    next_action="Re-run variable matching or check for errors"
+                )
+
+            # Log successful completion
+            self.active_logger.log_message(
+                f"Step 7 completed successfully.\n"
+                f"  Tracking sheet: {tracking_path.name}\n"
+                f"  Stata .do file: {do_path.name}\n"
+                f"  Variables matched: {result.matched_count}/{result.total_targets}"
+            )
 
             return StepResult(
                 success=True,
