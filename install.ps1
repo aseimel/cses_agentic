@@ -246,18 +246,93 @@ if ($fullInstallFailed) {
     Write-Host "  $pythonExe -m pip install python-dotenv litellm pandas" -ForegroundColor White
 }
 
-# Verify critical packages are installed
+# CRITICAL: Verify ALL packages can actually be imported
 Write-Host ""
-Write-Host "Verifying installation..." -ForegroundColor Cyan
-$verifyOutput = & $pipExe show python-dotenv litellm pandas 2>&1
-if ($LASTEXITCODE -eq 0) {
-    Write-Host "[OK] Core packages verified" -ForegroundColor Green
-} else {
-    Write-Host "[X] Package verification failed!" -ForegroundColor Red
-    Write-Host "    Running pip list to show what's installed:" -ForegroundColor Yellow
-    & $pipExe list
+Write-Host "Verifying installation (testing imports)..." -ForegroundColor Cyan
+
+$verifyScript = @"
+import sys
+failed = []
+modules = [
+    ('dotenv', 'python-dotenv'),
+    ('yaml', 'pyyaml'),
+    ('lxml', 'lxml'),
+    ('reportlab', 'reportlab'),
+    ('pypdf', 'pypdf'),
+    ('docx', 'python-docx'),
+    ('openpyxl', 'openpyxl'),
+    ('pandas', 'pandas'),
+    ('pyreadstat', 'pyreadstat'),
+    ('litellm', 'litellm'),
+    ('anthropic', 'anthropic'),
+    ('openai', 'openai'),
+    ('rich', 'rich'),
+    ('tqdm', 'tqdm'),
+]
+for mod, pkg in modules:
+    try:
+        __import__(mod)
+        print(f'  [OK] {pkg}')
+    except ImportError as e:
+        print(f'  [X] {pkg} - FAILED')
+        failed.append(pkg)
+if failed:
+    print(f'\nMISSING: {", ".join(failed)}')
+    sys.exit(1)
+else:
+    print('\nAll packages verified!')
+    sys.exit(0)
+"@
+
+$verifyResult = & $pythonExe -c $verifyScript 2>&1
+$verifyExitCode = $LASTEXITCODE
+Write-Host $verifyResult
+
+if ($verifyExitCode -ne 0) {
     Write-Host ""
-    Write-Host "Please check the errors above and try reinstalling." -ForegroundColor Yellow
+    Write-Host "[X] Some packages failed to install!" -ForegroundColor Red
+    Write-Host ""
+    Write-Host "Attempting to install missing packages..." -ForegroundColor Yellow
+
+    # Try to install missing packages again
+    foreach ($pkg in $corePackages) {
+        $testMod = switch ($pkg) {
+            "python-dotenv" { "dotenv" }
+            "pyyaml" { "yaml" }
+            "python-docx" { "docx" }
+            default { $pkg }
+        }
+        $testResult = & $pythonExe -c "import $testMod" 2>&1
+        if ($LASTEXITCODE -ne 0) {
+            Write-Host "  Reinstalling $pkg..." -ForegroundColor Yellow -NoNewline
+            & $pipExe install --upgrade --force-reinstall $pkg 2>&1 | Out-Null
+            if ($LASTEXITCODE -eq 0) {
+                Write-Host " [OK]" -ForegroundColor Green
+            } else {
+                Write-Host " [FAILED]" -ForegroundColor Red
+            }
+        }
+    }
+
+    # Final verification
+    Write-Host ""
+    Write-Host "Final verification..." -ForegroundColor Cyan
+    $finalResult = & $pythonExe -c $verifyScript 2>&1
+    $finalExitCode = $LASTEXITCODE
+    Write-Host $finalResult
+
+    if ($finalExitCode -ne 0) {
+        Write-Host ""
+        Write-Host "[X] Installation incomplete - some packages could not be installed." -ForegroundColor Red
+        Write-Host "    The tool may not work correctly." -ForegroundColor Yellow
+        Write-Host ""
+        Write-Host "Try running manually:" -ForegroundColor Cyan
+        Write-Host "  $pythonExe -m pip install python-docx pandas litellm" -ForegroundColor White
+        Write-Host ""
+        Read-Host "Press Enter to continue anyway"
+    }
+} else {
+    Write-Host "[OK] All packages verified" -ForegroundColor Green
 }
 
 Write-Host ""
