@@ -103,6 +103,57 @@ LOG_TOOLS = [
                 "required": ["cses_code", "source_variable"]
             }
         }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "update_election_summary",
+            "description": "Document election context: date, type, outcome, turnout, significance. Use when reviewing design reports or election documentation.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "summary": {
+                        "type": "string",
+                        "description": "Election summary text including date, type, outcome, turnout"
+                    }
+                },
+                "required": ["summary"]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "update_parties_leaders",
+            "description": "Document political parties, candidates, coalitions, and leaders relevant to the election.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "content": {
+                        "type": "string",
+                        "description": "Information about parties, leaders, and candidates"
+                    }
+                },
+                "required": ["content"]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "add_todo_item",
+            "description": "Add an item to the pre-release checklist. Use for tasks that must be completed before data release.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "item": {
+                        "type": "string",
+                        "description": "TODO item description"
+                    }
+                },
+                "required": ["item"]
+            }
+        }
     }
 ]
 
@@ -165,20 +216,28 @@ You MUST write important findings to the log file AS YOU DISCOVER THEM.
 
 If you have tool access, use the tools:
 - write_log_entry(message): Log any observation, issue, or finding
-- update_study_design(field, value): Record study design details
+- update_study_design(field, value): Record study design details (sample_design, sample_size, response_rate, weighting, collection_period, mode, field_lag)
+- update_election_summary(summary): Document election context (date, type, outcome, turnout)
+- update_parties_leaders(content): Document political parties, candidates, leaders
 - add_collaborator_question(question): Add a question for the collaborator
+- add_todo_item(item): Add a task to the pre-release checklist
 - update_variable_mapping(cses_code, source_variable): Record a variable mapping
 
 If tools are not available, use these markers in your response:
 [LOG: your note here] - For any observation, issue, or finding
-[STUDY_DESIGN: field=value] - For study design info (sample_design, sample_size, response_rate, weighting, collection_period, mode, field_lag)
+[STUDY_DESIGN: field=value] - For study design info
+[ELECTION_SUMMARY: text] - For election context
+[PARTIES: text] - For parties and leaders info
 [QUESTION: your question] - For collaborator questions
+[TODO: task] - For pre-release checklist items
 [VARIABLE: cses_code=source_variable] - For variable mappings
 
-IMPORTANT: When you discover information from documents, RECORD IT IMMEDIATELY.
-Do not just mention "response rate of 45%" - record it with update_study_design or [STUDY_DESIGN: response_rate=45%].
-Do not just note "152 days field lag" - record it with write_log_entry or [LOG: Field lag of 152 days].
-When you identify a variable mapping, record it immediately.
+IMPORTANT: When you discover information from documents, RECORD IT IMMEDIATELY:
+- Election context (date, type, outcome) -> update_election_summary or [ELECTION_SUMMARY: ...]
+- Party/candidate information -> update_parties_leaders or [PARTIES: ...]
+- Study design details -> update_study_design or [STUDY_DESIGN: field=value]
+- Unclear issues needing clarification -> add_collaborator_question or [QUESTION: ...]
+- Tasks to complete before release -> add_todo_item or [TODO: ...]
 
 Every important finding should be recorded so it persists in the log file.
 
@@ -475,6 +534,24 @@ def _execute_single_tool(tool_call, active_logger: "ActiveLogger", state: Workfl
         print(f"  [Variable] {cses_code} <- {source_variable}")
         return f"Mapped variable: {cses_code} = {source_variable}"
 
+    elif name == "update_election_summary":
+        summary = args.get("summary", "")
+        active_logger.update_election_summary(summary)
+        print(f"  [Election Summary] Updated...")
+        return f"Updated election summary"
+
+    elif name == "update_parties_leaders":
+        content = args.get("content", "")
+        active_logger.update_parties_leaders(content)
+        print(f"  [Parties/Leaders] Updated...")
+        return f"Updated parties and leaders"
+
+    elif name == "add_todo_item":
+        item = args.get("item", "")
+        active_logger.add_todo_item(item)
+        print(f"  [TODO] {item[:50]}...")
+        return f"Added TODO: {item}"
+
     else:
         return f"Unknown tool: {name}"
 
@@ -555,6 +632,27 @@ class ConversationSession:
                 cses_code.strip(),
                 source_var.strip()
             )
+
+        # Process [ELECTION_SUMMARY: ...] markers
+        summary_pattern = r'\[ELECTION_SUMMARY:\s*(.+?)\]'
+        summary_matches = re.findall(summary_pattern, response, re.DOTALL)
+        for summary in summary_matches:
+            self.active_logger.update_election_summary(summary.strip())
+            print(f"  [Election Summary] Updated...")
+
+        # Process [PARTIES: ...] markers
+        parties_pattern = r'\[PARTIES:\s*(.+?)\]'
+        parties_matches = re.findall(parties_pattern, response, re.DOTALL)
+        for content in parties_matches:
+            self.active_logger.update_parties_leaders(content.strip())
+            print(f"  [Parties/Leaders] Updated...")
+
+        # Process [TODO: ...] markers
+        todo_pattern = r'\[TODO:\s*(.+?)\]'
+        todo_matches = re.findall(todo_pattern, response, re.DOTALL)
+        for item in todo_matches:
+            self.active_logger.add_todo_item(item.strip())
+            print(f"  [TODO] {item[:50]}...")
 
         return response
 

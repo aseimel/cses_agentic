@@ -3,7 +3,7 @@ Active Logging for CSES Workflow.
 
 Provides real-time logging following CSES naming conventions:
 - Log file: micro/cses-m6_log-file_{CODE}_{YEAR}_{DATE}.txt (plain text)
-- Questions file: micro/Collaborator Questions/{Country}_{Year}_micro_collaborator_questions_{DATE}.docx (Word)
+- Questions file: micro/Collaborator Questions/{Country}_{Year}_micro_collaborator_questions_{DATE}.txt (plain text)
 """
 
 import logging
@@ -11,8 +11,14 @@ from datetime import datetime
 from pathlib import Path
 from typing import Optional, TYPE_CHECKING
 
-from docx import Document
-from docx.shared import Pt, RGBColor
+# docx only needed for variable tracking updates
+try:
+    from docx import Document
+    from docx.shared import Pt, RGBColor
+except ImportError:
+    Document = None
+    Pt = None
+    RGBColor = None
 
 if TYPE_CHECKING:
     from .state import WorkflowState
@@ -22,7 +28,7 @@ logger = logging.getLogger(__name__)
 
 class ActiveLogger:
     """
-    Handles real-time logging to CSES-standard Word documents.
+    Handles real-time logging to CSES-standard text files.
 
     Creates and maintains:
     - Log file with workflow progress, issues, and questions
@@ -68,10 +74,10 @@ class ActiveLogger:
         log_filename = f"cses-m6_log-file_{country_code}_{year}_{date_str}.txt"
         self.log_file_path = micro_dir / log_filename
 
-        # Questions file path
+        # Questions file path (plain text)
         questions_dir = micro_dir / "Collaborator Questions"
         questions_dir.mkdir(exist_ok=True)
-        questions_filename = f"{self.state.country}_{year}_micro_collaborator_questions_{date_str}.docx"
+        questions_filename = f"{self.state.country}_{year}_micro_collaborator_questions_{date_str}.txt"
         self.questions_file_path = questions_dir / questions_filename
 
         # Create log file if it doesn't exist
@@ -159,43 +165,31 @@ class ActiveLogger:
         self.log_file_path.write_text("\n".join(lines))
 
     def _create_questions_file(self):
-        """Create a new collaborator questions file."""
-        doc = Document()
-
+        """Create a new collaborator questions file (plain text)."""
         country_code = self.state.country_code or self.state.country[:3].upper()
         year = self.state.year
         country = self.state.country
         date_str = datetime.now().strftime("%Y-%m-%d")
 
-        # Title
-        title = doc.add_paragraph()
-        title_run = title.add_run(f"Collaborator Questions - {country} {year}")
-        title_run.bold = True
-        title_run.font.size = Pt(16)
+        lines = [
+            f"Collaborator Questions - {country} {year}",
+            f"Study: {country_code}_{year}_M6",
+            f"Generated: {date_str}",
+            f"Processor: [NAME]",
+            "",
+            "=" * 75,
+            "PENDING QUESTIONS",
+            "=" * 75,
+            "",
+            "",
+            "=" * 75,
+            "RESOLVED QUESTIONS",
+            "=" * 75,
+            "(Questions move here when answered)",
+            "",
+        ]
 
-        # Metadata
-        doc.add_paragraph(f"Study: {country_code}_{year}_M6")
-        doc.add_paragraph(f"Generated: {date_str}")
-        doc.add_paragraph(f"Processor: [NAME]")
-        doc.add_paragraph()
-
-        # Pending Questions section
-        doc.add_paragraph("=" * 47)
-        pending_header = doc.add_paragraph()
-        pending_run = pending_header.add_run("PENDING QUESTIONS")
-        pending_run.bold = True
-        doc.add_paragraph("=" * 47)
-        doc.add_paragraph()
-
-        # Resolved Questions section
-        doc.add_paragraph("=" * 47)
-        resolved_header = doc.add_paragraph()
-        resolved_run = resolved_header.add_run("RESOLVED QUESTIONS")
-        resolved_run.bold = True
-        doc.add_paragraph("=" * 47)
-        doc.add_paragraph("(Questions move here when answered)")
-
-        doc.save(self.questions_file_path)
+        self.questions_file_path.write_text("\n".join(lines))
 
     def log_step_start(self, step_num: int, step_name: str):
         """
@@ -276,48 +270,35 @@ class ActiveLogger:
 
     def _add_question_to_file(self, question_id: str, question: str, context: str,
                                step_num: int, step_name: str):
-        """Add a question to the collaborator questions file."""
-        doc = Document(self.questions_file_path)
+        """Add a question to the collaborator questions file (plain text)."""
+        if not self.questions_file_path or not self.questions_file_path.exists():
+            return
 
-        # Find the PENDING QUESTIONS section and add before RESOLVED
-        # Insert before the "RESOLVED QUESTIONS" line
-        insert_index = None
-        for i, para in enumerate(doc.paragraphs):
-            if "RESOLVED QUESTIONS" in para.text:
-                insert_index = i - 1  # Insert before the separator
-                break
+        try:
+            content = self.questions_file_path.read_text()
+            lines = content.split("\n")
 
-        if insert_index is None:
-            # Fallback: append at end
-            insert_index = len(doc.paragraphs) - 1
+            # Find RESOLVED QUESTIONS section and insert before it
+            insert_idx = None
+            for i, line in enumerate(lines):
+                if "RESOLVED QUESTIONS" in line and i > 0 and "=" in lines[i-1]:
+                    insert_idx = i - 1  # Insert before separator
+                    break
 
-        # Create new paragraphs for the question
-        # We need to insert at a specific position, so we'll rebuild
-        doc_new = Document(self.questions_file_path)
+            if insert_idx:
+                question_block = [
+                    f"{question_id} [Step {step_num}: {step_name}]",
+                    f"Question: {question}",
+                    f"Context: {context}",
+                    "Status: PENDING",
+                    "-" * 75,
+                    "",
+                ]
+                new_lines = lines[:insert_idx] + question_block + lines[insert_idx:]
+                self.questions_file_path.write_text("\n".join(new_lines))
 
-        # Find position and insert
-        found_pending = False
-        for para in doc_new.paragraphs:
-            if "PENDING QUESTIONS" in para.text:
-                found_pending = True
-            elif found_pending and "RESOLVED QUESTIONS" in para.text:
-                # Insert question before this
-                break
-
-        # Simpler approach: append to the document then save
-        # The questions file structure allows appending in the pending section
-
-        # Add the question entry
-        q_para = doc.add_paragraph()
-        q_run = q_para.add_run(f"{question_id} [Step {step_num}: {step_name}]")
-        q_run.bold = True
-
-        doc.add_paragraph(f"Question: {question}")
-        doc.add_paragraph(f"Context: {context}")
-        doc.add_paragraph("Status: PENDING")
-        doc.add_paragraph("-" * 47)
-
-        doc.save(self.questions_file_path)
+        except Exception as e:
+            logger.error(f"Failed to add question to file: {e}")
 
     def _add_question_to_log(self, question_id: str, question: str):
         """Add a question reference to the log file's Questions section."""
@@ -501,6 +482,74 @@ class ActiveLogger:
             logger.error(f"Failed to read study design values: {e}")
 
         return values
+
+    def update_election_summary(self, summary: str):
+        """
+        Update the ELECTION SUMMARY section in the log file.
+
+        Args:
+            summary: Election summary text (date, type, outcome, turnout, etc.)
+        """
+        if not self.log_file_path or not self.log_file_path.exists():
+            return
+
+        country_code = self.state.country_code or self.state.country[:3].upper()
+        year = self.state.year
+        self._update_log_section(
+            f"<<>> ELECTION SUMMARY - {country_code}_{year}_M6:",
+            summary
+        )
+
+    def update_parties_leaders(self, content: str):
+        """
+        Update the PARTIES AND LEADERS section in the log file.
+
+        Args:
+            content: Information about political parties, candidates, and leaders
+        """
+        if not self.log_file_path or not self.log_file_path.exists():
+            return
+
+        country_code = self.state.country_code or self.state.country[:3].upper()
+        year = self.state.year
+        self._update_log_section(
+            f"<<>> PARTIES AND LEADERS: {country_code}_{year}_M6",
+            content
+        )
+
+    def add_todo_item(self, item: str):
+        """
+        Add an item to the Things To Do Before Releasing section.
+
+        Args:
+            item: Task description to add to pre-release checklist
+        """
+        if not self.log_file_path or not self.log_file_path.exists():
+            return
+
+        country_code = self.state.country_code or self.state.country[:3].upper()
+        year = self.state.year
+
+        try:
+            content = self.log_file_path.read_text()
+            lines = content.split("\n")
+
+            # Find ">>> Things To Do Before Releasing" and insert before next section
+            found_section = False
+            insert_idx = None
+            for i, line in enumerate(lines):
+                if ">>> Things To Do Before Releasing" in line:
+                    found_section = True
+                elif found_section and (line.startswith(">>>") or line.startswith("=")):
+                    insert_idx = i
+                    break
+
+            if insert_idx:
+                lines.insert(insert_idx, f"- {item}")
+                self.log_file_path.write_text("\n".join(lines))
+
+        except Exception as e:
+            logger.error(f"Failed to add TODO item: {e}")
 
     def update_deposit_inventory(self, data_files: list, questionnaires: list,
                                   codebooks: list, design_reports: list, macro_reports: list):
