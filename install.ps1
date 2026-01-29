@@ -17,7 +17,7 @@ $RepoUrl = "https://github.com/aseimel/cses_agentic/archive/refs/heads/main.zip"
 
 # Check Python (3.10, 3.11, 3.12, 3.13 all work)
 function Test-Python {
-    $pythonCmds = @("python", "python3", "py -3", "py")
+    $pythonCmds = @("python", "python3", "py -3.12", "py -3.13", "py -3.11", "py -3", "py")
 
     foreach ($cmd in $pythonCmds) {
         try {
@@ -25,8 +25,33 @@ function Test-Python {
             $version = & $cmdParts[0] $cmdParts[1..99] --version 2>&1
             if ($version -match "Python 3\.(\d+)") {
                 $minor = [int]$Matches[1]
-                if ($minor -ge 10) {
+                if ($minor -ge 10 -and $minor -le 13) {
                     Write-Host "[OK] $version" -ForegroundColor Green
+                    $script:PythonCmd = $cmdParts[0]
+                    if ($cmdParts.Length -gt 1) {
+                        $script:PythonArgs = $cmdParts[1..99]
+                    } else {
+                        $script:PythonArgs = @()
+                    }
+                    return $true
+                } elseif ($minor -ge 14) {
+                    Write-Host "[!] $version detected - too new, some packages may not work" -ForegroundColor Yellow
+                    Write-Host "    Trying to find Python 3.12 or 3.13..." -ForegroundColor Yellow
+                    # Continue searching for older Python
+                }
+            }
+        } catch {}
+    }
+
+    # If we get here, check if we found Python 3.14+ as a fallback
+    foreach ($cmd in $pythonCmds) {
+        try {
+            $cmdParts = $cmd.Split()
+            $version = & $cmdParts[0] $cmdParts[1..99] --version 2>&1
+            if ($version -match "Python 3\.(\d+)") {
+                $minor = [int]$Matches[1]
+                if ($minor -ge 10) {
+                    Write-Host "[!] Using $version (may have compatibility issues)" -ForegroundColor Yellow
                     $script:PythonCmd = $cmdParts[0]
                     if ($cmdParts.Length -gt 1) {
                         $script:PythonArgs = $cmdParts[1..99]
@@ -39,10 +64,10 @@ function Test-Python {
         } catch {}
     }
 
-    Write-Host "[X] Python 3.10+ required" -ForegroundColor Red
+    Write-Host "[X] Python 3.10-3.13 required" -ForegroundColor Red
     Write-Host ""
-    Write-Host "Please ask IT to install Python, or install from:" -ForegroundColor Yellow
-    Write-Host "https://www.python.org/downloads/" -ForegroundColor Yellow
+    Write-Host "Please install Python 3.12 from:" -ForegroundColor Yellow
+    Write-Host "https://www.python.org/downloads/release/python-3129/" -ForegroundColor Yellow
     Write-Host ""
     Write-Host "IMPORTANT: Make sure 'Add Python to PATH' is enabled!" -ForegroundColor Yellow
     return $false
