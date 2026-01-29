@@ -5,16 +5,21 @@ After the initial folder setup, this module provides a natural language
 interface where users can chat with Claude about the CSES workflow.
 Claude has expert knowledge of the CSES process and guides users through
 each step.
+
+CRITICAL: Claude MUST write important findings to the log file in real-time
+using the [LOG:...] and [STUDY_DESIGN:...] markers.
 """
 
 import subprocess
 import shutil
 import json
 import os
+import re
 from pathlib import Path
 from typing import Optional
 
 from src.workflow.state import WorkflowState, WORKFLOW_STEPS, StepStatus
+from src.workflow.active_logging import ActiveLogger
 
 
 # CSES Expert System Prompt
@@ -69,6 +74,24 @@ Working Directory: {working_dir}
 - If something is unclear or missing, ask for clarification
 - Proactively suggest the next logical action
 - You can read files in the study folder if needed to answer questions
+
+## CRITICAL: Live Log File Updates
+You MUST write important findings to the log file AS YOU DISCOVER THEM using these markers:
+
+[LOG: your note here]
+- Use for any observation, issue, or finding that should be documented
+- Examples: field lag issues, missing weights, unusual methodology, data quality notes
+
+[STUDY_DESIGN: field=value]
+- Use to update the Study Design section with specific values
+- Fields: sample_design, sample_size, response_rate, weighting, collection_period, mode
+- Example: [STUDY_DESIGN: sample_size=1500]
+- Example: [STUDY_DESIGN: weighting=No post-stratification weights available]
+
+[QUESTION: your question for collaborator]
+- Use to add a question that needs to be sent to the collaborator
+
+IMPORTANT: Anything important you say in your response that should be preserved in the log MUST also be written with a [LOG:...] marker. If you mention "152 days field lag" in your discussion, also include [LOG: Field lag of 152 days between election and fieldwork start - unusually long].
 
 Respond naturally as a helpful CSES expert assistant."""
 
@@ -242,6 +265,7 @@ class ConversationSession:
     def __init__(self, state: WorkflowState):
         self.state = state
         self.history = []
+        self.active_logger = ActiveLogger(state)
 
     def send(self, message: str) -> str:
         """Send a message and get a response."""
@@ -251,8 +275,56 @@ class ConversationSession:
         # Get response
         response = call_claude_conversation(message, self.state, self.history)
 
+        # CRITICAL: Parse and write log entries in real-time
+        response = self._process_log_markers(response)
+
         # Add assistant response to history
         self.history.append({"role": "assistant", "content": response})
+
+        return response
+
+    def _process_log_markers(self, response: str) -> str:
+        """
+        Parse response for log markers and write to log file.
+
+        Markers:
+        - [LOG: message] -> Write to log file notes section
+        - [STUDY_DESIGN: field=value] -> Update study design section
+        - [QUESTION: question] -> Add collaborator question
+        """
+        # Process [LOG: ...] markers
+        log_pattern = r'\[LOG:\s*(.+?)\]'
+        log_matches = re.findall(log_pattern, response, re.DOTALL)
+        for log_entry in log_matches:
+            log_entry = log_entry.strip()
+            self.active_logger.log_message(log_entry)
+            print(f"  [Logged] {log_entry[:60]}...")
+
+        # Process [STUDY_DESIGN: field=value] markers
+        design_pattern = r'\[STUDY_DESIGN:\s*(\w+)\s*=\s*(.+?)\]'
+        design_matches = re.findall(design_pattern, response)
+        if design_matches:
+            design_info = {}
+            for field, value in design_matches:
+                design_info[field.strip()] = value.strip()
+                print(f"  [Study Design] {field}: {value[:40]}...")
+            self.active_logger.update_study_design_section(design_info)
+
+        # Process [QUESTION: ...] markers
+        question_pattern = r'\[QUESTION:\s*(.+?)\]'
+        question_matches = re.findall(question_pattern, response, re.DOTALL)
+        for question in question_matches:
+            question = question.strip()
+            self.active_logger.add_collaborator_question(
+                question,
+                "From conversation",
+                self.state.get_next_step() or 0
+            )
+            print(f"  [Question added] {question[:60]}...")
+
+        # Save state after any updates
+        if log_matches or design_matches or question_matches:
+            self.state.save()
 
         return response
 
@@ -261,3 +333,4 @@ class ConversationSession:
         new_state = WorkflowState.load(Path(self.state.working_dir))
         if new_state:
             self.state = new_state
+            self.active_logger = ActiveLogger(new_state)

@@ -453,15 +453,22 @@ def cmd_init(args) -> Path:
     active_logger.log_message(f"Study initialized: {country} {year}")
     active_logger.log_message(f"Session ID: {state.session_id}")
 
-    # CRITICAL: Fill deposit inventory in log file immediately
+    # CRITICAL: Fill deposit inventory with CURATED filenames (standardized names in micro/)
+    # Use the state's file paths which point to the renamed files, not the original deposit
+    curated_data = [state.data_file] if state.data_file else []
+    curated_questionnaires = state.questionnaire_files or []
+    curated_codebooks = [state.codebook_file] if state.codebook_file else []
+    curated_design_reports = [state.design_report_file] if state.design_report_file else []
+    curated_macro_reports = [file_mapping.get("macro_report")] if file_mapping.get("macro_report") else []
+
     active_logger.update_deposit_inventory(
-        data_files=[str(f) for f in detected.data_files],
-        questionnaires=[str(f) for f in detected.questionnaire_files],
-        codebooks=[str(f) for f in detected.codebook_files],
-        design_reports=[str(f) for f in detected.design_report_files],
-        macro_reports=[str(f) for f in detected.macro_report_files]
+        data_files=curated_data,
+        questionnaires=curated_questionnaires,
+        codebooks=curated_codebooks,
+        design_reports=curated_design_reports,
+        macro_reports=curated_macro_reports
     )
-    print("  Log file updated with deposit inventory")
+    print("  Log file updated with curated file inventory")
 
     # Save state again with log file paths
     state.save(study_dir / ".cses")
