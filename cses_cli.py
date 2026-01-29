@@ -796,22 +796,21 @@ def cmd_interactive(args):
     # Create conversation session
     conversation = ConversationSession(state)
 
-    # Try to use Textual TUI if available
-    try:
-        from src.tui.chat_app import CSESChat
-        print("Starting TUI interface...")
-        app = CSESChat(state, conversation)
-        app.run()
-        return
-    except ImportError:
-        # Textual not available, fall back to simple chat
-        print("Note: Install 'textual' for a better interface (pip install textual)")
-        print()
-    except Exception as e:
-        print(f"TUI error: {e}, falling back to simple chat")
-        print()
+    # TUI disabled by default - tool print() statements interfere with display
+    # Enable with: set CSES_TUI=1 (Windows) or export CSES_TUI=1 (Linux/Mac)
+    if os.getenv("CSES_TUI") == "1":
+        try:
+            from src.tui.chat_app import CSESChat
+            print("Starting TUI interface...")
+            app = CSESChat(state, conversation)
+            app.run()
+            return
+        except ImportError:
+            print("Note: Install 'textual' for TUI (pip install textual)")
+        except Exception as e:
+            print(f"TUI error: {e}")
 
-    # Simple text-based chat fallback
+    # Simple text-based chat (default)
     print("=" * 60)
     print("CSES Expert Assistant")
     print("=" * 60)
