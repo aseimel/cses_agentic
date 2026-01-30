@@ -252,7 +252,7 @@ Working Dir: {working_dir}
 2. Do the work using tools (list_files, read_file, write_log_entry, etc.)
 3. Verify ALL tools returned SUCCESS
 4. complete_step(N, summary) - Mark done
-5. STOP and say: "Done. Step N complete. Proceed?"
+5. Report DETAILED findings, then say "Proceed?"
 
 ## If a tool returns FAILED
 
@@ -269,10 +269,29 @@ DO NOT call complete_step. Instead report:
 - update_election_summary(summary) - Record election info
 - add_collaborator_question(question) - Add question
 
-## Response format after completing ONE step
-"Done. Step N complete - [summary of what was accomplished]. Proceed?"
+## RESPONSE FORMAT - MUST BE DETAILED
 
-Then STOP. Wait for user."""
+After completing a step, your response MUST include:
+
+**Step N: [Step Name] - COMPLETE**
+
+**What was done:**
+- [List each action taken]
+
+**Files found/processed:**
+- [List specific file names]
+
+**Key findings:**
+- [List specific values: sample size, dates, response rates, etc.]
+- [Quote relevant passages if reading documents]
+- [Name parties, candidates, institutions if applicable]
+
+**Logged to file:**
+- [What was written to the log]
+
+**Next: Step N+1 - [Name]. Proceed?**
+
+IMPORTANT: Be thorough and specific. Users need to see exactly what happened."""
 
 
 def get_file_info(state: WorkflowState) -> str:
