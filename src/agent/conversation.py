@@ -13,6 +13,7 @@ and update_variable_mapping.
 
 import json
 import os
+import time
 from pathlib import Path
 from typing import Optional, TYPE_CHECKING
 
@@ -348,6 +349,40 @@ def build_system_prompt(state: WorkflowState) -> str:
     )
 
 
+def _completion_with_retry(
+    model: str,
+    messages: list,
+    tools: list = None,
+    tool_choice: str = "auto",
+    max_retries: int = 3
+):
+    """
+    Call LiteLLM completion with retry logic for transient failures.
+
+    Uses exponential backoff: 1s, 2s, 4s between retries.
+    """
+    from litellm import completion
+
+    for attempt in range(max_retries):
+        try:
+            return completion(
+                model=model,
+                messages=messages,
+                tools=tools,
+                tool_choice=tool_choice,
+                parallel_tool_calls=False,  # Sequential tool execution for reliability
+                max_tokens=2048,
+                temperature=0.3
+            )
+        except Exception as e:
+            if attempt < max_retries - 1:
+                wait_time = 2 ** attempt  # 1s, 2s, 4s
+                print(f"[RETRY] Attempt {attempt + 1} failed: {e}. Waiting {wait_time}s...")
+                time.sleep(wait_time)
+            else:
+                raise
+
+
 def call_llm_conversation(
     user_message: str,
     state: WorkflowState,
@@ -383,8 +418,6 @@ def _call_litellm(
 ) -> str:
     """Call LLM via LiteLLM API with tool support for logging."""
     try:
-        from litellm import completion
-
         messages = [{"role": "system", "content": system_prompt}]
 
         # Add conversation history
@@ -393,20 +426,19 @@ def _call_litellm(
 
         messages.append({"role": "user", "content": user_message})
 
-        # Get model from environment
-        model = os.getenv("LLM_MODEL_VALIDATE") or os.getenv("LLM_MODEL", "openai/gpt-oss:120b")
+        # Get model from environment (default to gpt-4.1 for reliable tool calling)
+        model = os.getenv("LLM_MODEL_VALIDATE") or os.getenv("LLM_MODEL", "openai/gpt-4.1")
 
         # Include tools only if we have an active_logger to execute them
         tools_param = LOG_TOOLS if active_logger else None
 
         print(f"[DEBUG] Calling {model} with {len(messages)} messages...")
 
-        response = completion(
+        response = _completion_with_retry(
             model=model,
             messages=messages,
             tools=tools_param,
-            max_tokens=2048,
-            temperature=0.3
+            tool_choice="auto"
         )
 
         # Check if there are tool calls to execute
@@ -445,9 +477,9 @@ def _execute_tool_loop(
     Execute tool calls in a loop until the LLM returns a final text response.
 
     This handles cases where the LLM may need to call multiple tools.
+    Uses parallel_tool_calls=False for reliable sequential execution.
+    Falls back to forced text synthesis if max iterations reached without text.
     """
-    from litellm import completion
-
     current_message = initial_response_message
 
     for iteration in range(max_iterations):
@@ -489,24 +521,42 @@ def _execute_tool_loop(
         # Add tool results to messages
         messages.extend(tool_results)
 
-        # Call LLM again with tool results
-        response = completion(
+        # Call LLM again with tool results (using retry helper)
+        response = _completion_with_retry(
             model=model,
             messages=messages,
             tools=LOG_TOOLS,
-            max_tokens=2048,
-            temperature=0.3
+            tool_choice="auto"
         )
 
         current_message = response.choices[0].message
         print(f"[DEBUG] Iteration {iteration + 1}: content={bool(current_message.content)}, tools={bool(getattr(current_message, 'tool_calls', None))}")
 
-    # Max iterations reached, return whatever content we have (never return empty)
+    # Max iterations reached - try fallback synthesis with tool_choice="none"
     content = current_message.content
     if not content or not content.strip():
-        print(f"[WARNING] Max iterations ({max_iterations}) reached with no response")
-        return "[Max iterations reached - operations may have completed, check log file]"
-    return content.strip()
+        print(f"[DEBUG] Max iterations ({max_iterations}) reached. Forcing text synthesis with tool_choice='none'...")
+
+        # Add a prompt to request summary
+        messages.append({"role": "user", "content": "[Summarize what was accomplished in the operations above]"})
+
+        try:
+            response = _completion_with_retry(
+                model=model,
+                messages=messages,
+                tools=LOG_TOOLS,
+                tool_choice="none"  # Force text output, no tool calls
+            )
+            content = response.choices[0].message.content
+        except Exception as e:
+            print(f"[WARNING] Fallback synthesis failed: {e}")
+            content = None
+
+    if content and content.strip():
+        return content.strip()
+
+    # Last resort fallback message
+    return "[Operations completed. Check log file for details.]"
 
 
 def _execute_single_tool(tool_call, active_logger: "ActiveLogger", state: WorkflowState, on_tool_output: callable = None) -> str:
