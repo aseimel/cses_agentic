@@ -4,7 +4,7 @@ CSES Data Harmonization Agent - Main Entry Point.
 Orchestrates the dual-model validation pipeline:
 1. Extract context from uploaded files
 2. Run original LLM matcher for proposals
-3. Run Claude validation on each proposal
+3. Run LLM validation on each proposal
 4. Present results for human review
 
 This module provides both programmatic API and CLI interface.
@@ -96,7 +96,7 @@ class DualModelResult:
         return [v for v in self.validations if not v.models_agree]
 
     def get_by_verdict(self, verdict: ValidationVerdict) -> list[ValidationResult]:
-        """Get validations by Claude's verdict."""
+        """Get validations by the validation LLM's verdict."""
         return [v for v in self.validations if v.verdict == verdict]
 
 
@@ -158,7 +158,7 @@ class CSESAgent:
         Args:
             data_file: Path to data file
             doc_files: List of documentation files
-            validate: Run Claude validation (default: True)
+            validate: Run LLM validation (default: True)
             progress_callback: Optional callback for progress updates
 
         Returns:
@@ -221,10 +221,10 @@ class CSESAgent:
                     model=self.matcher.model
                 )
 
-        # Stage 3: Claude validation (optional)
+        # Stage 3: LLM validation (optional)
         validations = []
         if validate:
-            report("Stage 4/4: Running Claude validation...")
+            report("Stage 4/4: Running LLM validation...")
             validations = validate_proposals(
                 proposals=matching_result.proposals,
                 extraction_result=extraction,
@@ -243,7 +243,7 @@ class CSESAgent:
                         model=validation.validation_model
                     )
         else:
-            report("Stage 4/4: Skipped Claude validation")
+            report("Stage 4/4: Skipped LLM validation")
             # Create placeholder validations
             for proposal in matching_result.proposals:
                 validations.append(ValidationResult(
@@ -409,7 +409,7 @@ def run_harmonization(
         doc_files: List of documentation files
         country: Country name/code
         year: Election year
-        validate: Run Claude validation
+        validate: Run LLM validation
         output_dir: Output directory
 
     Returns:
@@ -428,7 +428,7 @@ if __name__ == "__main__":
     parser.add_argument("--docs", "-d", type=Path, nargs="+", help="Documentation files")
     parser.add_argument("--country", "-c", default="Unknown", help="Country name/code")
     parser.add_argument("--year", "-y", default="Unknown", help="Election year")
-    parser.add_argument("--no-validate", action="store_true", help="Skip Claude validation")
+    parser.add_argument("--no-validate", action="store_true", help="Skip LLM validation")
     parser.add_argument("--output", "-o", type=Path, help="Output directory")
     parser.add_argument("--export", "-e", choices=["json", "xlsx", "both"], default="json", help="Export format")
 
@@ -463,7 +463,7 @@ if __name__ == "__main__":
         for v in result.get_disagreements():
             print(f"  - {v.proposal.target_variable}: {v.proposal.source_variable}")
             print(f"    Original: {v.proposal.confidence:.0%} - {v.proposal.reasoning[:50]}")
-            print(f"    Claude: {v.verdict.value} - {v.reasoning[:50]}")
+            print(f"    Validator: {v.verdict.value} - {v.reasoning[:50]}")
 
     # Export
     agent = CSESAgent(args.country, args.year, args.output)

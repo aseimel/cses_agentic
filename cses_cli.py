@@ -38,7 +38,6 @@ from src.workflow.state import (
 )
 from src.workflow.organizer import FileOrganizer, detect_and_summarize, detect_questionnaire_language, parse_country_year_from_folder
 from src.workflow.steps import StepExecutor
-from src.agent.validator import check_claude_cli_available
 from src.agent.conversation import ConversationSession
 
 # Configure logging
@@ -308,18 +307,9 @@ def check_validation_setup() -> tuple[bool, str]:
 
     validation_model = os.getenv("LLM_MODEL_VALIDATE", "")
 
-    if validation_model == "claude-cli":
-        # Using Claude CLI with Max subscription
-        available, msg = check_claude_cli_available()
-        if available:
-            return True, f"[OK] Validation: Claude CLI (Max subscription)\n   {msg}"
-        else:
-            return False, f"[!] Validation: Claude CLI not ready\n   {msg}\n   Run 'claude login' to authenticate"
-
-    elif validation_model:
+    if validation_model:
         # Using API model
         return True, f"[OK] Validation: {validation_model} (API)"
-
     else:
         return False, "[!] Validation model not configured. Set LLM_MODEL_VALIDATE in .env"
 
@@ -329,12 +319,8 @@ def print_validation_status():
     ready, message = check_validation_setup()
     print(message)
     if not ready:
-        print("\nTo use Claude CLI with your Max subscription:")
-        print("  1. Install Claude Code: npm install -g @anthropic-ai/claude-code")
-        print("  2. Login: claude login")
-        print("  3. Set in .env: LLM_MODEL_VALIDATE=claude-cli")
-        print("\nOr use an API model:")
-        print("  Set in .env: LLM_MODEL_VALIDATE=anthropic/claude-sonnet-4-20250514")
+        print("\nTo configure validation model:")
+        print("  Set in .env: LLM_MODEL_VALIDATE=openai/gpt-oss:120b")
     print()
 
 
@@ -626,9 +612,9 @@ def cmd_match(args):
     # Ask about dual-model validation
     if args.no_validate:
         validate = False
-        print("Running without Claude validation (--no-validate)")
+        print("Running without LLM validation (--no-validate)")
     else:
-        print("Dual-model validation will run Claude to verify each mapping.")
+        print("Dual-model validation will run the validation LLM to verify each mapping.")
         response = input("Enable dual-model validation? [Y/n]: ").strip().lower()
         validate = response != 'n'
 
@@ -740,7 +726,7 @@ def cmd_export(args):
 
 
 def cmd_interactive(args):
-    """Start interactive conversation mode with Claude."""
+    """Start interactive conversation mode with the LLM agent."""
     working_dir = Path.cwd()
     study_dir = None
     state = None
@@ -838,7 +824,7 @@ def cmd_interactive(args):
     print("Type 'quit' to exit, 'status' to see progress.")
     print()
 
-    # Send initial greeting to get Claude's guidance
+    # Send initial greeting to get the LLM's guidance
     next_step = state.get_next_step()
     if next_step is not None:
         step_info = WORKFLOW_STEPS[next_step]
@@ -1232,7 +1218,7 @@ Examples:
     # match command
     match_parser = subparsers.add_parser("match", help="Run variable matching")
     match_parser.add_argument("--no-validate", action="store_true",
-                             help="Skip Claude validation")
+                             help="Skip LLM validation")
 
     # export command
     export_parser = subparsers.add_parser("export", help="Export mappings")

@@ -1,18 +1,16 @@
 """
-Conversational Claude Interface for CSES Processing.
+Conversational LLM Interface for CSES Processing.
 
 After the initial folder setup, this module provides a natural language
-interface where users can chat with Claude about the CSES workflow.
-Claude has expert knowledge of the CSES process and guides users through
+interface where users can chat with the LLM about the CSES workflow.
+The LLM has expert knowledge of the CSES process and guides users through
 each step.
 
-Claude has direct tool access to write to the log file in real-time using
+The LLM has direct tool access to write to the log file in real-time using
 tools like write_log_entry, update_study_design, add_collaborator_question,
 and update_variable_mapping.
 """
 
-import subprocess
-import shutil
 import json
 import os
 from pathlib import Path
@@ -21,11 +19,11 @@ from typing import Optional, TYPE_CHECKING
 if TYPE_CHECKING:
     from src.workflow.active_logging import ActiveLogger
 
-from src.workflow.state import WorkflowState, WORKFLOW_STEPS, StepStatus
+from src.workflow.state import WorkflowState, WORKFLOW_STEPS, StepStatus, STEP_PREREQUISITES
 from src.workflow.active_logging import ActiveLogger
 
 
-# Tool definitions for Claude to update log files directly
+# Tool definitions for the LLM to update log files directly
 LOG_TOOLS = [
     {
         "type": "function",
@@ -187,51 +185,85 @@ LOG_TOOLS = [
                 }
             }
         }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "start_step",
+            "description": "Start working on a workflow step. MUST call this BEFORE doing any work on a step. Checks prerequisites and marks step as in progress.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "step_num": {
+                        "type": "integer",
+                        "description": "Step number (0-16)"
+                    }
+                },
+                "required": ["step_num"]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "complete_step",
+            "description": "Complete a workflow step. Call this AFTER finishing all work on a step. Marks step as completed.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "step_num": {
+                        "type": "integer",
+                        "description": "Step number (0-16)"
+                    },
+                    "summary": {
+                        "type": "string",
+                        "description": "Brief summary of what was accomplished"
+                    }
+                },
+                "required": ["step_num", "summary"]
+            }
+        }
     }
 ]
 
 
-# CSES Expert System Prompt - Active Agent Behavior
-CSES_EXPERT_PROMPT = """You are an active CSES data processing agent for Module 6. You execute tasks, not explain them.
+# CSES Expert System Prompt - Active Agent with Workflow Enforcement
+CSES_EXPERT_PROMPT = """You are a CSES data processing agent for Module 6. You EXECUTE tasks using tools.
 
 ## Current Study
 Country: {country}
 Year: {year}
-Working Directory: {working_dir}
+Working Dir: {working_dir}
 
-## Workflow Status
+## Workflow Status (work on [NEXT] step ONLY)
 {workflow_status}
 
 ## Available Files
 {file_info}
 
-## CRITICAL INSTRUCTIONS
+## MANDATORY WORKFLOW RULES
 
-YOU MUST FOLLOW THIS EXACT RESPONSE PATTERN:
+1. ALWAYS call start_step(N) BEFORE doing any work on step N
+   - If it returns BLOCKED, STOP and tell the user which prerequisite step is missing
+   - If it returns SKIP (already complete), move to next step
+   - If it returns SUCCESS or CONTINUE, proceed with the work
 
-1. When user says "yes", "proceed", "continue", "go ahead", or similar:
-   - USE TOOLS IMMEDIATELY to execute the task
-   - Then report: "Done. I [what you did]. Next: [next step]. Proceed?"
+2. When user says "yes/proceed/continue":
+   - Call start_step for the [NEXT] step
+   - USE TOOLS to do the work (read_file, list_files, write_log_entry)
+   - Call complete_step when finished
+   - Report: "Done. [summary]. Next: Step N - [name]. Proceed?"
 
-2. When user asks you to do something:
-   - USE TOOLS to do it (read_file, list_files, write_log_entry, etc.)
-   - Report what you found/did
-   - Propose next action: "Next: [action]. Proceed?"
+3. ALWAYS call complete_step(N, summary) AFTER finishing step N
 
-3. NEVER say "I can...", "Would you like me to...", "Should I..."
-   - WRONG: "I can read the design report for you"
-   - RIGHT: [use read_file tool] "The design report shows sample size 1500. Logged. Next: check questionnaire. Proceed?"
+4. NEVER skip steps or work on steps out of order
 
-## Example Correct Response
-User: "yes"
-You: [call list_files tool] [call read_file on design report] [call write_log_entry]
-"Done. Found 5 files in deposit. Design report shows:
-- Sample: 1500 respondents
-- Mode: Face-to-face
-- Period: April 2024
-Logged to file. Next: Read questionnaire to identify variables. Proceed?"
+5. NEVER say "I can...", "Would you like...", "Should I..."
+   - Just DO IT with tools
 
-## Tools (USE THEM)
+## Tools
+- start_step(step_num) - MUST call before starting a step
+- complete_step(step_num, summary) - MUST call after finishing a step
 - list_files(directory) - List files
 - read_file(path) - Read any file
 - write_log_entry(message) - Log findings
@@ -239,26 +271,22 @@ Logged to file. Next: Read questionnaire to identify variables. Proceed?"
 - update_election_summary(summary) - Record election info
 - add_collaborator_question(question) - Add question for collaborator
 
-## Workflow Steps
-0. Set Up Folder - DONE
-1. Check Deposit - List and verify files
-2. Read Design Report - Extract methodology
-3. Fill Tracking Sheet - Map variables
-4. Write Study Design - Document weights
-5-16. [Later steps]
-
-## RULES
-- USE TOOLS for every action
-- NEVER ask permission to read files
-- ALWAYS end with "Proceed?" after proposing next step
+## Example Correct Flow
+User: "proceed"
+1. [call start_step(1)] -> SUCCESS
+2. [call list_files] -> find files
+3. [call read_file on design report]
+4. [call write_log_entry with findings]
+5. [call complete_step(1, "Verified deposit: data file, questionnaire, design report")]
+Response: "Done. Step 1 complete. Found data file (N=1500), questionnaire, design report. All logged. Next: Step 2 - Read Design Report. Proceed?"
 
 ## RESPONSE DETAIL
 When reading documents, provide DETAILED findings:
-- List specific values found (sample size, dates, response rates, modes)
-- Quote relevant passages when appropriate
-- Name specific parties, candidates, institutions mentioned
-- Report what you logged to the file and confirm success
-- Be thorough in your analysis, not brief"""
+- List specific values (sample size, dates, response rates, modes)
+- Quote relevant passages
+- Name specific parties, candidates, institutions
+- Report what was logged
+- Be thorough, not brief"""
 
 
 def get_file_info(state: WorkflowState) -> str:
@@ -320,7 +348,7 @@ def build_system_prompt(state: WorkflowState) -> str:
     )
 
 
-def call_claude_conversation(
+def call_llm_conversation(
     user_message: str,
     state: WorkflowState,
     conversation_history: list = None,
@@ -328,9 +356,9 @@ def call_claude_conversation(
     on_tool_output: callable = None
 ) -> str:
     """
-    Send a message to Claude and get a response.
+    Send a message to the LLM and get a response.
 
-    Uses LiteLLM API with tool support for logging, or CLI if configured.
+    Uses LiteLLM API with tool support for logging.
 
     Args:
         user_message: The user's message
@@ -341,69 +369,8 @@ def call_claude_conversation(
     """
     system_prompt = build_system_prompt(state)
 
-    # Check model configuration
-    model = os.getenv("LLM_MODEL_VALIDATE") or os.getenv("LLM_MODEL", "anthropic/claude-sonnet-4-20250514")
-
-    # If model is "claude-cli", use CLI path (doesn't support tools)
-    if model == "claude-cli":
-        claude_path = shutil.which("claude")
-        if claude_path:
-            return _call_claude_cli(user_message, system_prompt, conversation_history)
-        else:
-            return "Error: claude-cli configured but Claude CLI not found in PATH"
-
-    # Otherwise use LiteLLM with tool support
+    # Use LiteLLM with tool support
     return _call_litellm(user_message, system_prompt, conversation_history, active_logger, state, on_tool_output)
-
-
-def _call_claude_cli(
-    user_message: str,
-    system_prompt: str,
-    conversation_history: list = None
-) -> str:
-    """Call Claude via CLI."""
-    claude_path = shutil.which("claude")
-
-    # Build the full prompt with context
-    full_prompt = f"""<system>
-{system_prompt}
-</system>
-
-"""
-
-    # Add conversation history if any
-    if conversation_history:
-        for msg in conversation_history[-10:]:  # Last 10 messages for context
-            role = msg.get("role", "user")
-            content = msg.get("content", "")
-            if role == "user":
-                full_prompt += f"User: {content}\n\n"
-            else:
-                full_prompt += f"Assistant: {content}\n\n"
-
-    full_prompt += f"User: {user_message}\n\nAssistant:"
-
-    try:
-        # Use UTF-8 encoding explicitly for Windows compatibility
-        result = subprocess.run(
-            [claude_path, "--print", "--dangerously-skip-permissions"],
-            input=full_prompt,
-            capture_output=True,
-            text=True,
-            timeout=300,  # 5 minutes for longer operations
-            encoding='utf-8',
-            errors='replace'
-        )
-
-        if result.returncode == 0:
-            return result.stdout.strip()
-        else:
-            return f"Error: {result.stderr.strip()}"
-
-    except subprocess.TimeoutExpired:
-        return "Response timed out. Please try again."
-    except Exception as e:
-        return f"Error calling Claude: {e}"
 
 
 def _call_litellm(
@@ -414,7 +381,7 @@ def _call_litellm(
     state: WorkflowState = None,
     on_tool_output: callable = None
 ) -> str:
-    """Call Claude via LiteLLM API with tool support for logging."""
+    """Call LLM via LiteLLM API with tool support for logging."""
     try:
         from litellm import completion
 
@@ -427,7 +394,7 @@ def _call_litellm(
         messages.append({"role": "user", "content": user_message})
 
         # Get model from environment
-        model = os.getenv("LLM_MODEL_VALIDATE") or os.getenv("LLM_MODEL", "anthropic/claude-sonnet-4-20250514")
+        model = os.getenv("LLM_MODEL_VALIDATE") or os.getenv("LLM_MODEL", "openai/gpt-oss:120b")
 
         # Include tools only if we have an active_logger to execute them
         tools_param = LOG_TOOLS if active_logger else None
@@ -437,7 +404,7 @@ def _call_litellm(
             messages=messages,
             tools=tools_param,
             max_tokens=2048,
-            temperature=0.7
+            temperature=0.3
         )
 
         # Check if there are tool calls to execute
@@ -465,9 +432,9 @@ def _execute_tool_loop(
     on_tool_output: callable = None
 ) -> str:
     """
-    Execute tool calls in a loop until Claude returns a final text response.
+    Execute tool calls in a loop until the LLM returns a final text response.
 
-    This handles cases where Claude may need to call multiple tools.
+    This handles cases where the LLM may need to call multiple tools.
     """
     from litellm import completion
 
@@ -508,13 +475,13 @@ def _execute_tool_loop(
         # Add tool results to messages
         messages.extend(tool_results)
 
-        # Call Claude again with tool results
+        # Call LLM again with tool results
         response = completion(
             model=model,
             messages=messages,
             tools=LOG_TOOLS,
             max_tokens=2048,
-            temperature=0.7
+            temperature=0.3
         )
 
         current_message = response.choices[0].message
@@ -640,12 +607,65 @@ def _execute_single_tool(tool_call, active_logger: "ActiveLogger", state: Workfl
         notify(f"[Listed] {directory or '.'} ({len(files)} files)")
         return "\n".join(files[:100])  # Limit to 100 files
 
+    elif name == "start_step":
+        step_num = args.get("step_num")
+        if step_num is None or step_num not in WORKFLOW_STEPS:
+            return f"FAILED: Invalid step number: {step_num}"
+
+        # Check prerequisites
+        can_proceed, reason = state.check_step_prerequisites(step_num)
+        if not can_proceed:
+            notify(f"[BLOCKED] Cannot start step {step_num}: {reason}")
+            return f"BLOCKED: {reason}"
+
+        # Check if step is already in progress or completed
+        current_status = state.get_step(step_num).status
+        if current_status == StepStatus.COMPLETED.value:
+            return f"SKIP: Step {step_num} is already completed"
+        if current_status == StepStatus.IN_PROGRESS.value:
+            return f"CONTINUE: Step {step_num} is already in progress"
+
+        # Mark as in progress
+        state.set_step_status(step_num, StepStatus.IN_PROGRESS, "Started by agent")
+        state.current_step = step_num
+        state.save()
+
+        step_name = WORKFLOW_STEPS[step_num]["name"]
+        notify(f"[STARTED] Step {step_num}: {step_name}")
+        return f"SUCCESS: Started Step {step_num} - {step_name}"
+
+    elif name == "complete_step":
+        step_num = args.get("step_num")
+        summary = args.get("summary", "")
+
+        if step_num is None or step_num not in WORKFLOW_STEPS:
+            return f"FAILED: Invalid step number: {step_num}"
+
+        # Verify step is currently in progress
+        current_status = state.get_step(step_num).status
+        if current_status != StepStatus.IN_PROGRESS.value:
+            return f"FAILED: Step {step_num} is not in progress (status: {current_status})"
+
+        # Mark as completed
+        state.set_step_status(step_num, StepStatus.COMPLETED, summary)
+        state.save()
+
+        step_name = WORKFLOW_STEPS[step_num]["name"]
+        notify(f"[DONE] Step {step_num}: {step_name}")
+
+        # Suggest next step
+        next_step = state.get_next_step()
+        if next_step is not None:
+            next_name = WORKFLOW_STEPS[next_step]["name"]
+            return f"SUCCESS: Completed Step {step_num}. Next: Step {next_step} - {next_name}"
+        return f"SUCCESS: Completed Step {step_num}. All steps complete!"
+
     else:
         return f"Unknown tool: {name}"
 
 
 class ConversationSession:
-    """Manages a conversation session with Claude."""
+    """Manages a conversation session with the LLM."""
 
     def __init__(self, state: WorkflowState):
         self.state = state
@@ -663,7 +683,7 @@ class ConversationSession:
         self.history.append({"role": "user", "content": message})
 
         # Get response - pass active_logger so tools can write to log directly
-        response = call_claude_conversation(
+        response = call_llm_conversation(
             message, self.state, self.history, self.active_logger, on_tool_output
         )
 

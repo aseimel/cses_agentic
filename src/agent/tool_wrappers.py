@@ -257,7 +257,7 @@ def validate_single_mapping(
     model: Optional[str] = None
 ) -> ToolResult:
     """
-    Validate a single variable mapping using Claude.
+    Validate a single variable mapping using the validation LLM.
 
     Returns:
         ToolResult with validation verdict and reasoning

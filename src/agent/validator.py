@@ -1,9 +1,9 @@
 """
-Claude Validation Logic for CSES Variable Mapping.
+LLM Validation Logic for CSES Variable Mapping.
 
 This module implements Stage 2 of the dual-model validation pipeline:
 1. Stage 1 (Original LLM matcher): Proposes mappings
-2. Stage 2 (THIS MODULE - Claude): Validates each proposal
+2. Stage 2 (THIS MODULE - Validation LLM): Validates each proposal
 3. Stage 3 (Human): Makes final decision
 
 The validator reviews each proposal and returns:
@@ -15,8 +15,6 @@ The validator reviews each proposal and returns:
 import logging
 import json
 import os
-import subprocess
-import shutil
 from dataclasses import dataclass, field
 from typing import Optional
 from enum import Enum
@@ -59,7 +57,7 @@ class ValidationVerdict(Enum):
 
 @dataclass
 class ValidationResult:
-    """Result of Claude validation for a single proposal."""
+    """Result of LLM validation for a single proposal."""
     # Original proposal
     proposal: MatchProposal
     # Validation results
@@ -69,7 +67,7 @@ class ValidationResult:
     # Comparison
     models_agree: bool = False
     # Metadata
-    validation_model: str = "claude"
+    validation_model: str = "openai/gpt-oss:120b"
 
     def to_dict(self) -> dict:
         return {
@@ -194,108 +192,24 @@ def format_source_info(
     return "\n".join(parts)
 
 
-def _call_claude_cli(prompt: str, timeout: int = 120) -> str:
-    """
-    Call Claude CLI to get a response using the user's Max subscription.
-
-    This allows users with Claude Max subscription to use their subscription
-    for validation without needing a separate API key.
-
-    Args:
-        prompt: The prompt to send to Claude
-        timeout: Timeout in seconds (default: 120)
-
-    Returns:
-        Claude's response text
-
-    Raises:
-        RuntimeError: If Claude CLI is not installed or fails
-    """
-    # Check if claude CLI is available
-    claude_path = shutil.which("claude")
-    if not claude_path:
-        raise RuntimeError(
-            "Claude CLI not found. Please install Claude Code CLI and authenticate:\n"
-            "  1. Install: npm install -g @anthropic-ai/claude-code\n"
-            "  2. Authenticate: claude login\n"
-            "Or set LLM_MODEL_VALIDATE to an API model like 'anthropic/claude-sonnet-4-20250514'"
-        )
-
-    try:
-        # Call claude CLI with the prompt via stdin
-        # Using --print flag to output response directly
-        result = subprocess.run(
-            [claude_path, "--print", "--dangerously-skip-permissions"],
-            input=prompt,
-            capture_output=True,
-            text=True,
-            timeout=timeout
-        )
-
-        if result.returncode != 0:
-            error_msg = result.stderr.strip() or "Unknown error"
-            if "not authenticated" in error_msg.lower() or "login" in error_msg.lower():
-                raise RuntimeError(
-                    "Claude CLI not authenticated. Please run 'claude login' to authenticate "
-                    "with your Max subscription."
-                )
-            raise RuntimeError(f"Claude CLI error: {error_msg}")
-
-        return result.stdout.strip()
-
-    except subprocess.TimeoutExpired:
-        raise RuntimeError(f"Claude CLI timed out after {timeout} seconds")
-    except FileNotFoundError:
-        raise RuntimeError("Claude CLI not found in PATH")
-
-
-def check_claude_cli_available() -> tuple[bool, str]:
-    """
-    Check if Claude CLI is available and authenticated.
-
-    Returns:
-        Tuple of (is_available: bool, message: str)
-    """
-    claude_path = shutil.which("claude")
-    if not claude_path:
-        return False, "Claude CLI not installed. Run: npm install -g @anthropic-ai/claude-code"
-
-    # Try a simple test command
-    try:
-        result = subprocess.run(
-            [claude_path, "--version"],
-            capture_output=True,
-            text=True,
-            timeout=10
-        )
-        if result.returncode == 0:
-            version = result.stdout.strip()
-            return True, f"Claude CLI available: {version}"
-        else:
-            return False, f"Claude CLI error: {result.stderr.strip()}"
-    except Exception as e:
-        return False, f"Error checking Claude CLI: {e}"
-
-
 def validate_proposal(
     proposal: MatchProposal,
     extraction_result: Optional[ExtractionResult] = None,
     model: Optional[str] = None
 ) -> ValidationResult:
     """
-    Validate a single variable mapping proposal using Claude.
+    Validate a single variable mapping proposal using LLM.
 
     Args:
         proposal: The original LLM matcher's proposal
         extraction_result: Full context extraction (optional)
         model: Model to use for validation (default: from env)
-              Use "claude-cli" to use Claude Code CLI with Max subscription
 
     Returns:
         ValidationResult with verdict and reasoning
     """
     # Get model from environment or use default
-    validation_model = model or os.getenv("LLM_MODEL_VALIDATE") or os.getenv("LLM_MODEL", "anthropic/claude-sonnet-4-20250514")
+    validation_model = model or os.getenv("LLM_MODEL_VALIDATE") or os.getenv("LLM_MODEL", "openai/gpt-oss:120b")
 
     target_var = proposal.target_variable
     target_desc = CSES_TARGET_VARIABLES.get(target_var, "Unknown CSES variable")
@@ -316,19 +230,14 @@ def validate_proposal(
     )
 
     try:
-        # Check if using Claude CLI (Max subscription)
-        if validation_model == "claude-cli":
-            logger.info(f"Using Claude CLI for validation of {target_var}")
-            response_text = _call_claude_cli(prompt)
-        else:
-            # Use LiteLLM API
-            response = completion(
-                model=validation_model,
-                max_tokens=1024,
-                temperature=0,  # Deterministic validation
-                messages=[{"role": "user", "content": prompt}]
-            )
-            response_text = response.choices[0].message.content.strip()
+        # Use LiteLLM API
+        response = completion(
+            model=validation_model,
+            max_tokens=1024,
+            temperature=0,  # Deterministic validation
+            messages=[{"role": "user", "content": prompt}]
+        )
+        response_text = response.choices[0].message.content.strip()
 
         # Parse JSON response
         result_data = _parse_validation_response(response_text)
@@ -456,7 +365,7 @@ def format_validation_result(result: ValidationResult) -> str:
         f"- Confidence: {proposal.confidence:.0%}",
         f"- Reasoning: {proposal.reasoning}",
         "",
-        "### Claude Validation",
+        "### LLM Validation",
         f"- Verdict: {status_markers[result.verdict]} {result.verdict.value}",
         f"- Reasoning: {result.reasoning}",
     ]

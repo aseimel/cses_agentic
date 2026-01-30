@@ -132,6 +132,28 @@ WORKFLOW_STEPS = {
 }
 
 
+# Step prerequisites: which steps must be COMPLETED before this step can start
+STEP_PREREQUISITES = {
+    0: [],           # No prerequisites
+    1: [0],          # Requires Step 0 (folder setup)
+    2: [1],          # Requires deposit check
+    3: [1],          # Requires deposit check (for data file)
+    4: [2],          # Requires design report reading
+    5: [4],          # Requires study design written
+    6: [1],          # Requires data file identified
+    7: [3, 6],       # Requires tracking sheet and frequencies
+    8: [7],          # Requires .do file from step 7
+    9: [7],          # Requires variable processing
+    10: [7],         # Requires variable processing
+    11: [8, 9, 10],  # Requires debugging and district data
+    12: [11],        # Requires finished data
+    13: [12],        # Requires check files run
+    14: [13],        # Requires questions written
+    15: [14],        # Requires collaborator followup
+    16: [15],        # Requires ESNs transferred
+}
+
+
 @dataclass
 class StepState:
     """State of a single workflow step."""
@@ -306,6 +328,26 @@ class WorkflowState:
             if step.status in [StepStatus.NOT_STARTED.value, StepStatus.IN_PROGRESS.value]:
                 return step_num
         return None
+
+    def check_step_prerequisites(self, step_num: int) -> tuple[bool, str]:
+        """
+        Check if all prerequisites for a step are met.
+
+        Args:
+            step_num: The step number to check prerequisites for
+
+        Returns:
+            (can_proceed, reason) - True if step can start, or reason why not
+        """
+        prereqs = STEP_PREREQUISITES.get(step_num, [])
+
+        for prereq_step in prereqs:
+            prereq_state = self.get_step(prereq_step)
+            if prereq_state.status != StepStatus.COMPLETED.value:
+                step_name = WORKFLOW_STEPS[prereq_step]["name"]
+                return False, f"Step {prereq_step} ({step_name}) must be completed first"
+
+        return True, "Prerequisites met"
 
     def get_progress_summary(self) -> dict:
         """Get summary of workflow progress."""

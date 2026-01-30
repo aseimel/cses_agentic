@@ -3,11 +3,11 @@ CSES Data Harmonization Agent Module.
 
 Implements dual-model validation architecture:
 1. Original LLM matcher proposes mappings
-2. Claude validates each proposal
+2. Validation LLM validates each proposal
 3. Human makes final decision with both perspectives
 
 Key components:
-- validator.py: Claude validation logic
+- validator.py: LLM validation logic
 - cses_agent.py: Main agent orchestration
 - tool_wrappers.py: Wrappers for existing modules
 """
