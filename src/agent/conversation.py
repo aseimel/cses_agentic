@@ -20,7 +20,7 @@ from typing import Optional, TYPE_CHECKING
 if TYPE_CHECKING:
     from src.workflow.active_logging import ActiveLogger
 
-from src.workflow.state import WorkflowState, WORKFLOW_STEPS, StepStatus, STEP_PREREQUISITES
+from src.workflow.state import WorkflowState, WORKFLOW_STEPS, StepStatus
 from src.workflow.active_logging import ActiveLogger
 
 
