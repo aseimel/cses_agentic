@@ -229,65 +229,50 @@ LOG_TOOLS = [
 
 
 # CSES Expert System Prompt - Active Agent with Workflow Enforcement
-CSES_EXPERT_PROMPT = """You are a CSES data processing agent for Module 6. You EXECUTE tasks using tools.
+CSES_EXPERT_PROMPT = """You are a CSES data processing agent for Module 6.
 
-## Current Study
-Country: {country}
-Year: {year}
+## Study: {country} {year}
 Working Dir: {working_dir}
 
-## Workflow Status (work on [NEXT] step ONLY)
+## Workflow Status
 {workflow_status}
 
-## Available Files
+## Files
 {file_info}
 
-## MANDATORY WORKFLOW RULES
+## RULES (enforced by system)
 
-1. ALWAYS call start_step(N) BEFORE doing any work on step N
-   - If it returns BLOCKED, STOP and tell the user which prerequisite step is missing
-   - If it returns SKIP (already complete), move to next step
-   - If it returns SUCCESS or CONTINUE, proceed with the work
+1. ONE STEP PER "proceed" - System blocks second step in same turn
+2. ALL TOOLS MUST SUCCEED - System blocks complete_step if any tool failed
+3. Steps must be done IN ORDER - System blocks skipping
 
-2. When user says "yes/proceed/continue":
-   - Call start_step for the [NEXT] step
-   - USE TOOLS to do the work (read_file, list_files, write_log_entry)
-   - Call complete_step when finished
-   - Report: "Done. [summary]. Next: Step N - [name]. Proceed?"
+## When user says "proceed"
 
-3. ALWAYS call complete_step(N, summary) AFTER finishing step N
+1. start_step(N) - Start the next step
+2. Do the work using tools (list_files, read_file, write_log_entry, etc.)
+3. Verify ALL tools returned SUCCESS
+4. complete_step(N, summary) - Mark done
+5. STOP and say: "Done. Step N complete. Proceed?"
 
-4. NEVER skip steps or work on steps out of order
+## If a tool returns FAILED
 
-5. NEVER say "I can...", "Would you like...", "Should I..."
-   - Just DO IT with tools
+DO NOT call complete_step. Instead report:
+"Step N blocked - [tool] failed: [reason]. Cannot proceed until fixed."
 
 ## Tools
-- start_step(step_num) - MUST call before starting a step
-- complete_step(step_num, summary) - MUST call after finishing a step
+- start_step(step_num) - Start a step
+- complete_step(step_num, summary) - Finish (only if all tools succeeded)
 - list_files(directory) - List files
-- read_file(path) - Read any file
-- write_log_entry(message) - Log findings
-- update_study_design(field, value) - Record study design
+- read_file(path) - Read file
+- write_log_entry(message) - Log findings (MUST succeed)
+- update_study_design(field, value) - Record design info (MUST succeed)
 - update_election_summary(summary) - Record election info
-- add_collaborator_question(question) - Add question for collaborator
+- add_collaborator_question(question) - Add question
 
-## Example Correct Flow
-User: "proceed"
-1. [call start_step(1)] -> SUCCESS
-2. [call list_files] -> find files
-3. [call read_file on design report]
-4. [call write_log_entry with findings]
-5. [call complete_step(1, "Verified deposit: data file, questionnaire, design report")]
-Response: "Done. Step 1 complete. Found data file (N=1500), questionnaire, design report. All logged. Next: Step 2 - Read Design Report. Proceed?"
+## Response format after completing ONE step
+"Done. Step N complete - [summary of what was accomplished]. Proceed?"
 
-## RESPONSE DETAIL
-When reading documents, provide DETAILED findings:
-- List specific values (sample size, dates, response rates, modes)
-- Quote relevant passages
-- Name specific parties, candidates, institutions
-- Report what was logged
-- Be thorough, not brief"""
+Then STOP. Wait for user."""
 
 
 def get_file_info(state: WorkflowState) -> str:
@@ -476,11 +461,19 @@ def _execute_tool_loop(
     """
     Execute tool calls in a loop until the LLM returns a final text response.
 
-    This handles cases where the LLM may need to call multiple tools.
-    Uses parallel_tool_calls=False for reliable sequential execution.
-    Falls back to forced text synthesis if max iterations reached without text.
+    ENFORCES:
+    - ONE step per turn (blocks second start_step after complete_step)
+    - ALL tools must succeed (blocks complete_step if any failed)
     """
     current_message = initial_response_message
+
+    # Track state for THIS turn only - enforces workflow rules
+    turn_state = {
+        "current_step": None,      # Which step we're working on
+        "step_started": False,     # Has start_step been called?
+        "step_completed": False,   # Has complete_step been called?
+        "failed_tools": [],        # Tools that failed this turn
+    }
 
     for iteration in range(max_iterations):
         if not hasattr(current_message, 'tool_calls') or not current_message.tool_calls:
@@ -508,10 +501,13 @@ def _execute_tool_loop(
             ]
         })
 
-        # Execute each tool call
+        # Execute each tool call with turn_state enforcement
         tool_results = []
         for tool_call in current_message.tool_calls:
-            result = _execute_single_tool(tool_call, active_logger, state, on_tool_output)
+            result = _execute_single_tool(
+                tool_call, active_logger, state, on_tool_output,
+                turn_state=turn_state
+            )
             tool_results.append({
                 "role": "tool",
                 "tool_call_id": tool_call.id,
@@ -559,8 +555,24 @@ def _execute_tool_loop(
     return "[Operations completed. Check log file for details.]"
 
 
-def _execute_single_tool(tool_call, active_logger: "ActiveLogger", state: WorkflowState, on_tool_output: callable = None) -> str:
-    """Execute a single tool call with verification. Returns result string."""
+def _execute_single_tool(
+    tool_call,
+    active_logger: "ActiveLogger",
+    state: WorkflowState,
+    on_tool_output: callable = None,
+    turn_state: dict = None
+) -> str:
+    """
+    Execute a single tool call with turn-state enforcement.
+
+    ENFORCES:
+    - Block second start_step after complete_step (one step per turn)
+    - Block complete_step if any tools failed
+    - Track tool failures for critical operations
+    """
+    if turn_state is None:
+        turn_state = {"failed_tools": []}
+
     name = tool_call.function.name
     try:
         args = json.loads(tool_call.function.arguments)
@@ -572,6 +584,32 @@ def _execute_single_tool(tool_call, active_logger: "ActiveLogger", state: Workfl
         if on_tool_output:
             on_tool_output(msg)
 
+    def track_failure(tool_name: str, reason: str):
+        """Track a tool failure for enforcement."""
+        turn_state.setdefault("failed_tools", []).append(f"{tool_name}: {reason}")
+
+    # =========================================================
+    # ENFORCEMENT: Block second start_step after complete_step
+    # =========================================================
+    if name == "start_step":
+        if turn_state.get("step_completed"):
+            notify(f"[BLOCKED] One step per turn - stop and wait for user")
+            return "BLOCKED: One step per turn. Say 'Done. Proceed?' and STOP. Do not start another step."
+
+    # =========================================================
+    # ENFORCEMENT: Block complete_step if any tools failed
+    # =========================================================
+    if name == "complete_step":
+        failed = turn_state.get("failed_tools", [])
+        if failed:
+            failures = "; ".join(failed)
+            notify(f"[BLOCKED] Cannot complete - tools failed: {failures}")
+            return f"BLOCKED: Cannot complete step - these tools failed: {failures}. Fix the issues first."
+
+    # =========================================================
+    # TOOL EXECUTION
+    # =========================================================
+
     if name == "write_log_entry":
         message = args.get("message", "")
         success, status = active_logger.log_message(message)
@@ -580,6 +618,7 @@ def _execute_single_tool(tool_call, active_logger: "ActiveLogger", state: Workfl
             return f"SUCCESS: {status}"
         else:
             notify(f"[FAILED] {status}")
+            track_failure("write_log_entry", status)
             return f"FAILED: {status}"
 
     elif name == "update_study_design":
@@ -591,7 +630,8 @@ def _execute_single_tool(tool_call, active_logger: "ActiveLogger", state: Workfl
             return f"SUCCESS: Updated {field} = {value}"
         else:
             notify(f"[FAILED] {status}")
-            return f"FAILED to update study design: {status}"
+            track_failure("update_study_design", status)
+            return f"FAILED: {status}"
 
     elif name == "add_collaborator_question":
         question = args.get("question", "")
@@ -605,6 +645,7 @@ def _execute_single_tool(tool_call, active_logger: "ActiveLogger", state: Workfl
             return f"SUCCESS: {status}"
         else:
             notify(f"[FAILED] {status}")
+            track_failure("add_collaborator_question", status)
             return f"FAILED: {status}"
 
     elif name == "update_variable_mapping":
@@ -622,6 +663,7 @@ def _execute_single_tool(tool_call, active_logger: "ActiveLogger", state: Workfl
             return f"SUCCESS: {status}"
         else:
             notify(f"[FAILED] {status}")
+            track_failure("update_election_summary", status)
             return f"FAILED: {status}"
 
     elif name == "update_parties_leaders":
@@ -632,6 +674,7 @@ def _execute_single_tool(tool_call, active_logger: "ActiveLogger", state: Workfl
             return f"SUCCESS: {status}"
         else:
             notify(f"[FAILED] {status}")
+            track_failure("update_parties_leaders", status)
             return f"FAILED: {status}"
 
     elif name == "add_todo_item":
@@ -642,6 +685,7 @@ def _execute_single_tool(tool_call, active_logger: "ActiveLogger", state: Workfl
             return f"SUCCESS: {status}"
         else:
             notify(f"[FAILED] {status}")
+            track_failure("add_todo_item", status)
             return f"FAILED: {status}"
 
     elif name == "read_file":
@@ -701,6 +745,11 @@ def _execute_single_tool(tool_call, active_logger: "ActiveLogger", state: Workfl
 
         step_name = WORKFLOW_STEPS[step_num]["name"]
         notify(f"[STARTED] Step {step_num}: {step_name}")
+
+        # Track that we started a step this turn
+        turn_state["step_started"] = True
+        turn_state["current_step"] = step_num
+
         return f"SUCCESS: Started Step {step_num} - {step_name}"
 
     elif name == "complete_step":
@@ -722,11 +771,14 @@ def _execute_single_tool(tool_call, active_logger: "ActiveLogger", state: Workfl
         step_name = WORKFLOW_STEPS[step_num]["name"]
         notify(f"[DONE] Step {step_num}: {step_name}")
 
+        # Track that we completed a step this turn - blocks further start_step calls
+        turn_state["step_completed"] = True
+
         # Suggest next step
         next_step = state.get_next_step()
         if next_step is not None:
             next_name = WORKFLOW_STEPS[next_step]["name"]
-            return f"SUCCESS: Completed Step {step_num}. Next: Step {next_step} - {next_name}"
+            return f"SUCCESS: Completed Step {step_num}. Next: Step {next_step} - {next_name}. STOP HERE - say 'Done. Proceed?' and wait."
         return f"SUCCESS: Completed Step {step_num}. All steps complete!"
 
     else:
