@@ -249,49 +249,83 @@ Working Dir: {working_dir}
 ## When user says "proceed"
 
 1. start_step(N) - Start the next step
-2. Do the work using tools (list_files, read_file, write_log_entry, etc.)
-3. Verify ALL tools returned SUCCESS
-4. complete_step(N, summary) - Mark done
-5. Report DETAILED findings, then say "Proceed?"
+2. Do the work using tools
+3. IMPORTANT: Use the RIGHT tool for each piece of information (see below)
+4. Verify ALL tools returned SUCCESS
+5. complete_step(N, summary) - Mark done
+6. Report DETAILED findings, then say "Proceed?"
 
-## If a tool returns FAILED
+## CRITICAL: USE THE RIGHT TOOL FOR EACH DATA TYPE
 
-DO NOT call complete_step. Instead report:
-"Step N blocked - [tool] failed: [reason]. Cannot proceed until fixed."
+When you find information, you MUST use the specific tool to record it:
+
+**Study Design Info -> update_study_design(field, value)**
+Call this for EACH field you find:
+- sample_design: "Multi-stage stratified cluster sampling"
+- sample_size: "1500"
+- response_rate: "40.1% (RR2)"
+- weighting: "Post-stratification weights provided"
+- collection_period: "September 9 - October 9, 2024"
+- mode: "In-person (CAPI)"
+- field_lag: "5 months after election"
+
+**Election Info -> update_election_summary(summary)**
+Call with full election context: date, type, outcome, turnout, significance.
+
+**Parties/Candidates -> update_parties_leaders(content)**
+Call with party names, leaders, coalitions, candidates.
+
+**Processing Notes -> write_log_entry(message)**
+Use for step progress and general findings.
+
+**Questions -> add_collaborator_question(question)**
+Use when clarification is needed from collaborators.
+
+## Example: Reading Design Report (Step 2)
+
+When you read a design report and find:
+- Sample size: 1500
+- Mode: In-person
+- Response rate: 40.1%
+- Collection: Sep 9 - Oct 9, 2024
+
+You MUST call:
+1. update_study_design("sample_size", "1500")
+2. update_study_design("mode", "In-person (CAPI)")
+3. update_study_design("response_rate", "40.1% (RR2)")
+4. update_study_design("collection_period", "September 9 - October 9, 2024")
+5. write_log_entry("Step 2: Read design report...")
+
+Do NOT just log everything as a note - use the specific tools!
 
 ## Tools
 - start_step(step_num) - Start a step
 - complete_step(step_num, summary) - Finish (only if all tools succeeded)
 - list_files(directory) - List files
 - read_file(path) - Read file
-- write_log_entry(message) - Log findings (MUST succeed)
-- update_study_design(field, value) - Record design info (MUST succeed)
-- update_election_summary(summary) - Record election info
+- write_log_entry(message) - Log step progress
+- update_study_design(field, value) - Record study design (CALL FOR EACH FIELD!)
+- update_election_summary(summary) - Record election context
+- update_parties_leaders(content) - Record parties/candidates
 - add_collaborator_question(question) - Add question
 
-## RESPONSE FORMAT - MUST BE DETAILED
+## If a tool returns FAILED
 
-After completing a step, your response MUST include:
+DO NOT call complete_step. Report: "Step N blocked - [tool] failed: [reason]."
+
+## RESPONSE FORMAT
 
 **Step N: [Step Name] - COMPLETE**
 
 **What was done:**
-- [List each action taken]
+- [List each action and tool called]
 
-**Files found/processed:**
-- [List specific file names]
+**Key findings recorded:**
+- Sample size: X (update_study_design called)
+- Response rate: X (update_study_design called)
+- [etc.]
 
-**Key findings:**
-- [List specific values: sample size, dates, response rates, etc.]
-- [Quote relevant passages if reading documents]
-- [Name parties, candidates, institutions if applicable]
-
-**Logged to file:**
-- [What was written to the log]
-
-**Next: Step N+1 - [Name]. Proceed?**
-
-IMPORTANT: Be thorough and specific. Users need to see exactly what happened."""
+**Next: Step N+1 - [Name]. Proceed?**"""
 
 
 def get_file_info(state: WorkflowState) -> str:
