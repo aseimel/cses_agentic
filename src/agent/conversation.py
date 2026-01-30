@@ -399,6 +399,8 @@ def _call_litellm(
         # Include tools only if we have an active_logger to execute them
         tools_param = LOG_TOOLS if active_logger else None
 
+        print(f"[DEBUG] Calling {model} with {len(messages)} messages...")
+
         response = completion(
             model=model,
             messages=messages,
@@ -410,16 +412,24 @@ def _call_litellm(
         # Check if there are tool calls to execute
         message = response.choices[0].message
 
+        print(f"[DEBUG] Response: content={bool(message.content)}, tools={bool(getattr(message, 'tool_calls', None))}")
+
         if active_logger and hasattr(message, 'tool_calls') and message.tool_calls:
             # Execute tool calls and continue conversation if needed
             return _execute_tool_loop(messages, message, active_logger, state, model, on_tool_output=on_tool_output)
 
-        # No tool calls, just return the content
+        # No tool calls, just return the content (never return empty)
         content = message.content
-        return content.strip() if content else ""
+        if not content or not content.strip():
+            print(f"[WARNING] LLM returned empty content")
+            return "[No response from model - please try again]"
+        return content.strip()
 
     except Exception as e:
-        return f"Error calling API: {e}"
+        import traceback
+        print(f"[ERROR] API call failed: {e}")
+        traceback.print_exc()
+        return f"[Error calling API: {e}. Please try again.]"
 
 
 def _execute_tool_loop(
@@ -440,10 +450,14 @@ def _execute_tool_loop(
 
     current_message = initial_response_message
 
-    for _ in range(max_iterations):
+    for iteration in range(max_iterations):
         if not hasattr(current_message, 'tool_calls') or not current_message.tool_calls:
-            # No more tool calls, return the content
-            return current_message.content.strip() if current_message.content else ""
+            # No more tool calls, return the content (never return empty)
+            content = current_message.content
+            if not content or not content.strip():
+                print(f"[WARNING] Empty response after {iteration} tool iterations")
+                return "[Operations completed but no response - check the log file for results]"
+            return content.strip()
 
         # Add assistant message with tool calls to history
         messages.append({
@@ -485,9 +499,14 @@ def _execute_tool_loop(
         )
 
         current_message = response.choices[0].message
+        print(f"[DEBUG] Iteration {iteration + 1}: content={bool(current_message.content)}, tools={bool(getattr(current_message, 'tool_calls', None))}")
 
-    # Max iterations reached, return whatever content we have
-    return current_message.content.strip() if current_message.content else ""
+    # Max iterations reached, return whatever content we have (never return empty)
+    content = current_message.content
+    if not content or not content.strip():
+        print(f"[WARNING] Max iterations ({max_iterations}) reached with no response")
+        return "[Max iterations reached - operations may have completed, check log file]"
+    return content.strip()
 
 
 def _execute_single_tool(tool_call, active_logger: "ActiveLogger", state: WorkflowState, on_tool_output: callable = None) -> str:
