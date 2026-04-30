@@ -7,13 +7,18 @@ import pandas as pd
 from src.ingest.data_loader import DataLoader
 from src.matching.demographics import (
     DemographicDataGenerator,
+    DemographicRecodingDecision,
+    DemographicRecodingDecisionStore,
+    DemographicRecodingDossierBuilder,
     DemographicRecodingAssessmentEngine,
     DemographicReferenceDecisionLearner,
     DemographicVariableRegistry,
 )
 from src.matching.decision_engine import MatchingDecisionEngine, matching_category_summary
 from src.matching.evidence import MatchingEvidenceBuilder
+from src.codegen.recoding_plan import RecodingPlanBuilder
 from src.standards.schema import SchemaRegistry
+from src.workflow.state import WorkflowState
 
 
 class DemographicRecodingTests(unittest.TestCase):
@@ -68,6 +73,63 @@ class DemographicRecodingTests(unittest.TestCase):
             self.assertGreater(summary["party_election_items"]["awaiting_party_ordering"], 0)
             self.assertGreater(summary["district_items"]["awaiting_district_input"], 0)
 
+    def test_demographic_dossier_collects_context_for_later_coding(self):
+        with tempfile.TemporaryDirectory() as folder:
+            study_dir = Path(folder)
+            matching_evidence = MatchingEvidenceBuilder(study_dir).build_from_records(
+                narrative_docs=[],
+                data_summaries=[
+                    {
+                        "path": str(study_dir / "data.csv"),
+                        "relative_path": "data.csv",
+                        "variable_inventory": [
+                            {
+                                "name": "D03",
+                                "label": "Highest education",
+                                "sample_values": [1, 2, 3],
+                                "value_labels": {
+                                    "1": "Primary school",
+                                    "2": "Lower secondary",
+                                    "3": "Upper secondary",
+                                },
+                            }
+                        ],
+                    }
+                ],
+            )
+            assessments = DemographicRecodingAssessmentEngine().assess(matching_evidence)
+            dossiers = DemographicRecodingDossierBuilder().build(assessments, matching_evidence)
+            education = next(item for item in dossiers if item.target_variable == "F2003")
+
+            self.assertEqual(education.source_variable, "D03")
+            self.assertEqual(education.proposed_plan_type, "crosswalk_required")
+            self.assertTrue(education.target_standard["response_options"])
+            self.assertTrue(education.source_evidence["value_labels"])
+            self.assertIn("crosswalk", education.processor_decision_needed.lower())
+
+    def test_approved_demographic_decisions_feed_later_recoding_plans(self):
+        with tempfile.TemporaryDirectory() as folder:
+            study_dir = Path(folder)
+            DemographicRecodingDecisionStore(study_dir).write(
+                [
+                    DemographicRecodingDecision(
+                        target_variable="F2002",
+                        source_variable="D02",
+                        plan_type="offset_transform",
+                        approved=True,
+                        processor_note="Approved gender recode.",
+                    )
+                ]
+            )
+            state = WorkflowState(country="Testland", country_code="TST", year="2024", working_dir=str(study_dir))
+
+            plans = RecodingPlanBuilder(state).build()
+            gender = next(plan for plan in plans if plan.target_variable == "F2002")
+
+            self.assertTrue(gender.approved)
+            self.assertEqual(gender.readiness_status, "ready")
+            self.assertEqual(gender.expression, "D02 - 1")
+
     def test_sweden_demographic_reference_replication(self):
         try:
             import pyreadstat
@@ -94,6 +156,28 @@ class DemographicRecodingTests(unittest.TestCase):
             assessments=assessments,
             source_id="A1",
             final_id="F1003_2",
+        )
+        approved_dossiers = DemographicRecodingDossierBuilder().build(approved, matching_evidence)
+        education = next(item for item in approved_dossiers if item.target_variable == "F2003")
+        education_map = {
+            item["source_value"]: item["proposed_target_value"]
+            for item in education.draft_recode_table
+            if item.get("proposed_target_value") != ""
+        }
+        self.assertEqual(
+            education_map,
+            {
+                "1": "2",
+                "2": "3",
+                "3": "3",
+                "4": "4",
+                "5": "5",
+                "6": "6",
+                "7": "6",
+                "8": "7",
+                "9": "8",
+                "10": "9",
+            },
         )
         generated = DemographicDataGenerator().generate(source_df, approved, election_year=2022)
 

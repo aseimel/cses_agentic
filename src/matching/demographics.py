@@ -18,6 +18,7 @@ from typing import Any
 import pandas as pd
 
 from src.standards.schema import DEFAULT_WIKI_ROOT, SchemaRegistry, SchemaVariable
+from src.standards.questionnaire_registry import Module6QuestionnaireRegistry
 
 
 REGISTRY_PATH = DEFAULT_WIKI_ROOT / "patterns" / "demographic_variable_registry.json"
@@ -53,6 +54,43 @@ class DemographicRecodingAssessment:
     missing_map: dict[str, Any] = field(default_factory=dict)
     processor_review_required: bool = True
     notes: str = ""
+
+    def to_dict(self) -> dict:
+        return asdict(self)
+
+
+@dataclass
+class DemographicRecodingDossier:
+    target_variable: str
+    description: str
+    source_variable: str
+    concept: str
+    source_format: str
+    recoding_action: str
+    proposed_plan_type: str
+    target_standard: dict[str, Any] = field(default_factory=dict)
+    source_evidence: dict[str, Any] = field(default_factory=dict)
+    draft_recode_table: list[dict[str, Any]] = field(default_factory=list)
+    missing_value_treatment: list[dict[str, Any]] = field(default_factory=list)
+    evidence_gaps: list[str] = field(default_factory=list)
+    processor_decision_needed: str = ""
+    coding_note: str = ""
+
+    def to_dict(self) -> dict:
+        return asdict(self)
+
+
+@dataclass
+class DemographicRecodingDecision:
+    target_variable: str
+    source_variable: str
+    plan_type: str
+    approved: bool = False
+    value_map: dict[str, Any] = field(default_factory=dict)
+    missing_map: dict[str, Any] = field(default_factory=dict)
+    processor_note: str = ""
+    log_note: str = ""
+    evidence: list[str] = field(default_factory=list)
 
     def to_dict(self) -> dict:
         return asdict(self)
@@ -340,6 +378,219 @@ class DemographicReferenceDecisionLearner:
         return updated
 
 
+class DemographicRecodingDossierBuilder:
+    """Build coder-facing demographic dossiers from matching-stage evidence."""
+
+    def __init__(self, questionnaire_registry: Module6QuestionnaireRegistry | None = None):
+        self.questionnaire_registry = questionnaire_registry or Module6QuestionnaireRegistry()
+
+    def build(
+        self,
+        assessments: list[DemographicRecodingAssessment],
+        matching_evidence: dict[str, Any] | None = None,
+    ) -> list[DemographicRecodingDossier]:
+        source_lookup = {
+            item.get("name"): item
+            for item in (matching_evidence or {}).get("source_variable_profiles", []) or []
+            if isinstance(item, dict) and item.get("name")
+        }
+        dossiers: list[DemographicRecodingDossier] = []
+        for assessment in assessments:
+            source = source_lookup.get(assessment.source_variable, {})
+            target_standard = self._target_standard(assessment)
+            draft_table, missing_treatment = self._draft_table(assessment, source, target_standard)
+            gaps = self._evidence_gaps(assessment, source, target_standard)
+            dossiers.append(
+                DemographicRecodingDossier(
+                    target_variable=assessment.target_variable,
+                    description=assessment.description,
+                    source_variable=assessment.source_variable,
+                    concept=assessment.concept,
+                    source_format=assessment.source_format,
+                    recoding_action=assessment.recoding_action,
+                    proposed_plan_type=assessment.recoding_plan_type,
+                    target_standard=target_standard,
+                    source_evidence={
+                        "label": source.get("label", ""),
+                        "value_labels": source.get("value_labels", {}) or {},
+                        "observed_values": _observed_values(source),
+                        "top_values": source.get("top_values", []) or [],
+                        "missing_percent": source.get("missing_percent"),
+                        "citation": source.get("citation", ""),
+                    },
+                    draft_recode_table=draft_table,
+                    missing_value_treatment=missing_treatment,
+                    evidence_gaps=gaps,
+                    processor_decision_needed=self._decision_prompt(assessment, gaps),
+                    coding_note=assessment.notes,
+                )
+            )
+        return dossiers
+
+    def write(self, working_dir: Path, dossiers: list[DemographicRecodingDossier]) -> Path:
+        path = Path(working_dir) / ".cses" / "demographic_recoding_dossiers.json"
+        path.parent.mkdir(parents=True, exist_ok=True)
+        payload = {
+            "generated_at": datetime.now(timezone.utc).isoformat(),
+            "dossier_count": len(dossiers),
+            "dossiers": [item.to_dict() for item in dossiers],
+        }
+        path.write_text(json.dumps(payload, indent=2, ensure_ascii=False), encoding="utf-8")
+        return path
+
+    def _target_standard(self, assessment: DemographicRecodingAssessment) -> dict[str, Any]:
+        items = [
+            self.questionnaire_registry.get(item_id)
+            for item_id in assessment.canonical_item_ids
+            if item_id
+        ]
+        items = [item for item in items if item]
+        response_options = []
+        missing_codes = []
+        notes = []
+        titles = []
+        for item in items:
+            response_options.extend(item.response_options)
+            missing_codes.extend(item.missing_codes)
+            if item.notes:
+                notes.append(item.notes)
+            if item.title:
+                titles.append(item.title)
+        return {
+            "canonical_item_ids": assessment.canonical_item_ids,
+            "title": "; ".join(titles),
+            "response_options": response_options,
+            "missing_codes": list(dict.fromkeys(missing_codes)),
+            "notes": " ".join(notes)[:1500],
+        }
+
+    def _draft_table(
+        self,
+        assessment: DemographicRecodingAssessment,
+        source: dict[str, Any],
+        target_standard: dict[str, Any],
+    ) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+        values = _observed_values(source)
+        for key in assessment.value_map.keys():
+            if key and key not in {_value_key(value) for value in values}:
+                values.append(key)
+        labels = source.get("value_labels", {}) or {}
+        draft: list[dict[str, Any]] = []
+        for value in values[:200]:
+            key = _value_key(value)
+            target = ""
+            rationale = "Needs processor decision."
+            if assessment.recoding_plan_type in {"direct_copy", "direct_copy_or_review"}:
+                target = key
+                rationale = "Draft direct copy; confirm source categories match CSES."
+            elif assessment.recoding_plan_type == "offset_transform" and assessment.target_variable == "F2002":
+                if key in {"1", "2"}:
+                    target = str(int(key) - 1)
+                    rationale = "Draft common CSES gender transform after confirming source labels."
+            elif assessment.value_map and key in assessment.value_map:
+                target = str(assessment.value_map[key])
+                rationale = "Draft mapped value from demographic assessment."
+            draft.append(
+                {
+                    "source_value": key,
+                    "source_label": labels.get(key, ""),
+                    "proposed_target_value": target,
+                    "target_label": _target_label(target_standard, target),
+                    "rationale": rationale,
+                    "requires_processor_approval": True,
+                }
+            )
+        missing = [
+            {
+                "source_value": key,
+                "target_value": value,
+                "rationale": "Draft missing-value treatment from demographic assessment.",
+            }
+            for key, value in assessment.missing_map.items()
+        ]
+        return draft, missing
+
+    def _evidence_gaps(
+        self,
+        assessment: DemographicRecodingAssessment,
+        source: dict[str, Any],
+        target_standard: dict[str, Any],
+    ) -> list[str]:
+        gaps = list(assessment.warnings)
+        if not assessment.source_variable:
+            gaps.append("No source variable has been identified.")
+        if source and not source.get("value_labels"):
+            gaps.append("Source value labels are not available; inspect questionnaire/codebook evidence before approving.")
+        if not target_standard.get("response_options") and assessment.recoding_plan_type in {"crosswalk_required", "recode"}:
+            gaps.append("The target standard requires notes or a coding table rather than simple response options.")
+        return list(dict.fromkeys(gaps))
+
+    def _decision_prompt(self, assessment: DemographicRecodingAssessment, gaps: list[str]) -> str:
+        if assessment.recoding_plan_type == "crosswalk_required":
+            return "Review source categories and approve a category-to-CSES crosswalk before syntax generation."
+        if assessment.recoding_plan_type in {"derived_age", "derived_generation"}:
+            return "Confirm the derivation rule and the source birth-year/election-year values."
+        if assessment.status == "missing_source":
+            return "Confirm whether the item was not collected or whether another source file contains it."
+        if gaps:
+            return "Review the listed evidence gaps before approving the recode."
+        return "Confirm the proposed recode before syntax generation."
+
+
+class DemographicRecodingDecisionStore:
+    """Persist approved demographic decisions for later Stata generation."""
+
+    def __init__(self, working_dir: Path):
+        self.working_dir = Path(working_dir)
+        self.path = self.working_dir / ".cses" / "demographic_recoding_decisions.json"
+
+    def load(self) -> dict[str, DemographicRecodingDecision]:
+        if not self.path.exists():
+            return {}
+        try:
+            payload = json.loads(self.path.read_text(encoding="utf-8"))
+        except Exception:
+            return {}
+        decisions = {}
+        for item in payload.get("decisions", []) or []:
+            if isinstance(item, dict) and item.get("target_variable"):
+                decision = DemographicRecodingDecision(**item)
+                decisions[decision.target_variable] = decision
+        return decisions
+
+    def write(self, decisions: list[DemographicRecodingDecision]) -> Path:
+        self.path.parent.mkdir(parents=True, exist_ok=True)
+        payload = {
+            "generated_at": datetime.now(timezone.utc).isoformat(),
+            "decision_count": len(decisions),
+            "approved_count": sum(1 for item in decisions if item.approved),
+            "decisions": [item.to_dict() for item in decisions],
+        }
+        self.path.write_text(json.dumps(payload, indent=2, ensure_ascii=False), encoding="utf-8")
+        return self.path
+
+    def write_from_assessments(
+        self,
+        assessments: list[DemographicRecodingAssessment],
+        approved: bool = False,
+    ) -> Path:
+        decisions = [
+            DemographicRecodingDecision(
+                target_variable=item.target_variable,
+                source_variable=item.source_variable,
+                plan_type=item.recoding_plan_type,
+                approved=approved and not item.processor_review_required,
+                value_map=item.value_map,
+                missing_map=item.missing_map,
+                processor_note="",
+                log_note=item.notes,
+                evidence=item.evidence,
+            )
+            for item in assessments
+        ]
+        return self.write(decisions)
+
+
 class DemographicDataGenerator:
     """Apply demographic assessments to a data frame for benchmark validation."""
 
@@ -504,6 +755,16 @@ def _missing_value_for(target: str) -> int:
     if target == "F2010_2":
         return 99999999
     return 9
+
+
+def _target_label(target_standard: dict[str, Any], value: str) -> str:
+    if value in {"", None}:
+        return ""
+    normalized = _value_key(value)
+    for option in target_standard.get("response_options", []) or []:
+        if _value_key(option.get("code")) == normalized:
+            return str(option.get("label", ""))
+    return ""
 
 
 def _tokens(text: str) -> set[str]:

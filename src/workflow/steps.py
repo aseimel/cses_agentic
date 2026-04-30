@@ -1258,6 +1258,8 @@ class StepExecutor:
             )
             administrative_summary = administrative_plan_summary(administrative_plans)
             from src.matching.demographics import (
+                DemographicRecodingDecisionStore,
+                DemographicRecodingDossierBuilder,
                 DemographicRecodingAssessmentEngine,
                 demographic_assessment_summary,
             )
@@ -1273,6 +1275,18 @@ class StepExecutor:
             demographic_assessments_path = demographic_engine.write_artifacts(
                 self.working_dir,
                 demographic_assessments,
+            )
+            demographic_dossiers = DemographicRecodingDossierBuilder().build(
+                demographic_assessments,
+                matching_evidence=matching_evidence,
+            )
+            demographic_dossiers_path = DemographicRecodingDossierBuilder().write(
+                self.working_dir,
+                demographic_dossiers,
+            )
+            demographic_decisions_path = DemographicRecodingDecisionStore(self.working_dir).write_from_assessments(
+                demographic_assessments,
+                approved=False,
             )
             demographic_summary = demographic_assessment_summary(demographic_assessments)
 
@@ -1542,7 +1556,15 @@ class StepExecutor:
                 return StepResult(
                     success=False,
                     message=f"Variable matching produced only {valid_matched}/{total} usable source matches",
-                    artifacts=[str(tracking_path), str(candidates_path), str(decisions_path), str(administrative_plans_path), str(demographic_assessments_path)],
+                    artifacts=[
+                        str(tracking_path),
+                        str(candidates_path),
+                        str(decisions_path),
+                        str(administrative_plans_path),
+                        str(demographic_assessments_path),
+                        str(demographic_dossiers_path),
+                        str(demographic_decisions_path),
+                    ],
                     issues=[
                         f"Matching errors: {error_count}",
                         f"Not found: {not_found}",
@@ -1559,7 +1581,15 @@ class StepExecutor:
             return StepResult(
                 success=True,
                 message=f"Proposed source matches for {valid_matched}/{total} CSES variables; {unresolved_count} remain unresolved",
-                artifacts=[str(tracking_path), str(candidates_path), str(decisions_path), str(administrative_plans_path), str(demographic_assessments_path)],
+                artifacts=[
+                    str(tracking_path),
+                    str(candidates_path),
+                    str(decisions_path),
+                    str(administrative_plans_path),
+                    str(demographic_assessments_path),
+                    str(demographic_dossiers_path),
+                    str(demographic_decisions_path),
+                ],
                 next_action="Review tracking sheet in Excel (yellow=review, red=requires attention), "
                            "set VERIFIED=TRUE for approved mappings, then run: cses step 7c"
             )

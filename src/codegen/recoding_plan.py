@@ -11,6 +11,7 @@ from typing import Any
 from src.codegen.sheet_reader import TrackingSheet, VariableMapping
 from src.standards.schema import SchemaRegistry, SchemaVariable
 from src.workflow.state import WorkflowState
+from src.matching.demographics import DemographicRecodingDecision, DemographicRecodingDecisionStore
 
 
 @dataclass
@@ -40,6 +41,9 @@ class RecodingPlanBuilder:
     def __init__(self, state: WorkflowState, registry: SchemaRegistry | None = None):
         self.state = state
         self.registry = registry or SchemaRegistry()
+        self.demographic_decisions: dict[str, DemographicRecodingDecision] = {}
+        if state.working_dir:
+            self.demographic_decisions = DemographicRecodingDecisionStore(Path(state.working_dir)).load()
 
     def build(self, tracking_sheet: TrackingSheet | None = None) -> list[RecodingPlan]:
         mapping_lookup = {item.cses_var: item for item in tracking_sheet.mappings} if tracking_sheet else {}
@@ -69,6 +73,9 @@ class RecodingPlanBuilder:
             "dependency_class": schema_var.dependency_class,
             "syntax_pattern_id": schema_var.syntax_pattern_id,
         }
+        demographic_decision = self.demographic_decisions.get(schema_var.name)
+        if demographic_decision and demographic_decision.approved:
+            return self._plan_from_demographic_decision(schema_var, demographic_decision, base)
         if schema_var.dependency_class == "derived_metadata":
             return RecodingPlan(
                 **base,
@@ -147,6 +154,60 @@ class RecodingPlanBuilder:
             approved=approved,
             issues=issues,
         )
+
+    def _plan_from_demographic_decision(
+        self,
+        schema_var: SchemaVariable,
+        decision: DemographicRecodingDecision,
+        base: dict,
+    ) -> RecodingPlan:
+        source = decision.source_variable
+        plan_type = decision.plan_type
+        if plan_type == "crosswalk_required" and decision.value_map:
+            plan_type = "recode"
+        if plan_type == "direct_copy" and decision.value_map and not self._is_identity_map(decision.value_map):
+            plan_type = "recode"
+        expression = self._demographic_expression(schema_var, decision, plan_type)
+        recode_rules = [
+            {"from": key, "to": str(value), "label": ""}
+            for key, value in decision.value_map.items()
+            if key != "" and str(value) != key
+        ]
+        missing_rules = [
+            {"from": key, "to": str(value), "label": "CSES missing"}
+            for key, value in decision.missing_map.items()
+            if key
+        ]
+        return RecodingPlan(
+            **base,
+            plan_type=plan_type,
+            source_variables=[source] if source else [],
+            expression=expression,
+            recode_rules=recode_rules,
+            missing_rules=missing_rules,
+            verification_commands=self._verification_commands(schema_var.name, source, plan_type) if source else [f"tab {schema_var.name}, mis"],
+            documentation_note=decision.log_note or decision.processor_note,
+            readiness_status="ready",
+            approved=True,
+            issues=[],
+        )
+
+    def _demographic_expression(
+        self,
+        schema_var: SchemaVariable,
+        decision: DemographicRecodingDecision,
+        plan_type: str,
+    ) -> str:
+        if plan_type == "offset_transform" and schema_var.name == "F2002":
+            return f"{decision.source_variable} - 1"
+        if plan_type == "derived_age":
+            return "F1009-F2001_Y"
+        if plan_type == "derived_generation":
+            return "F2001_Y"
+        return decision.source_variable or self._missing_value(schema_var)
+
+    def _is_identity_map(self, value_map: dict[str, object]) -> bool:
+        return all(str(key) == str(value) for key, value in value_map.items())
 
     def _metadata_expression(self, schema_var: SchemaVariable) -> str:
         country_code = self.state.country_code or "CNT"
