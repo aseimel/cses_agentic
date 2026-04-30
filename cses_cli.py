@@ -1353,6 +1353,7 @@ def cmd_wiki(args):
         audit_questionnaire_registry,
     )
     from src.standards.administrative import audit_administrative_registry
+    from src.matching.demographics import audit_demographic_registry
 
     command = getattr(args, "wiki_command", None) or "audit"
 
@@ -1361,6 +1362,7 @@ def cmd_wiki(args):
         issues = audit_distilled_wiki(wiki_root)
         issues.extend(audit_questionnaire_registry(wiki_root / "patterns" / "module6_questionnaire_registry.json"))
         issues.extend(audit_administrative_registry(wiki_root))
+        issues.extend(audit_demographic_registry())
         if issues:
             print("CSES wiki audit found issues:")
             for issue in issues:

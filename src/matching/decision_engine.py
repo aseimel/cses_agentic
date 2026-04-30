@@ -19,6 +19,7 @@ from src.matching.evidence import (
 from src.standards.questionnaire_registry import normalize_item_key
 from src.standards.schema import SchemaRegistry, SchemaVariable
 from src.standards.administrative import AdministrativeVariablePlan
+from src.matching.demographics import DemographicRecodingAssessment
 
 
 MODULE6_SOURCE_ALIASES = {
@@ -170,6 +171,7 @@ class MatchingDecisionEngine:
         matching_evidence: dict | None = None,
         remote_similarity_scores: dict[str, float] | None = None,
         administrative_plans: list[AdministrativeVariablePlan] | None = None,
+        demographic_assessments: list[DemographicRecodingAssessment] | None = None,
     ) -> list[MatchingDecision]:
         source_lookup = {str(item.get("name", "")): item for item in source_contexts if item.get("name")}
         proposal_lookup = self._proposal_lookup(llm_proposals or [])
@@ -178,11 +180,17 @@ class MatchingDecisionEngine:
         administrative_lookup = {
             plan.target_variable: plan for plan in (administrative_plans or [])
         }
+        demographic_lookup = {
+            item.target_variable: item for item in (demographic_assessments or [])
+        }
         decisions: list[MatchingDecision] = []
 
         for schema_var in self.registry.variables:
             if schema_var.dependency_class == "derived_metadata":
                 decisions.append(self._derived_decision(schema_var, administrative_lookup.get(schema_var.name)))
+                continue
+            if schema_var.section == "demographics" or schema_var.name.startswith("F2"):
+                decisions.append(self._demographic_decision(schema_var, demographic_lookup.get(schema_var.name)))
                 continue
             if schema_var.dependency_class in {"macro_or_party_input", "district_input"}:
                 decisions.append(self._external_decision(schema_var))
@@ -448,6 +456,52 @@ class MatchingDecisionEngine:
             notes="Derived from study metadata/design evidence; processor verification required.",
         )
 
+    def _demographic_decision(
+        self,
+        schema_var: SchemaVariable,
+        assessment: DemographicRecodingAssessment | None = None,
+    ) -> MatchingDecision:
+        if not assessment:
+            return MatchingDecision(
+                target_variable=schema_var.name,
+                description=schema_var.description,
+                status="blocked_for_processor_review",
+                confidence="low",
+                dependency_class=schema_var.dependency_class,
+                notes="Demographic recoding assessment was not available.",
+                conflict_flags=["demographic_assessment_missing"],
+            )
+        source = assessment.source_variable
+        has_source = bool(source) and source not in {"NOT_FOUND", "EXTERNAL_INPUT_REQUIRED"}
+        status = "demographic_recoding_assessment" if has_source or assessment.status == "proposed_derivation" else "blocked_for_processor_review"
+        flags = list(assessment.warnings)
+        if assessment.processor_review_required:
+            flags.append("processor_review_required")
+        return MatchingDecision(
+            target_variable=schema_var.name,
+            description=schema_var.description,
+            status=status,
+            source_variable=source or "NOT_FOUND",
+            confidence=assessment.confidence,
+            candidates=[
+                SourceCandidate(
+                    source_variable=source,
+                    score=0.86 if has_source else 0.0,
+                    evidence=assessment.evidence[:3],
+                    conflict_flags=assessment.warnings[:3],
+                )
+            ] if source else [],
+            evidence=assessment.evidence,
+            conflict_flags=flags,
+            processor_verification_required=assessment.processor_review_required,
+            dependency_class=schema_var.dependency_class,
+            notes=(
+                f"Demographic recoding assessment: {assessment.source_format}; "
+                f"{assessment.recoding_action}; {assessment.recoding_plan_type}. "
+                f"{assessment.notes}"
+            ).strip(),
+        )
+
     def _external_decision(self, schema_var: SchemaVariable) -> MatchingDecision:
         status = "external_input_required"
         if schema_var.dependency_class == "district_input":
@@ -476,6 +530,8 @@ class MatchingDecisionEngine:
         for decision in decisions:
             source = decision.source_variable
             if not source or source in {"DERIVED_METADATA", "EXTERNAL_INPUT_REQUIRED", "NOT_FOUND"}:
+                continue
+            if decision.status in {"generated_from_administrative_information", "demographic_recoding_assessment"}:
                 continue
             by_source.setdefault(source, []).append(decision)
         for source, items in by_source.items():
@@ -515,7 +571,7 @@ def matching_category_summary(decisions: list[MatchingDecision], matching_eviden
         item_type = str(profile.get("canonical_item_type") or "")
         section = str(profile.get("section") or "")
         dep = decision.dependency_class
-        matched = decision.status == "proposed_match" and decision.source_variable not in {"", "NOT_FOUND", "ERROR"}
+        matched = decision.status in {"proposed_match", "demographic_recoding_assessment"} and decision.source_variable not in {"", "NOT_FOUND", "ERROR"}
         if dep == "derived_metadata":
             bucket = categories["administrative_metadata"]
             bucket["total"] += 1

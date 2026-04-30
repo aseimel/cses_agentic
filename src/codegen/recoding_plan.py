@@ -110,7 +110,15 @@ class RecodingPlanBuilder:
                 approved=mapping.verified,
                 issues=[] if mapping.verified else ["Missing/not-collected classification requires processor approval."],
             )
-        if mapping.transform_type == "replace":
+        if mapping.transform_type in {"derived_age", "derived_generation", "crosswalk_required"}:
+            plan_type = mapping.transform_type
+        elif mapping.transform_type == "offset_transform":
+            plan_type = "offset_transform"
+        elif mapping.transform_type in {"direct", "direct_copy"}:
+            plan_type = "direct_copy"
+        elif mapping.transform_type == "missing_not_collected":
+            plan_type = "missing_not_collected"
+        elif mapping.transform_type == "replace":
             plan_type = "replace_ladder"
         elif mapping.transform_type == "recode" or mapping.recode_rules or mapping.missing_rules:
             plan_type = "recode"
@@ -123,6 +131,9 @@ class RecodingPlanBuilder:
         approved = mapping.verified
         readiness = "ready" if approved else "needs_processor_review"
         issues = [] if approved else ["Processor verification required before final code generation."]
+        if plan_type == "crosswalk_required":
+            readiness = "needs_processor_review"
+            issues = ["Processor-approved demographic crosswalk required before final code generation."]
         return RecodingPlan(
             **base,
             plan_type=plan_type,
@@ -153,6 +164,10 @@ class RecodingPlanBuilder:
         source = mapping.source_var
         if plan_type == "offset_transform" and schema_var.name == "F2002":
             return f"{source} - 1"
+        if plan_type == "derived_age":
+            return "F1009-F2001_Y"
+        if plan_type == "derived_generation":
+            return "F2001_Y"
         if plan_type == "calculate" and mapping.recode_rules:
             return mapping.recode_rules[0].from_value
         return source
@@ -274,6 +289,13 @@ class PlanDrivenStataSyntaxGenerator:
         target = plan.target_variable
         if plan.plan_type in {"direct_copy", "offset_transform", "calculate"}:
             lines.append(f"gen {target} = {plan.expression}")
+        elif plan.plan_type == "derived_age":
+            lines.append(f"gen {target} = {plan.expression} if F2001_Y < 9997")
+            lines.append(f"replace {target} = 9997 if F2001_Y == 9997")
+            lines.append(f"replace {target} = 9998 if F2001_Y == 9998")
+            lines.append(f"replace {target} = 9999 if F2001_Y == 9999")
+        elif plan.plan_type == "derived_generation":
+            lines.extend(_generation_lines(target))
         elif plan.plan_type == "constant_metadata":
             value = plan.expression or "9"
             if value.startswith('"'):
@@ -309,3 +331,22 @@ def load_recoding_plans(path: Path) -> list[RecodingPlan]:
 
 def _stata_comment(text: str) -> str:
     return str(text).replace("\n", " ")[:500]
+
+
+def _generation_lines(target: str) -> list[str]:
+    ranges = {
+        "F2001_GG": ("F2001_Y < 1928", "F2001_Y > 1927 & F2001_Y < 9997"),
+        "F2001_GS": ("F2001_Y > 1927 & F2001_Y < 1946", "F2001_Y < 1928 | (F2001_Y > 1945 & F2001_Y < 9997)"),
+        "F2001_GBB": ("F2001_Y > 1945 & F2001_Y < 1965", "F2001_Y < 1946 | (F2001_Y > 1964 & F2001_Y < 9997)"),
+        "F2001_GX": ("F2001_Y > 1964 & F2001_Y < 1981", "F2001_Y < 1965 | (F2001_Y > 1980 & F2001_Y < 9997)"),
+        "F2001_GY": ("F2001_Y > 1980 & F2001_Y < 1997", "F2001_Y < 1981 | (F2001_Y > 1996 & F2001_Y < 9997)"),
+        "F2001_GZ": ("F2001_Y > 1996 & F2001_Y < 9997", "F2001_Y < 1997"),
+    }
+    yes, no = ranges.get(target, ("", ""))
+    if not yes:
+        return [f"gen {target} = 9"]
+    return [
+        f"gen {target} = 1 if {yes}",
+        f"replace {target} = 0 if {no}",
+        f"replace {target} = 9 if F2001_Y > 9996",
+    ]

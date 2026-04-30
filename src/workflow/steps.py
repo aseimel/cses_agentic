@@ -1257,6 +1257,24 @@ class StepExecutor:
                 administrative_plans,
             )
             administrative_summary = administrative_plan_summary(administrative_plans)
+            from src.matching.demographics import (
+                DemographicRecodingAssessmentEngine,
+                demographic_assessment_summary,
+            )
+
+            demographic_engine = DemographicRecodingAssessmentEngine()
+            demographic_assessments = demographic_engine.assess(
+                matching_evidence=matching_evidence,
+                source_contexts=source_contexts,
+            )
+            demographic_assessment_lookup = {
+                item.target_variable: item for item in demographic_assessments
+            }
+            demographic_assessments_path = demographic_engine.write_artifacts(
+                self.working_dir,
+                demographic_assessments,
+            )
+            demographic_summary = demographic_assessment_summary(demographic_assessments)
 
             # Build reviewable matching decisions from deterministic evidence first.
             # A monolithic model call can block the workflow; processor review needs
@@ -1279,6 +1297,7 @@ class StepExecutor:
                 matching_evidence=matching_evidence,
                 remote_similarity_scores=remote_scores,
                 administrative_plans=administrative_plans,
+                demographic_assessments=demographic_assessments,
             )
             candidates_path, decisions_path = decision_engine.write_artifacts(self.working_dir, decisions)
             status_counts = decision_summary(decisions)
@@ -1295,6 +1314,7 @@ class StepExecutor:
                 "derived_metadata_count": status_counts.get("derived_metadata", 0),
                 "administrative_generated_count": status_counts.get("generated_from_administrative_information", 0),
                 "administrative_summary": administrative_summary,
+                "demographic_summary": demographic_summary,
             }
             self.state.save()
 
@@ -1374,6 +1394,14 @@ class StepExecutor:
                     confidence = "low"
                 elif decision.status == "generated_from_administrative_information":
                     transform_type = "administrative_information"
+                elif decision.status == "demographic_recoding_assessment":
+                    assessment = demographic_assessment_lookup.get(target)
+                    if assessment:
+                        transform_type = assessment.recoding_plan_type
+                        if assessment.value_map:
+                            recode_map = "; ".join(f"{k}={v}" for k, v in assessment.value_map.items())
+                        if assessment.missing_map:
+                            missing_map = "; ".join(f"{k}={v}" for k, v in assessment.missing_map.items())
                 elif decision.status in {"derived_metadata", "external_input_required", "blocked_for_processor_review"}:
                     transform_type = "not_found" if not source or source in {"DERIVED_METADATA", "EXTERNAL_INPUT_REQUIRED"} else transform_type
 
@@ -1398,6 +1426,14 @@ class StepExecutor:
                         f"Administrative category: {admin_plan.generation_category}",
                         f"Administrative value: {admin_plan.value}" if admin_plan.value not in {"", None} else "",
                         f"Stata rule: {admin_plan.stata_rule}",
+                    ]
+                    notes = " | ".join([notes] + [item for item in extra if item])
+                demographic_assessment = demographic_assessment_lookup.get(target)
+                if demographic_assessment:
+                    extra = [
+                        f"Demographic concept: {demographic_assessment.concept}",
+                        f"Source format: {demographic_assessment.source_format}",
+                        f"Recoding action: {demographic_assessment.recoding_action}",
                     ]
                     notes = " | ".join([notes] + [item for item in extra if item])
                 ws.cell(row=row, column=11, value=notes[:500])
@@ -1477,7 +1513,10 @@ class StepExecutor:
             party = category_counts.get("party_election_items", {})
             district = category_counts.get("district_items", {})
             print(f"    Core questionnaire items matched: {core.get('matched', 0)}/{core.get('total', 0)}")
-            print(f"    Demographic items matched/reviewable: {demo.get('matched', 0)}/{demo.get('total', 0)}")
+            print(
+                f"    Demographic recoding assessments prepared: {demo.get('matched', 0)}/{demo.get('total', 0)}"
+                f" ({demographic_summary.get('needs_review', 0)} need processor review)"
+            )
             print(
                 f"    Administrative variables prepared: {admin.get('prepared', 0)}/{admin.get('total', 0)}"
                 f" ({admin.get('needs_review', 0)} need processor review)"
@@ -1503,7 +1542,7 @@ class StepExecutor:
                 return StepResult(
                     success=False,
                     message=f"Variable matching produced only {valid_matched}/{total} usable source matches",
-                    artifacts=[str(tracking_path), str(candidates_path), str(decisions_path), str(administrative_plans_path)],
+                    artifacts=[str(tracking_path), str(candidates_path), str(decisions_path), str(administrative_plans_path), str(demographic_assessments_path)],
                     issues=[
                         f"Matching errors: {error_count}",
                         f"Not found: {not_found}",
@@ -1520,7 +1559,7 @@ class StepExecutor:
             return StepResult(
                 success=True,
                 message=f"Proposed source matches for {valid_matched}/{total} CSES variables; {unresolved_count} remain unresolved",
-                artifacts=[str(tracking_path), str(candidates_path), str(decisions_path), str(administrative_plans_path)],
+                artifacts=[str(tracking_path), str(candidates_path), str(decisions_path), str(administrative_plans_path), str(demographic_assessments_path)],
                 next_action="Review tracking sheet in Excel (yellow=review, red=requires attention), "
                            "set VERIFIED=TRUE for approved mappings, then run: cses step 7c"
             )

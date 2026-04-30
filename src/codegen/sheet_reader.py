@@ -311,7 +311,20 @@ class TrackingSheetReader:
 
         # Normalize transform type
         transform_type = str(transform_type).lower().strip()
-        if transform_type not in ("direct", "recode", "replace", "calculate", "not_found", "administrative_information"):
+        if transform_type not in (
+            "direct",
+            "recode",
+            "replace",
+            "calculate",
+            "not_found",
+            "administrative_information",
+            "direct_copy",
+            "offset_transform",
+            "derived_age",
+            "derived_generation",
+            "crosswalk_required",
+            "missing_not_collected",
+        ):
             transform_type = "direct"
 
         if source_var == "NOT_FOUND" or not source_var:

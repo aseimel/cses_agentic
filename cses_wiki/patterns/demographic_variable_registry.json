@@ -1,0 +1,297 @@
+{
+  "schema_version": 1,
+  "module": "CSES Module 6",
+  "source_policy": "Runtime demographic contracts distilled into cses_wiki. Country examples are development benchmarks only.",
+  "variables": [
+    {
+      "target_variable": "F2001_Y",
+      "canonical_item_ids": ["D01b"],
+      "concept": "birth_year",
+      "source_aliases": ["D01b", "birth_year", "year_birth", "yob"],
+      "format_class": "numeric_year",
+      "recoding_action": "direct_copy",
+      "processor_review_required": false,
+      "notes": "Use respondent birth year when supplied. Missing year codes must follow CSES extended missing codes."
+    },
+    {
+      "target_variable": "F2001_A",
+      "canonical_item_ids": ["D01b"],
+      "concept": "age",
+      "source_aliases": ["age", "D01a_age"],
+      "format_class": "derived_from_birth_year_or_age",
+      "recoding_action": "derive_age_from_birth_year",
+      "processor_review_required": true,
+      "notes": "Prefer deriving age from election year and birth year when only birth year is supplied."
+    },
+    {
+      "target_variable": "F2001_GG",
+      "canonical_item_ids": ["D01b"],
+      "concept": "birth_generation",
+      "source_aliases": [],
+      "format_class": "derived_from_birth_year",
+      "recoding_action": "derive_birth_generation",
+      "processor_review_required": false,
+      "notes": "Generated from F2001_Y using CSES generation thresholds."
+    },
+    {
+      "target_variable": "F2001_GS",
+      "canonical_item_ids": ["D01b"],
+      "concept": "birth_generation",
+      "source_aliases": [],
+      "format_class": "derived_from_birth_year",
+      "recoding_action": "derive_birth_generation",
+      "processor_review_required": false,
+      "notes": "Generated from F2001_Y using CSES generation thresholds."
+    },
+    {
+      "target_variable": "F2001_GBB",
+      "canonical_item_ids": ["D01b"],
+      "concept": "birth_generation",
+      "source_aliases": [],
+      "format_class": "derived_from_birth_year",
+      "recoding_action": "derive_birth_generation",
+      "processor_review_required": false,
+      "notes": "Generated from F2001_Y using CSES generation thresholds."
+    },
+    {
+      "target_variable": "F2001_GX",
+      "canonical_item_ids": ["D01b"],
+      "concept": "birth_generation",
+      "source_aliases": [],
+      "format_class": "derived_from_birth_year",
+      "recoding_action": "derive_birth_generation",
+      "processor_review_required": false,
+      "notes": "Generated from F2001_Y using CSES generation thresholds."
+    },
+    {
+      "target_variable": "F2001_GY",
+      "canonical_item_ids": ["D01b"],
+      "concept": "birth_generation",
+      "source_aliases": [],
+      "format_class": "derived_from_birth_year",
+      "recoding_action": "derive_birth_generation",
+      "processor_review_required": false,
+      "notes": "Generated from F2001_Y using CSES generation thresholds."
+    },
+    {
+      "target_variable": "F2001_GZ",
+      "canonical_item_ids": ["D01b"],
+      "concept": "birth_generation",
+      "source_aliases": [],
+      "format_class": "derived_from_birth_year",
+      "recoding_action": "derive_birth_generation",
+      "processor_review_required": false,
+      "notes": "Generated from F2001_Y using CSES generation thresholds."
+    },
+    {
+      "target_variable": "F2002",
+      "canonical_item_ids": ["D02"],
+      "concept": "gender",
+      "source_aliases": ["D02", "sex", "gender"],
+      "format_class": "binary_or_categorical",
+      "recoding_action": "gender_recode_review",
+      "processor_review_required": true,
+      "notes": "Confirm whether local codes are 1=male and 2=female before applying the common 1/2 to 0/1 transform."
+    },
+    {
+      "target_variable": "F2003",
+      "canonical_item_ids": ["D03"],
+      "concept": "education",
+      "source_aliases": ["D03", "education", "educ", "isced"],
+      "format_class": "education_crosswalk",
+      "recoding_action": "crosswalk_required",
+      "processor_review_required": true,
+      "notes": "Education must be assessed as ISCED/CSES coding; local categories usually require a reviewed crosswalk."
+    },
+    {
+      "target_variable": "F2004",
+      "canonical_item_ids": ["D04"],
+      "concept": "marital_status",
+      "source_aliases": ["D04", "marital", "civil_union"],
+      "format_class": "categorical",
+      "recoding_action": "direct_copy_or_review",
+      "processor_review_required": true,
+      "notes": "Direct copy is acceptable only when source categories match CSES marital status coding."
+    },
+    {
+      "target_variable": "F2005",
+      "canonical_item_ids": ["D05"],
+      "concept": "union_membership",
+      "source_aliases": ["D05", "union"],
+      "format_class": "binary_yes_no",
+      "recoding_action": "yes_no_recode_review",
+      "processor_review_required": true,
+      "notes": "Common source coding is 1=yes, 2=no; CSES target coding is 1=yes, 0=no."
+    },
+    {
+      "target_variable": "F2006",
+      "canonical_item_ids": ["D06"],
+      "concept": "employment_status",
+      "source_aliases": ["D06", "employment", "work_status"],
+      "format_class": "categorical",
+      "recoding_action": "direct_copy_or_review",
+      "processor_review_required": true,
+      "notes": "Confirm local employment categories match CSES before direct copy."
+    },
+    {
+      "target_variable": "F2007",
+      "canonical_item_ids": ["D07"],
+      "concept": "occupation",
+      "source_aliases": ["D07", "occupation", "isco"],
+      "format_class": "isco_or_local_occupation",
+      "recoding_action": "direct_copy_or_crosswalk",
+      "processor_review_required": true,
+      "notes": "Direct copy is only safe when the source is already two-digit ISCO-08/CSES occupation coding."
+    },
+    {
+      "target_variable": "F2008",
+      "canonical_item_ids": ["D07a"],
+      "concept": "socio_economic_status",
+      "source_aliases": ["D07a", "socio_economic", "class", "ses"],
+      "format_class": "categorical",
+      "recoding_action": "direct_copy_or_review",
+      "processor_review_required": true,
+      "notes": "Confirm source categories match the CSES socio-economic-status categories."
+    },
+    {
+      "target_variable": "F2009",
+      "canonical_item_ids": ["D08"],
+      "concept": "employment_type_public_private",
+      "source_aliases": ["D08", "sector", "public_private"],
+      "format_class": "categorical",
+      "recoding_action": "direct_copy_or_review",
+      "processor_review_required": true,
+      "notes": "Confirm public/private/mixed/non-profit sector categories before direct copy."
+    },
+    {
+      "target_variable": "F2010_1",
+      "canonical_item_ids": ["D09"],
+      "concept": "household_income_quintiles",
+      "source_aliases": ["D09", "income", "household_income"],
+      "format_class": "income_quintile_derivation",
+      "recoding_action": "derive_income_quintiles",
+      "processor_review_required": true,
+      "notes": "Quintiles must be derived or confirmed from the supplied income format and checked for distribution."
+    },
+    {
+      "target_variable": "F2010_2",
+      "canonical_item_ids": ["D09"],
+      "concept": "household_income_original",
+      "source_aliases": ["D09", "income", "household_income"],
+      "format_class": "original_income",
+      "recoding_action": "direct_copy_with_large_missing",
+      "processor_review_required": true,
+      "notes": "Preserve the original income variable and map source missing to the CSES large missing code."
+    },
+    {
+      "target_variable": "F2011",
+      "canonical_item_ids": ["D10"],
+      "concept": "religious_denomination",
+      "source_aliases": ["D10", "religion", "denomination"],
+      "format_class": "religion_code",
+      "recoding_action": "direct_copy_or_crosswalk",
+      "processor_review_required": true,
+      "notes": "Confirm whether the source is already in CSES religious denomination codes."
+    },
+    {
+      "target_variable": "F2012",
+      "canonical_item_ids": ["D11"],
+      "concept": "religious_attendance",
+      "source_aliases": ["D11", "religious_attendance", "church_attendance"],
+      "format_class": "ordinal_frequency",
+      "recoding_action": "frequency_crosswalk_required",
+      "processor_review_required": true,
+      "notes": "Attendance frequency categories often require collapsing into the CSES standard."
+    },
+    {
+      "target_variable": "F2013",
+      "canonical_item_ids": ["D12"],
+      "concept": "race",
+      "source_aliases": ["D12", "race"],
+      "format_class": "national_standard_or_missing",
+      "recoding_action": "crosswalk_or_missing_review",
+      "processor_review_required": true,
+      "notes": "If race is not collected or not applicable, code intentionally with processor approval."
+    },
+    {
+      "target_variable": "F2014",
+      "canonical_item_ids": ["D13"],
+      "concept": "ethnicity",
+      "source_aliases": ["D13", "ethnicity", "ethnic"],
+      "format_class": "national_standard_or_missing",
+      "recoding_action": "crosswalk_or_missing_review",
+      "processor_review_required": true,
+      "notes": "If ethnicity is not collected or not applicable, code intentionally with processor approval."
+    },
+    {
+      "target_variable": "F2015",
+      "canonical_item_ids": ["D14"],
+      "concept": "country_of_birth",
+      "source_aliases": ["D14", "country_birth", "born_country"],
+      "format_class": "country_code_or_grouped_country",
+      "recoding_action": "country_crosswalk_required",
+      "processor_review_required": true,
+      "notes": "Map local birth-country categories to UN/CSES country codes or documented regional categories."
+    },
+    {
+      "target_variable": "F2016",
+      "canonical_item_ids": ["D15"],
+      "concept": "parent_born_outside_country",
+      "source_aliases": ["D15", "parent_born_outside", "parent_foreign"],
+      "format_class": "binary_yes_no",
+      "recoding_action": "yes_no_recode_review",
+      "processor_review_required": true,
+      "notes": "Common source coding is 1=yes, 5=no; CSES target coding is 1=yes, 0=no."
+    },
+    {
+      "target_variable": "F2017",
+      "canonical_item_ids": ["D16"],
+      "concept": "language_at_home",
+      "source_aliases": ["D16", "language", "home_language"],
+      "format_class": "language_code_crosswalk",
+      "recoding_action": "language_crosswalk_required",
+      "processor_review_required": true,
+      "notes": "Local language codes must be mapped to CSES language codes; unmatched languages need documented custom codes."
+    },
+    {
+      "target_variable": "F2018",
+      "canonical_item_ids": ["D17"],
+      "concept": "region_of_residence",
+      "source_aliases": ["D17", "region", "residence_region"],
+      "format_class": "region_code",
+      "recoding_action": "direct_copy_or_review",
+      "processor_review_required": true,
+      "notes": "Region of residence is demographic; do not confuse it with electoral district unless documented."
+    },
+    {
+      "target_variable": "F2019",
+      "canonical_item_ids": ["D18"],
+      "concept": "primary_electoral_district",
+      "source_aliases": ["D18", "electoral_district", "constituency"],
+      "format_class": "electoral_district",
+      "recoding_action": "district_review_required",
+      "processor_review_required": true,
+      "notes": "Primary electoral district is matched as a demographic source variable but remains subject to district-definition review."
+    },
+    {
+      "target_variable": "F2020",
+      "canonical_item_ids": ["D19"],
+      "concept": "rural_urban_residence",
+      "source_aliases": ["D19", "urban", "rural"],
+      "format_class": "urban_rural_crosswalk",
+      "recoding_action": "urban_rural_crosswalk_required",
+      "processor_review_required": true,
+      "notes": "Local urbanicity categories usually require collapsing to the CSES rural/urban scale."
+    },
+    {
+      "target_variable": "F2021",
+      "canonical_item_ids": ["D20"],
+      "concept": "number_in_household",
+      "source_aliases": ["D20", "household_size", "number_household"],
+      "format_class": "household_count_or_missing",
+      "recoding_action": "direct_copy_or_missing_review",
+      "processor_review_required": true,
+      "notes": "Use household count when supplied; otherwise code intentionally after processor review."
+    }
+  ]
+}
