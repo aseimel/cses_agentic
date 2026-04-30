@@ -25,7 +25,7 @@ import os
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Optional
-from litellm import completion
+from src.model_runtime import ModelRole, ModelTaskRunner
 
 logger = logging.getLogger(__name__)
 
@@ -404,8 +404,7 @@ def assign_numerical_codes(
 
 
 def parse_party_data_with_llm(
-    file_content: str,
-    model: Optional[str] = None
+    file_content: str
 ) -> list[dict]:
     """
     Use LLM to semantically extract party information from any format.
@@ -415,12 +414,12 @@ def parse_party_data_with_llm(
 
     Args:
         file_content: Raw text content from any document format
-        model: LLM model to use (defaults to LLM_MODEL_MATCH or LLM_MODEL)
 
     Returns:
         List of dicts with 'name', 'vote_share', optionally 'tier'
     """
-    model = model or os.getenv("LLM_MODEL_MATCH") or os.getenv("LLM_MODEL", "openai/gpt-oss:120b")
+    runner = ModelTaskRunner()
+    model = runner.model_for_role(ModelRole.MATCH_ESCALATION)
 
     print("Analyzing document for party and election results...")
 
@@ -449,10 +448,12 @@ If you cannot find election results, return: {{"parties": [], "error": "No elect
 """
 
     try:
-        response = completion(
-            model=model,
+        response = runner.response(
+            ModelRole.MATCH_ESCALATION,
+            model_override=model,
             max_tokens=4096,
             temperature=0,
+            purpose="Extract party election results",
             messages=[{"role": "user", "content": prompt}]
         )
 
@@ -561,8 +562,7 @@ def generate_party_codes(
 
 
 def extract_party_results_from_macro(
-    working_dir: Path,
-    model: Optional[str] = None
+    working_dir: Path
 ) -> Optional[list[dict]]:
     """
     Extract party results from macro folder files.
@@ -571,7 +571,6 @@ def extract_party_results_from_macro(
 
     Args:
         working_dir: Working directory containing macro/ folder
-        model: LLM model to use
 
     Returns:
         List of party dicts or None if not found
@@ -612,7 +611,7 @@ def extract_party_results_from_macro(
                     continue
 
                 if content and len(content) > 100:
-                    parties = parse_party_data_with_llm(content, model)
+                    parties = parse_party_data_with_llm(content)
                     if parties:
                         logger.info(f"Found party data in {file_path.name}")
                         return parties

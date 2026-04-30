@@ -16,7 +16,7 @@ logger = logging.getLogger(__name__)
 
 
 # File type detection patterns
-DATA_EXTENSIONS = {".dta", ".sav", ".csv", ".xlsx", ".xls", ".json", ".parquet"}
+DATA_EXTENSIONS = {".dta", ".sav", ".csv", ".xlsx", ".xls", ".parquet"}
 DOC_EXTENSIONS = {".docx", ".doc", ".pdf", ".txt", ".rtf"}
 
 # Keywords for file type identification
@@ -51,7 +51,54 @@ ENGLISH_KEYWORDS = [
 DOC_FORMAT_PREFERENCE = [".pdf", ".docx", ".doc", ".rtf", ".txt"]
 
 # Preferred format order for data files (first = most preferred)
-DATA_FORMAT_PREFERENCE = [".dta", ".sav", ".parquet", ".csv", ".xlsx", ".xls", ".json"]
+DATA_FORMAT_PREFERENCE = [".dta", ".sav", ".parquet", ".csv", ".xlsx", ".xls"]
+
+
+def _path_date_score(file_path: Path) -> int:
+    """Return the latest YYYYMMDD-like date visible in a path, or 0."""
+    text = str(file_path)
+    candidates: list[int] = []
+    for match in re.finditer(r'(?<!\d)(20\d{2})[-_]?([01]\d)[-_]?([0-3]\d)(?!\d)', text):
+        try:
+            candidates.append(int("".join(match.groups())))
+        except ValueError:
+            pass
+    return max(candidates) if candidates else 0
+
+
+def sort_data_files_for_primary(files: list[Path]) -> list[Path]:
+    """
+    Sort candidate survey data files so the most plausible current file is first.
+
+    Deposits often include multiple versions of the same dataset in dated
+    e-mail folders. Prefer dated/newer files, then newer modification times,
+    then larger files, while still respecting CSES-friendly data formats.
+    """
+    if len(files) <= 1:
+        return files
+
+    def format_rank(file_path: Path) -> int:
+        try:
+            return DATA_FORMAT_PREFERENCE.index(file_path.suffix.lower())
+        except ValueError:
+            return len(DATA_FORMAT_PREFERENCE)
+
+    def score(file_path: Path) -> tuple:
+        try:
+            mtime = file_path.stat().st_mtime
+            size = file_path.stat().st_size
+        except OSError:
+            mtime = 0
+            size = 0
+        return (
+            _path_date_score(file_path),
+            mtime,
+            size,
+            -format_rank(file_path),
+            str(file_path).lower(),
+        )
+
+    return sorted(files, key=score, reverse=True)
 
 
 def filename_similarity(name1: str, name2: str) -> float:
@@ -447,6 +494,8 @@ class FileOrganizer:
                 self._classify_file(item, result)
 
         self._detect_study_info(result)
+        result.data_files = sort_data_files_for_primary(result.data_files)
+        result.district_data_files = sort_data_files_for_primary(result.district_data_files)
         return result
 
     def _classify_file(self, file_path: Path, result: DetectedFiles):
@@ -876,16 +925,20 @@ class FileOrganizer:
 
         # Translate using LLM
         try:
-            from litellm import completion
-            import os
+            from src.model_runtime import ModelRole, ModelTaskRunner
+            from src.settings import apply_settings_to_environment
 
-            model = os.getenv("LLM_MODEL_PREPROCESS", "openai/gpt-4o-mini")
+            apply_settings_to_environment()
+            runner = ModelTaskRunner(self.working_dir)
+            model = runner.model_for_role(ModelRole.LARGE_TEXT)
 
             print(f"Translating questionnaire to English...")
-            response = completion(
-                model=model,
+            response = runner.response(
+                ModelRole.LARGE_TEXT,
+                model_override=model,
                 max_tokens=8192,
                 timeout=300,
+                purpose="Translate questionnaire to English",
                 messages=[{
                     "role": "user",
                     "content": f"""Translate this questionnaire to English. Preserve the structure and formatting.
@@ -898,10 +951,13 @@ Translate to English, keeping question numbers and response options intact."""
             )
 
             translated_text = response.choices[0].message.content.strip()
+            if not translated_text:
+                raise RuntimeError("translation model returned empty text")
 
         except Exception as e:
             logger.error(f"Translation failed: {e}")
-            translated_text = f"[TRANSLATION FAILED: {e}]\n\n{source_text}"
+            logger.warning("No translated questionnaire artifact was created because translation failed.")
+            return
 
         # Create PDF with disclaimer
         c = canvas.Canvas(str(dst), pagesize=letter)
@@ -1106,10 +1162,23 @@ Translate to English, keeping question numbers and response options intact."""
         # Copy all originals to micro/original_deposit/ (keep original names)
         for src in all_source_files:
             dst = original_deposit / src.name
-            if not dst.exists():
-                shutil.copy2(src, dst)
-                mapping[str(src)] = str(dst)
-                logger.info(f"Preserved original: {src.name}")
+            if dst.exists():
+                try:
+                    if dst.stat().st_size == src.stat().st_size:
+                        mapping[str(src)] = str(dst)
+                        continue
+                except OSError:
+                    pass
+                counter = 2
+                while True:
+                    candidate = original_deposit / f"{src.stem}_{counter}{src.suffix}"
+                    if not candidate.exists():
+                        dst = candidate
+                        break
+                    counter += 1
+            shutil.copy2(src, dst)
+            mapping[str(src)] = str(dst)
+            logger.info(f"Preserved original: {dst.name}")
 
         # Note: We no longer create renamed working copies in the root folder.
         # All processing now works directly from files in micro/original_deposit/

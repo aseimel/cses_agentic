@@ -15,6 +15,7 @@ The validator reviews each proposal and returns:
 import logging
 import json
 import os
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass, field
 from typing import Optional
 from enum import Enum
@@ -22,13 +23,14 @@ from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
-# Optional import - litellm for API calls
+# Optional import - role-aware model runtime for API calls
 try:
-    from litellm import completion
+    from src.model_runtime import ModelRole, ModelTaskRunner
     LITELLM_AVAILABLE = True
 except ImportError:
     LITELLM_AVAILABLE = False
-    completion = None
+    ModelRole = None
+    ModelTaskRunner = None
     logger.warning("litellm not available - LLM validation will not work")
 
 # Import existing modules - may fail if dependencies missing
@@ -47,6 +49,8 @@ except ImportError:
     ExtractionResult = None
     SourceVariableContext = None
 
+from src.settings import apply_settings_to_environment
+
 
 class ValidationVerdict(Enum):
     """Possible validation verdicts."""
@@ -64,6 +68,9 @@ class ValidationResult:
     verdict: ValidationVerdict
     reasoning: str
     suggested_alternative: Optional[str] = None
+    # Recoding information (NEW)
+    needs_recoding: bool = False
+    recoding_notes: str = ""
     # Comparison
     models_agree: bool = False
     # Metadata
@@ -78,6 +85,8 @@ class ValidationResult:
             "validation_verdict": self.verdict.value,
             "validation_reasoning": self.reasoning,
             "suggested_alternative": self.suggested_alternative,
+            "needs_recoding": self.needs_recoding,
+            "recoding_notes": self.recoding_notes,
             "models_agree": self.models_agree,
             "validation_model": self.validation_model
         }
@@ -87,7 +96,10 @@ class ValidationResult:
 CSES_VALIDATION_PROMPT = """You are validating a variable mapping proposal for CSES (Comparative Study of Electoral Systems) Module 6 data harmonization.
 
 ## Your Task
-Review the proposed mapping and determine if it's correct.
+Review the proposed mapping and determine if it's correct OR can be made correct with recoding.
+
+IMPORTANT: If the source variable measures the SAME CONCEPT but has different coding, DO NOT DISAGREE.
+Instead, AGREE and note that recoding is needed. The goal is to maximize valid matches.
 
 ## CSES Target Variable
 - Code: {target_variable}
@@ -102,10 +114,21 @@ Review the proposed mapping and determine if it's correct.
 ## Source Variable Information
 {source_info}
 
-## Validation Checklist
-1. Does the source variable measure the SAME concept as the CSES target?
-2. Do the value labels align with CSES coding scheme?
-3. Are there any red flags (ambiguous name, multiple candidates, etc.)?
+## Validation Rules
+
+1. AGREE if:
+   - Source measures the SAME concept as target (even if coding differs)
+   - Value labels can be recoded to match CSES scheme
+   - Source has categorical values that can be converted (e.g., age groups -> age midpoints)
+
+2. DISAGREE only if:
+   - Source measures a COMPLETELY DIFFERENT concept
+   - There is NO reasonable way to derive the target from source
+   - The match is clearly an error (e.g., gender matched to political interest)
+
+3. UNCERTAIN if:
+   - Insufficient information to determine if concepts match
+   - Multiple interpretations possible
 
 ## CSES Missing Value Codes
 - 7/97/997 = Refused
@@ -116,6 +139,8 @@ Review the proposed mapping and determine if it's correct.
 {{
   "verdict": "AGREE" or "DISAGREE" or "UNCERTAIN",
   "reasoning": "Your detailed explanation",
+  "needs_recoding": true/false,
+  "recoding_notes": "Brief note on what recoding is needed (e.g., 'reverse scale', 'map age groups to midpoints')",
   "suggested_alternative": null or "alternative_source_variable_name"
 }}
 
@@ -194,8 +219,7 @@ def format_source_info(
 
 def validate_proposal(
     proposal: MatchProposal,
-    extraction_result: Optional[ExtractionResult] = None,
-    model: Optional[str] = None
+    extraction_result: Optional[ExtractionResult] = None
 ) -> ValidationResult:
     """
     Validate a single variable mapping proposal using LLM.
@@ -203,13 +227,14 @@ def validate_proposal(
     Args:
         proposal: The original LLM matcher's proposal
         extraction_result: Full context extraction (optional)
-        model: Model to use for validation (default: from env)
 
     Returns:
         ValidationResult with verdict and reasoning
     """
-    # Get model from environment or use default
-    validation_model = model or os.getenv("LLM_MODEL_VALIDATE") or os.getenv("LLM_MODEL", "openai/gpt-oss:120b")
+    from src.config import LLM_MODEL_VALIDATE
+    apply_settings_to_environment()
+    runner = ModelTaskRunner() if ModelTaskRunner else None
+    validation_model = runner.model_for_role(ModelRole.VERIFIER) if runner and ModelRole else LLM_MODEL_VALIDATE
 
     target_var = proposal.target_variable
     target_desc = CSES_TARGET_VARIABLES.get(target_var, "Unknown CSES variable")
@@ -230,11 +255,14 @@ def validate_proposal(
     )
 
     try:
-        # Use LiteLLM API
-        response = completion(
-            model=validation_model,
+        response = runner.response(
+            ModelRole.VERIFIER,
+            model_override=validation_model,
             max_tokens=1024,
             temperature=0,  # Deterministic validation
+            timeout=60,
+            drop_params=True,
+            purpose=f"Validate mapping {proposal.source_variable} to {proposal.target_variable}",
             messages=[{"role": "user", "content": prompt}]
         )
         response_text = response.choices[0].message.content.strip()
@@ -245,15 +273,20 @@ def validate_proposal(
         verdict_str = result_data.get("verdict", "UNCERTAIN")
         verdict = ValidationVerdict[verdict_str] if verdict_str in ValidationVerdict.__members__ else ValidationVerdict.UNCERTAIN
 
+        # Extract recoding information
+        needs_recoding = result_data.get("needs_recoding", False)
+        recoding_notes = result_data.get("recoding_notes", "")
+
         return ValidationResult(
             proposal=proposal,
             verdict=verdict,
             reasoning=result_data.get("reasoning", "No reasoning provided"),
             suggested_alternative=result_data.get("suggested_alternative"),
+            needs_recoding=needs_recoding,
+            recoding_notes=recoding_notes,
             models_agree=(verdict == ValidationVerdict.AGREE),
             validation_model=validation_model
         )
-
     except Exception as e:
         logger.error(f"Validation failed for {proposal.target_variable}: {e}")
         return ValidationResult(
@@ -263,6 +296,17 @@ def validate_proposal(
             models_agree=False,
             validation_model=validation_model
         )
+
+
+def _connection_kwargs() -> dict:
+    kwargs = {}
+    api_base = os.environ.get("OPENAI_API_BASE", "").strip()
+    api_key = os.environ.get("OPENAI_API_KEY", "").strip()
+    if api_base:
+        kwargs["api_base"] = api_base
+    if api_key:
+        kwargs["api_key"] = api_key
+    return kwargs
 
 
 def _parse_validation_response(response_text: str) -> dict:
@@ -313,7 +357,6 @@ def _parse_validation_response(response_text: str) -> dict:
 def validate_proposals(
     proposals: list[MatchProposal],
     extraction_result: Optional[ExtractionResult] = None,
-    model: Optional[str] = None,
     progress_callback: Optional[callable] = None
 ) -> list[ValidationResult]:
     """
@@ -322,28 +365,33 @@ def validate_proposals(
     Args:
         proposals: List of proposals from original LLM matcher
         extraction_result: Full context extraction
-        model: Model to use for validation
         progress_callback: Optional callback for progress updates
 
     Returns:
         List of ValidationResult objects
     """
-    results = []
     total = len(proposals)
+    results = [None] * total
+    max_workers = min(3, total) if total else 1
 
-    for i, proposal in enumerate(proposals):
-        if progress_callback:
-            progress_callback(f"Validating {i+1}/{total}: {proposal.target_variable}")
+    with ThreadPoolExecutor(max_workers=max_workers) as executor:
+        future_to_index = {
+            executor.submit(validate_proposal, proposal, extraction_result): i
+            for i, proposal in enumerate(proposals)
+        }
+        for future in as_completed(future_to_index):
+            i = future_to_index[future]
+            proposal = proposals[i]
+            if progress_callback:
+                progress_callback(f"Validated {i+1}/{total}: {proposal.target_variable}")
+            result = future.result()
+            results[i] = result
+            logger.info(
+                f"Validated {proposal.target_variable}: "
+                f"{proposal.source_variable} -> {result.verdict.value}"
+            )
 
-        result = validate_proposal(proposal, extraction_result, model)
-        results.append(result)
-
-        logger.info(
-            f"Validated {proposal.target_variable}: "
-            f"{proposal.source_variable} -> {result.verdict.value}"
-        )
-
-    return results
+    return [result for result in results if result is not None]
 
 
 def format_validation_result(result: ValidationResult) -> str:
@@ -357,7 +405,7 @@ def format_validation_result(result: ValidationResult) -> str:
     }
 
     lines = [
-        f"## {proposal.source_variable} → {proposal.target_variable}",
+        f"## {proposal.source_variable} -> {proposal.target_variable}",
         "",
         f"**CSES Target:** {CSES_TARGET_VARIABLES.get(proposal.target_variable, 'Unknown')}",
         "",
@@ -373,11 +421,23 @@ def format_validation_result(result: ValidationResult) -> str:
     if result.suggested_alternative:
         lines.append(f"- Suggested alternative: {result.suggested_alternative}")
 
+    # Recoding information (NEW)
+    if result.needs_recoding:
+        lines.extend([
+            "",
+            "### Recoding Required",
+            f"- Recoding needed: YES",
+            f"- Notes: {result.recoding_notes}",
+        ])
+
     # Overall status
     if result.models_agree:
-        lines.extend(["", "**Status:** Both models agree - recommend approval"])
+        if result.needs_recoding:
+            lines.extend(["", "**Status:** APPROVED with recoding - include recode commands in .do file"])
+        else:
+            lines.extend(["", "**Status:** APPROVED - direct mapping"])
     else:
-        lines.extend(["", f"**Status:** {status_markers[result.verdict]} Models disagree - requires review"])
+        lines.extend(["", f"**Status:** {status_markers[result.verdict]} Requires review"])
 
     return "\n".join(lines)
 

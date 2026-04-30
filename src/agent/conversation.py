@@ -1,877 +1,1138 @@
 """
-Conversational LLM Interface for CSES Processing.
+Conversational LLM interface for CSES processing.
 
-After the initial folder setup, this module provides a natural language
-interface where users can chat with the LLM about the CSES workflow.
-The LLM has expert knowledge of the CSES process and guides users through
-each step.
-
-The LLM has direct tool access to write to the log file in real-time using
-tools like write_log_entry, update_study_design, add_collaborator_question,
-and update_variable_mapping.
+This is the core user experience: users talk naturally with a CSES expert
+assistant, and the assistant documents findings through controlled tools.
 """
 
+from __future__ import annotations
+
 import json
+import logging
 import os
-import time
 from pathlib import Path
-from typing import Optional, TYPE_CHECKING
+from typing import Callable
 
-if TYPE_CHECKING:
-    from src.workflow.active_logging import ActiveLogger
+import litellm
+from src.model_runtime import ModelRole, ModelTaskRunner
+from src.shared_context import SharedWorkflowContext
 
-from src.workflow.state import WorkflowState, WORKFLOW_STEPS, StepStatus
+from src.config import LLM_TEMPERATURE
+from src.cses_wiki import format_wiki_results, search_wiki, wiki_prompt_hint
+from src.model_catalog import litellm_model_for_completion
+from src.codex_oauth_client import is_codex_oauth_model
+from src.settings import apply_settings_to_environment
+from src.model_profiles import DEFAULT_PROFILE_ID, get_profile
+from src.project_context import load_project_context
+from src.study_kb import StudyKnowledgeBase, StudyKnowledgeBaseBuilder
+from src.ui_text import sanitize_processor_text
 from src.workflow.active_logging import ActiveLogger
+from src.workflow.state import WORKFLOW_STEPS, StepStatus, WorkflowState
+from src.workflow.steps import StepExecutor, StepResult
 
 
-# Tool definitions for the LLM to update log files directly
+logger = logging.getLogger(__name__)
+litellm.drop_params = True
+MAX_TOOL_READ_CHARS = 20000
+MAX_LOG_READ_CHARS = 12000
+LLM_TIMEOUT_SECONDS = 120
+
+
+def _windows_safe_text(text: str) -> str:
+    replacements = {
+        "\u2010": "-",
+        "\u2011": "-",
+        "\u2012": "-",
+        "\u2013": "-",
+        "\u2014": "-",
+        "\u2018": "'",
+        "\u2019": "'",
+        "\u201c": '"',
+        "\u201d": '"',
+        "\u2190": "<-",
+        "\u2192": "->",
+        "\u2713": "OK",
+        "\u2714": "OK",
+        "\u2705": "OK",
+        "\ufe0f": "",
+        "\u202f": " ",
+        "\u00a0": " ",
+    }
+    for source, target in replacements.items():
+        text = text.replace(source, target)
+    return text.encode("cp1252", errors="replace").decode("cp1252")
+
+
+def _is_internal_step_issue(issue: str) -> bool:
+    lowered = str(issue or "").casefold()
+    internal_fragments = [
+        "llm eligibility review",
+        "evidence extraction chunk",
+        "study kb diagnostics",
+        "model endpoint",
+        "model non-probability classification downgraded",
+        "standards check failed",
+        "mapping of local variable names",
+        "mapping from local variables",
+        "cses standard f-codes",
+        "f-code mapping",
+        "explicit mapping",
+    ]
+    return any(fragment in lowered for fragment in internal_fragments)
+
+
 LOG_TOOLS = [
     {
         "type": "function",
         "function": {
-            "name": "write_log_entry",
-            "description": "Write an entry to the CSES log file. Use this for any observation, issue, or finding that should be documented.",
+            "name": "build_or_refresh_study_kb",
+            "description": "Build or refresh the study-specific knowledge base from deposited files and deterministic data summaries before making evidence decisions.",
+            "parameters": {
+                "type": "object",
+                "properties": {"force": {"type": "boolean"}},
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "get_study_kb_context",
+            "description": "Read the compact study knowledge base context with citations, missing fields, and contradictions.",
+            "parameters": {
+                "type": "object",
+                "properties": {"max_chars": {"type": "integer"}},
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "get_shared_workflow_context",
+            "description": "Read the compact shared workflow context that combines the CSES wiki, study KB, workflow state, decisions, risks, and recent model handoffs.",
             "parameters": {
                 "type": "object",
                 "properties": {
-                    "message": {
-                        "type": "string",
-                        "description": "The log message to record"
-                    }
+                    "role": {"type": "string"},
+                    "purpose": {"type": "string"},
+                    "max_chars": {"type": "integer"},
                 },
-                "required": ["message"]
-            }
-        }
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "search_cses_wiki",
+            "description": "Search the local CSES standards wiki for procedural, coding, eligibility, documentation, or workflow guidance. Use this when unsure.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "query": {"type": "string"},
+                    "topic": {
+                        "type": "string",
+                        "description": "Optional topic filter. Useful values: study_eligibility, documentation_standards, demographic_coding, education_coding, data_processing, data_protection, district_data, macro_data, party_coding, operations, training, general.",
+                    },
+                    "limit": {"type": "integer"},
+                },
+                "required": ["query"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "write_log_entry",
+            "description": "Write an observation, issue, or finding to the CSES processing log.",
+            "parameters": {
+                "type": "object",
+                "properties": {"message": {"type": "string"}},
+                "required": ["message"],
+            },
+        },
     },
     {
         "type": "function",
         "function": {
             "name": "update_study_design",
-            "description": "Update study design section with a specific field value. Call this when you discover study design information from documentation.",
+            "description": "Record a study design field found in collaborator documentation.",
             "parameters": {
                 "type": "object",
                 "properties": {
                     "field": {
                         "type": "string",
-                        "enum": ["sample_design", "sample_size", "response_rate", "weighting", "collection_period", "mode", "field_lag"],
-                        "description": "The study design field to update"
+                        "enum": [
+                            "sample_design",
+                            "sample_size",
+                            "probability_sample_status",
+                            "probability_sample_assessment",
+                            "sampling_evidence",
+                            "cses_item_coverage",
+                            "eligibility_assessment",
+                            "processor_eligibility_decision",
+                            "response_rate",
+                            "weighting",
+                            "collection_period",
+                            "mode",
+                            "field_lag",
+                        ],
                     },
-                    "value": {
-                        "type": "string",
-                        "description": "The value to set for this field"
-                    }
+                    "value": {"type": "string"},
                 },
-                "required": ["field", "value"]
-            }
-        }
-    },
-    {
-        "type": "function",
-        "function": {
-            "name": "add_collaborator_question",
-            "description": "Add a question that needs to be sent to the collaborator for clarification.",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "question": {
-                        "type": "string",
-                        "description": "The question to ask the collaborator"
-                    }
-                },
-                "required": ["question"]
-            }
-        }
-    },
-    {
-        "type": "function",
-        "function": {
-            "name": "update_variable_mapping",
-            "description": "Record a variable mapping in the tracking sheet. Use when you identify which source variable maps to a CSES target variable.",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "cses_code": {
-                        "type": "string",
-                        "description": "CSES target variable code (e.g., F2001, F3024)"
-                    },
-                    "source_variable": {
-                        "type": "string",
-                        "description": "Source variable name from the deposited data"
-                    }
-                },
-                "required": ["cses_code", "source_variable"]
-            }
-        }
+                "required": ["field", "value"],
+            },
+        },
     },
     {
         "type": "function",
         "function": {
             "name": "update_election_summary",
-            "description": "Document election context: date, type, outcome, turnout, significance. Use when reviewing design reports or election documentation.",
+            "description": "Record election context such as date, type, outcome, turnout, and significance.",
             "parameters": {
                 "type": "object",
-                "properties": {
-                    "summary": {
-                        "type": "string",
-                        "description": "Election summary text including date, type, outcome, turnout"
-                    }
-                },
-                "required": ["summary"]
-            }
-        }
+                "properties": {"summary": {"type": "string"}},
+                "required": ["summary"],
+            },
+        },
     },
     {
         "type": "function",
         "function": {
             "name": "update_parties_leaders",
-            "description": "Document political parties, candidates, coalitions, and leaders relevant to the election.",
+            "description": "Record parties, candidates, leaders, coalitions, and election actors.",
+            "parameters": {
+                "type": "object",
+                "properties": {"content": {"type": "string"}},
+                "required": ["content"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "add_collaborator_question",
+            "description": "Add a confirmed focused question that should be sent to the collaborator. Only use after the processor explicitly decides collaborator contact is needed.",
+            "parameters": {
+                "type": "object",
+                "properties": {"question": {"type": "string"}},
+                "required": ["question"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "add_candidate_collaborator_question",
+            "description": "Record a potential collaborator question for processor review when information is missing after checking available data, documentation, and the CSES wiki.",
             "parameters": {
                 "type": "object",
                 "properties": {
-                    "content": {
-                        "type": "string",
-                        "description": "Information about parties, leaders, and candidates"
-                    }
+                    "question": {"type": "string"},
+                    "context": {"type": "string"},
+                    "missing_items": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                        "description": "Clear list of missing items that triggered this potential question.",
+                    },
                 },
-                "required": ["content"]
-            }
-        }
+                "required": ["question", "missing_items"],
+            },
+        },
     },
     {
         "type": "function",
         "function": {
             "name": "add_todo_item",
-            "description": "Add an item to the pre-release checklist. Use for tasks that must be completed before data release.",
+            "description": "Add an item to the pre-release checklist.",
             "parameters": {
                 "type": "object",
-                "properties": {
-                    "item": {
-                        "type": "string",
-                        "description": "TODO item description"
-                    }
-                },
-                "required": ["item"]
-            }
-        }
+                "properties": {"item": {"type": "string"}},
+                "required": ["item"],
+            },
+        },
     },
     {
         "type": "function",
         "function": {
-            "name": "read_file",
-            "description": "Read contents of a file in the study folder. Use for design reports, questionnaires, codebooks, and other documentation.",
+            "name": "review_deposit_eligibility",
+            "description": "Run the Step 1 intake review: sample size, CSES item coverage, and probability-sample eligibility.",
+            "parameters": {"type": "object", "properties": {}},
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "get_step_standards_guidance",
+            "description": "Get CSES wiki-backed standards guidance for a workflow step.",
+            "parameters": {
+                "type": "object",
+                "properties": {"step_num": {"type": "integer"}},
+                "required": ["step_num"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "run_step_standards_check",
+            "description": "Run and record CSES wiki-backed standards checks for a workflow step.",
+            "parameters": {
+                "type": "object",
+                "properties": {"step_num": {"type": "integer"}},
+                "required": ["step_num"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "record_processor_decision",
+            "description": "Record a human processor decision, override, or eligibility judgment.",
             "parameters": {
                 "type": "object",
                 "properties": {
-                    "path": {
-                        "type": "string",
-                        "description": "File path relative to study folder (e.g., 'micro/original_deposit/design_report.pdf')"
-                    }
+                    "step_num": {"type": "integer"},
+                    "decision": {"type": "string"},
+                    "context": {"type": "string"},
                 },
-                "required": ["path"]
-            }
-        }
+                "required": ["step_num", "decision"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "validate_current_documentation",
+            "description": "Validate the current processing log/documentation against CSES wiki documentation standards.",
+            "parameters": {"type": "object", "properties": {}},
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "validate_current_stata_syntax",
+            "description": "Validate the latest generated CSES micro Stata syntax against CSES wiki syntax standards.",
+            "parameters": {"type": "object", "properties": {}},
+        },
     },
     {
         "type": "function",
         "function": {
             "name": "list_files",
-            "description": "List files in a directory of the study folder.",
+            "description": "List files in a directory relative to the study folder.",
             "parameters": {
                 "type": "object",
-                "properties": {
-                    "directory": {
-                        "type": "string",
-                        "description": "Directory path relative to study folder (default: study root)"
-                    }
-                }
-            }
-        }
+                "properties": {"directory": {"type": "string"}},
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "read_file",
+            "description": "Read a document or text file relative to the study folder.",
+            "parameters": {
+                "type": "object",
+                "properties": {"path": {"type": "string"}},
+                "required": ["path"],
+            },
+        },
     },
     {
         "type": "function",
         "function": {
             "name": "start_step",
-            "description": "Start working on a workflow step. MUST call this BEFORE doing any work on a step. Checks prerequisites and marks step as in progress.",
+            "description": "Start a workflow step. Call before doing step work.",
             "parameters": {
                 "type": "object",
-                "properties": {
-                    "step_num": {
-                        "type": "integer",
-                        "description": "Step number (0-16)"
-                    }
-                },
-                "required": ["step_num"]
-            }
-        }
+                "properties": {"step_num": {"type": "integer"}},
+                "required": ["step_num"],
+            },
+        },
     },
     {
         "type": "function",
         "function": {
             "name": "complete_step",
-            "description": "Complete a workflow step. Call this AFTER finishing all work on a step. Marks step as completed.",
+            "description": "Complete the active workflow step after all work is finished.",
             "parameters": {
                 "type": "object",
                 "properties": {
-                    "step_num": {
-                        "type": "integer",
-                        "description": "Step number (0-16)"
-                    },
-                    "summary": {
-                        "type": "string",
-                        "description": "Brief summary of what was accomplished"
-                    }
+                    "step_num": {"type": "integer"},
+                    "summary": {"type": "string"},
                 },
-                "required": ["step_num", "summary"]
-            }
-        }
-    }
+                "required": ["step_num", "summary"],
+            },
+        },
+    },
 ]
 
 
-# CSES Expert System Prompt - Active Agent with Workflow Enforcement
-CSES_EXPERT_PROMPT = """You are a CSES data processing agent for Module 6.
+CSES_EXPERT_PROMPT = """You are a CSES data processing assistant for survey project harmonization.
 
-## Study: {country} {year}
-Working Dir: {working_dir}
+You work with non-programmer users. Be clear, calm, and practical. The user is
+in charge: do not run ahead through the workflow. When the user says "proceed",
+work on exactly one next workflow step, document findings with tools, complete
+that step only if the required tool actions succeeded, then stop and ask whether
+to proceed.
 
-## Workflow Status
+Study: {country} {year}
+Working folder: {working_dir}
+
+Workflow status:
 {workflow_status}
 
-## Files
+Registered files:
 {file_info}
 
-## RULES (enforced by system)
+Rules:
+1. Human in the loop: one step per explicit proceed.
+2. Use specific tools to record findings, not just prose.
+3. If a required file or fact is missing, add a collaborator question and explain the blocker.
+4. Do not skip steps or silently complete steps.
+5. Do not invent country-specific logic. Treat the current study as one generic study instance.
+6. End step-completion replies with the next step and ask "Proceed?"
+7. Step 1 is not only a file inventory. Before completing Step 1, run the deposit eligibility review and report: CSES item coverage, probability sample evidence, and sample size.
+8. When unsure about CSES procedure, coding, documentation standards, study eligibility, collaborator questions, data protection, district data, party coding, or release workflow, call search_cses_wiki before deciding. Cite CSES wiki source paths when applying guidance.
+9. For workflow steps, use get_step_standards_guidance or run_step_standards_check so the user sees what was checked, what evidence was found, and what remains unresolved.
+10. If a soft gate fails, say clearly: "You can proceed, but this unresolved issue will be recorded."
+11. Ask as few collaborator questions as possible. Before suggesting a collaborator question, inspect available data, documentation, current log, and CSES wiki guidance. If information is still missing, use add_candidate_collaborator_question with a clear missing-items list and ask the processor whether it should become a collaborator question. Use add_collaborator_question only when the processor explicitly confirms.
+12. Before eligibility, design-report, matching, documentation, or collaborator-question decisions, use the study-specific knowledge base when available. If it is missing or stale, build_or_refresh_study_kb first.
 
-1. ONE STEP PER "proceed" - System blocks second step in same turn
-2. ALL TOOLS MUST SUCCEED - System blocks complete_step if any tool failed
-3. Steps must be done IN ORDER - System blocks skipping
+{wiki_hint}
+{study_kb_hint}
+"""
 
-## When user says "proceed"
 
-1. start_step(N) - Start the next step
-2. Do the work using tools
-3. IMPORTANT: Use the RIGHT tool for each piece of information (see below)
-4. Verify ALL tools returned SUCCESS
-5. complete_step(N, summary) - Mark done
-6. Report DETAILED findings, then say "Proceed?"
-
-## CRITICAL: USE THE RIGHT TOOL FOR EACH DATA TYPE
-
-When you find information, you MUST use the specific tool to record it:
-
-**Study Design Info -> update_study_design(field, value)**
-Call this for EACH field you find:
-- sample_design: "Multi-stage stratified cluster sampling"
-- sample_size: "1500"
-- response_rate: "40.1% (RR2)"
-- weighting: "Post-stratification weights provided"
-- collection_period: "September 9 - October 9, 2024"
-- mode: "In-person (CAPI)"
-- field_lag: "5 months after election"
-
-**Election Info -> update_election_summary(summary)**
-Call with full election context: date, type, outcome, turnout, significance.
-
-**Parties/Candidates -> update_parties_leaders(content)**
-Call with party names, leaders, coalitions, candidates.
-
-**Processing Notes -> write_log_entry(message)**
-Use for step progress and general findings.
-
-**Questions -> add_collaborator_question(question)**
-Use when clarification is needed from collaborators.
-
-## Example: Reading Design Report (Step 2)
-
-When you read a design report and find:
-- Sample size: 1500
-- Mode: In-person
-- Response rate: 40.1%
-- Collection: Sep 9 - Oct 9, 2024
-
-You MUST call:
-1. update_study_design("sample_size", "1500")
-2. update_study_design("mode", "In-person (CAPI)")
-3. update_study_design("response_rate", "40.1% (RR2)")
-4. update_study_design("collection_period", "September 9 - October 9, 2024")
-5. write_log_entry("Step 2: Read design report...")
-
-Do NOT just log everything as a note - use the specific tools!
-
-## Tools
-- start_step(step_num) - Start a step
-- complete_step(step_num, summary) - Finish (only if all tools succeeded)
-- list_files(directory) - List files
-- read_file(path) - Read file
-- write_log_entry(message) - Log step progress
-- update_study_design(field, value) - Record study design (CALL FOR EACH FIELD!)
-- update_election_summary(summary) - Record election context
-- update_parties_leaders(content) - Record parties/candidates
-- add_collaborator_question(question) - Add question
-
-## If a tool returns FAILED
-
-DO NOT call complete_step. Report: "Step N blocked - [tool] failed: [reason]."
-
-## RESPONSE FORMAT
-
-**Step N: [Step Name] - COMPLETE**
-
-**What was done:**
-- [List each action and tool called]
-
-**Key findings recorded:**
-- Sample size: X (update_study_design called)
-- Response rate: X (update_study_design called)
-- [etc.]
-
-**Next: Step N+1 - [Name]. Proceed?**"""
+def _status_value(status) -> str:
+    return status.value if hasattr(status, "value") else str(status)
 
 
 def get_file_info(state: WorkflowState) -> str:
-    """Get information about files in the study."""
     lines = []
-
     if state.data_file:
         lines.append(f"- Data file: {Path(state.data_file).name}")
-
-    if state.questionnaire_files:
-        for f in state.questionnaire_files:
-            lines.append(f"- Questionnaire: {Path(f).name}")
-
+    for path in state.questionnaire_files or []:
+        lines.append(f"- Questionnaire: {Path(path).name}")
     if state.codebook_file:
         lines.append(f"- Codebook: {Path(state.codebook_file).name}")
-
     if state.design_report_file:
         lines.append(f"- Design report: {Path(state.design_report_file).name}")
-
-    return "\n".join(lines) if lines else "No files registered in state."
+    if state.variable_tracking_file:
+        lines.append(f"- Tracking sheet: {Path(state.variable_tracking_file).name}")
+    return "\n".join(lines) if lines else "No files are registered yet."
 
 
 def get_workflow_status(state: WorkflowState) -> str:
-    """Get formatted workflow status (text only, no emojis for Windows compatibility)."""
     lines = []
     next_step = state.get_next_step()
-
     for step_num, step_info in WORKFLOW_STEPS.items():
-        step_key = str(step_num)
-        step_state = state.steps.get(step_key)
-
-        if step_state:
-            status = step_state.status if hasattr(step_state, 'status') else "not_started"
-        else:
-            status = "not_started"
-
-        if status == "completed":
+        step = state.get_step(step_num)
+        status = _status_value(step.status)
+        if status == StepStatus.COMPLETED.value:
             marker = "[DONE]"
-        elif status == "in_progress":
+        elif status == StepStatus.IN_PROGRESS.value:
             marker = "[IN PROGRESS]"
         elif step_num == next_step:
             marker = "[NEXT]"
         else:
             marker = "[    ]"
-
         lines.append(f"{marker} Step {step_num}: {step_info['name']}")
-
     return "\n".join(lines)
 
 
 def build_system_prompt(state: WorkflowState) -> str:
-    """Build the system prompt with current state."""
-    return CSES_EXPERT_PROMPT.format(
+    kb = StudyKnowledgeBase(Path(state.working_dir))
+    if kb.exists():
+        kb_hint = "\nStudy knowledge base:\n" + "\n".join(kb.summary_lines()) + "\nUse get_study_kb_context for compact source-backed details."
+    else:
+        kb_hint = "\nStudy knowledge base: missing. Build it before evidence decisions."
+    prompt = CSES_EXPERT_PROMPT.format(
         country=state.country,
         year=state.year,
         working_dir=state.working_dir,
         workflow_status=get_workflow_status(state),
-        file_info=get_file_info(state)
+        file_info=get_file_info(state),
+        wiki_hint=wiki_prompt_hint(),
+        study_kb_hint=kb_hint,
     )
-
-
-def _completion_with_retry(
-    model: str,
-    messages: list,
-    tools: list = None,
-    tool_choice: str = "auto",
-    max_retries: int = 3
-):
-    """
-    Call LiteLLM completion with retry logic for transient failures.
-
-    Uses exponential backoff: 1s, 2s, 4s between retries.
-    """
-    from litellm import completion
-
-    for attempt in range(max_retries):
-        try:
-            return completion(
-                model=model,
-                messages=messages,
-                tools=tools,
-                tool_choice=tool_choice,
-                parallel_tool_calls=False,  # Sequential tool execution for reliability
-                max_tokens=2048,
-                temperature=0.3
-            )
-        except Exception as e:
-            if attempt < max_retries - 1:
-                wait_time = 2 ** attempt  # 1s, 2s, 4s
-                print(f"[RETRY] Attempt {attempt + 1} failed: {e}. Waiting {wait_time}s...")
-                time.sleep(wait_time)
-            else:
-                raise
-
-
-def call_llm_conversation(
-    user_message: str,
-    state: WorkflowState,
-    conversation_history: list = None,
-    active_logger: "ActiveLogger" = None,
-    on_tool_output: callable = None
-) -> str:
-    """
-    Send a message to the LLM and get a response.
-
-    Uses LiteLLM API with tool support for logging.
-
-    Args:
-        user_message: The user's message
-        state: Current workflow state
-        conversation_history: Previous conversation messages
-        active_logger: Logger for writing to CSES log files
-        on_tool_output: Optional callback for tool execution feedback (for TUI)
-    """
-    system_prompt = build_system_prompt(state)
-
-    # Use LiteLLM with tool support
-    return _call_litellm(user_message, system_prompt, conversation_history, active_logger, state, on_tool_output)
-
-
-def _call_litellm(
-    user_message: str,
-    system_prompt: str,
-    conversation_history: list = None,
-    active_logger: "ActiveLogger" = None,
-    state: WorkflowState = None,
-    on_tool_output: callable = None
-) -> str:
-    """Call LLM via LiteLLM API with tool support for logging."""
-    try:
-        messages = [{"role": "system", "content": system_prompt}]
-
-        # Add conversation history
-        if conversation_history:
-            messages.extend(conversation_history[-10:])
-
-        messages.append({"role": "user", "content": user_message})
-
-        # Get model from environment (default to gpt-4.1 for reliable tool calling)
-        model = os.getenv("LLM_MODEL_VALIDATE") or os.getenv("LLM_MODEL", "openai/gpt-4.1")
-
-        # Include tools only if we have an active_logger to execute them
-        tools_param = LOG_TOOLS if active_logger else None
-
-        print(f"[DEBUG] Calling {model} with {len(messages)} messages...")
-
-        response = _completion_with_retry(
-            model=model,
-            messages=messages,
-            tools=tools_param,
-            tool_choice="auto"
-        )
-
-        # Check if there are tool calls to execute
-        message = response.choices[0].message
-
-        print(f"[DEBUG] Response: content={bool(message.content)}, tools={bool(getattr(message, 'tool_calls', None))}")
-
-        if active_logger and hasattr(message, 'tool_calls') and message.tool_calls:
-            # Execute tool calls and continue conversation if needed
-            return _execute_tool_loop(messages, message, active_logger, state, model, on_tool_output=on_tool_output)
-
-        # No tool calls, just return the content (never return empty)
-        content = message.content
-        if not content or not content.strip():
-            print(f"[WARNING] LLM returned empty content")
-            return "[No response from model - please try again]"
-        return content.strip()
-
-    except Exception as e:
-        import traceback
-        print(f"[ERROR] API call failed: {e}")
-        traceback.print_exc()
-        return f"[Error calling API: {e}. Please try again.]"
-
-
-def _execute_tool_loop(
-    messages: list,
-    initial_response_message,
-    active_logger: "ActiveLogger",
-    state: WorkflowState,
-    model: str,
-    max_iterations: int = 10,
-    on_tool_output: callable = None
-) -> str:
-    """
-    Execute tool calls in a loop until the LLM returns a final text response.
-
-    ENFORCES:
-    - ONE step per turn (blocks second start_step after complete_step)
-    - ALL tools must succeed (blocks complete_step if any failed)
-    """
-    current_message = initial_response_message
-
-    # Track state for THIS turn only - enforces workflow rules
-    turn_state = {
-        "current_step": None,      # Which step we're working on
-        "step_started": False,     # Has start_step been called?
-        "step_completed": False,   # Has complete_step been called?
-        "failed_tools": [],        # Tools that failed this turn
-    }
-
-    for iteration in range(max_iterations):
-        if not hasattr(current_message, 'tool_calls') or not current_message.tool_calls:
-            # No more tool calls, return the content (never return empty)
-            content = current_message.content
-            if not content or not content.strip():
-                print(f"[WARNING] Empty response after {iteration} tool iterations")
-                return "[Operations completed but no response - check the log file for results]"
-            return content.strip()
-
-        # Add assistant message with tool calls to history
-        messages.append({
-            "role": "assistant",
-            "content": current_message.content or "",
-            "tool_calls": [
-                {
-                    "id": tc.id,
-                    "type": "function",
-                    "function": {
-                        "name": tc.function.name,
-                        "arguments": tc.function.arguments
-                    }
-                }
-                for tc in current_message.tool_calls
-            ]
-        })
-
-        # Execute each tool call with turn_state enforcement
-        tool_results = []
-        for tool_call in current_message.tool_calls:
-            result = _execute_single_tool(
-                tool_call, active_logger, state, on_tool_output,
-                turn_state=turn_state
-            )
-            tool_results.append({
-                "role": "tool",
-                "tool_call_id": tool_call.id,
-                "content": result
-            })
-
-        # Add tool results to messages
-        messages.extend(tool_results)
-
-        # Call LLM again with tool results (using retry helper)
-        response = _completion_with_retry(
-            model=model,
-            messages=messages,
-            tools=LOG_TOOLS,
-            tool_choice="auto"
-        )
-
-        current_message = response.choices[0].message
-        print(f"[DEBUG] Iteration {iteration + 1}: content={bool(current_message.content)}, tools={bool(getattr(current_message, 'tool_calls', None))}")
-
-    # Max iterations reached - try fallback synthesis with tool_choice="none"
-    content = current_message.content
-    if not content or not content.strip():
-        print(f"[DEBUG] Max iterations ({max_iterations}) reached. Forcing text synthesis with tool_choice='none'...")
-
-        # Add a prompt to request summary
-        messages.append({"role": "user", "content": "[Summarize what was accomplished in the operations above]"})
-
-        try:
-            response = _completion_with_retry(
-                model=model,
-                messages=messages,
-                tools=LOG_TOOLS,
-                tool_choice="none"  # Force text output, no tool calls
-            )
-            content = response.choices[0].message.content
-        except Exception as e:
-            print(f"[WARNING] Fallback synthesis failed: {e}")
-            content = None
-
-    if content and content.strip():
-        return content.strip()
-
-    # Last resort fallback message
-    return "[Operations completed. Check log file for details.]"
-
-
-def _execute_single_tool(
-    tool_call,
-    active_logger: "ActiveLogger",
-    state: WorkflowState,
-    on_tool_output: callable = None,
-    turn_state: dict = None
-) -> str:
-    """
-    Execute a single tool call with turn-state enforcement.
-
-    ENFORCES:
-    - Block second start_step after complete_step (one step per turn)
-    - Block complete_step if any tools failed
-    - Track tool failures for critical operations
-    """
-    if turn_state is None:
-        turn_state = {"failed_tools": []}
-
-    name = tool_call.function.name
-    try:
-        args = json.loads(tool_call.function.arguments)
-    except json.JSONDecodeError:
-        return f"FAILED: Invalid JSON arguments for {name}"
-
-    def notify(msg: str):
-        """Send tool output to callback or print."""
-        if on_tool_output:
-            on_tool_output(msg)
-
-    def track_failure(tool_name: str, reason: str):
-        """Track a tool failure for enforcement."""
-        turn_state.setdefault("failed_tools", []).append(f"{tool_name}: {reason}")
-
-    # =========================================================
-    # ENFORCEMENT: Block second start_step after complete_step
-    # =========================================================
-    if name == "start_step":
-        if turn_state.get("step_completed"):
-            notify(f"[BLOCKED] One step per turn - stop and wait for user")
-            return "BLOCKED: One step per turn. Say 'Done. Proceed?' and STOP. Do not start another step."
-
-    # =========================================================
-    # ENFORCEMENT: Block complete_step if any tools failed
-    # =========================================================
-    if name == "complete_step":
-        failed = turn_state.get("failed_tools", [])
-        if failed:
-            failures = "; ".join(failed)
-            notify(f"[BLOCKED] Cannot complete - tools failed: {failures}")
-            return f"BLOCKED: Cannot complete step - these tools failed: {failures}. Fix the issues first."
-
-    # =========================================================
-    # TOOL EXECUTION
-    # =========================================================
-
-    if name == "write_log_entry":
-        message = args.get("message", "")
-        success, status = active_logger.log_message(message)
-        if success:
-            notify(f"[OK] {status}")
-            return f"SUCCESS: {status}"
-        else:
-            notify(f"[FAILED] {status}")
-            track_failure("write_log_entry", status)
-            return f"FAILED: {status}"
-
-    elif name == "update_study_design":
-        field = args.get("field", "")
-        value = args.get("value", "")
-        success, status = active_logger.update_study_design_section({field: value})
-        if success:
-            notify(f"[OK] Study design: {field} = {value[:30]}...")
-            return f"SUCCESS: Updated {field} = {value}"
-        else:
-            notify(f"[FAILED] {status}")
-            track_failure("update_study_design", status)
-            return f"FAILED: {status}"
-
-    elif name == "add_collaborator_question":
-        question = args.get("question", "")
-        success, status = active_logger.add_collaborator_question(
-            question,
-            "From conversation",
-            state.get_next_step() or 0
-        )
-        if success:
-            notify(f"[OK] {status}")
-            return f"SUCCESS: {status}"
-        else:
-            notify(f"[FAILED] {status}")
-            track_failure("add_collaborator_question", status)
-            return f"FAILED: {status}"
-
-    elif name == "update_variable_mapping":
-        cses_code = args.get("cses_code", "")
-        source_variable = args.get("source_variable", "")
-        active_logger.update_variable_mapping(cses_code, source_variable)
-        notify(f"[Variable] {cses_code} <- {source_variable}")
-        return f"Mapped variable: {cses_code} = {source_variable}"
-
-    elif name == "update_election_summary":
-        summary = args.get("summary", "")
-        success, status = active_logger.update_election_summary(summary)
-        if success:
-            notify(f"[OK] {status}")
-            return f"SUCCESS: {status}"
-        else:
-            notify(f"[FAILED] {status}")
-            track_failure("update_election_summary", status)
-            return f"FAILED: {status}"
-
-    elif name == "update_parties_leaders":
-        content = args.get("content", "")
-        success, status = active_logger.update_parties_leaders(content)
-        if success:
-            notify(f"[OK] {status}")
-            return f"SUCCESS: {status}"
-        else:
-            notify(f"[FAILED] {status}")
-            track_failure("update_parties_leaders", status)
-            return f"FAILED: {status}"
-
-    elif name == "add_todo_item":
-        item = args.get("item", "")
-        success, status = active_logger.add_todo_item(item)
-        if success:
-            notify(f"[OK] {status}")
-            return f"SUCCESS: {status}"
-        else:
-            notify(f"[FAILED] {status}")
-            track_failure("add_todo_item", status)
-            return f"FAILED: {status}"
-
-    elif name == "read_file":
-        path = args.get("path", "")
-        full_path = Path(state.working_dir) / path
-        if not full_path.exists():
-            return f"Error: File not found: {path}"
-        try:
-            if full_path.suffix.lower() == '.pdf':
-                from pypdf import PdfReader
-                reader = PdfReader(full_path)
-                text = "\n".join(page.extract_text() or "" for page in reader.pages)
-                notify(f"[Read] {path} ({len(text)} chars)")
-                return text[:50000]  # Limit for context
-            else:
-                content = full_path.read_text(errors='replace')
-                notify(f"[Read] {path} ({len(content)} chars)")
-                return content[:50000]
-        except Exception as e:
-            return f"Error reading file: {e}"
-
-    elif name == "list_files":
-        directory = args.get("directory", "")
-        dir_path = Path(state.working_dir) / directory
-        if not dir_path.exists():
-            return f"Error: Directory not found: {directory}"
-        files = []
-        for f in dir_path.rglob("*"):
-            if f.is_file():
-                rel_path = f.relative_to(Path(state.working_dir))
-                files.append(str(rel_path))
-        notify(f"[Listed] {directory or '.'} ({len(files)} files)")
-        return "\n".join(files[:100])  # Limit to 100 files
-
-    elif name == "start_step":
-        step_num = args.get("step_num")
-        if step_num is None or step_num not in WORKFLOW_STEPS:
-            return f"FAILED: Invalid step number: {step_num}"
-
-        # Check prerequisites
-        can_proceed, reason = state.check_step_prerequisites(step_num)
-        if not can_proceed:
-            notify(f"[BLOCKED] Cannot start step {step_num}: {reason}")
-            return f"BLOCKED: {reason}"
-
-        # Check if step is already in progress or completed
-        current_status = state.get_step(step_num).status
-        if current_status == StepStatus.COMPLETED.value:
-            return f"SKIP: Step {step_num} is already completed"
-        if current_status == StepStatus.IN_PROGRESS.value:
-            return f"CONTINUE: Step {step_num} is already in progress"
-
-        # Mark as in progress
-        state.set_step_status(step_num, StepStatus.IN_PROGRESS, "Started by agent")
-        state.current_step = step_num
-        state.save()
-
-        step_name = WORKFLOW_STEPS[step_num]["name"]
-        notify(f"[STARTED] Step {step_num}: {step_name}")
-
-        # Track that we started a step this turn
-        turn_state["step_started"] = True
-        turn_state["current_step"] = step_num
-
-        return f"SUCCESS: Started Step {step_num} - {step_name}"
-
-    elif name == "complete_step":
-        step_num = args.get("step_num")
-        summary = args.get("summary", "")
-
-        if step_num is None or step_num not in WORKFLOW_STEPS:
-            return f"FAILED: Invalid step number: {step_num}"
-
-        # Verify step is currently in progress
-        current_status = state.get_step(step_num).status
-        if current_status != StepStatus.IN_PROGRESS.value:
-            return f"FAILED: Step {step_num} is not in progress (status: {current_status})"
-
-        # Mark as completed
-        state.set_step_status(step_num, StepStatus.COMPLETED, summary)
-        state.save()
-
-        step_name = WORKFLOW_STEPS[step_num]["name"]
-        notify(f"[DONE] Step {step_num}: {step_name}")
-
-        # Track that we completed a step this turn - blocks further start_step calls
-        turn_state["step_completed"] = True
-
-        # Suggest next step
-        next_step = state.get_next_step()
-        if next_step is not None:
-            next_name = WORKFLOW_STEPS[next_step]["name"]
-            return f"SUCCESS: Completed Step {step_num}. Next: Step {next_step} - {next_name}. STOP HERE - say 'Done. Proceed?' and wait."
-        return f"SUCCESS: Completed Step {step_num}. All steps complete!"
-
-    else:
-        return f"Unknown tool: {name}"
+    project_context = load_project_context(Path(state.working_dir)).to_prompt_section()
+    if project_context:
+        prompt += "\n\n" + project_context
+    return prompt
 
 
 class ConversationSession:
-    """Manages a conversation session with the LLM."""
+    """Stateful conversation with the CSES assistant."""
 
     def __init__(self, state: WorkflowState):
+        apply_settings_to_environment()
         self.state = state
-        self.history = []
+        self.history: list[dict] = []
         self.active_logger = ActiveLogger(state)
+        self.runner = ModelTaskRunner(Path(state.working_dir), state)
 
-    def send(self, message: str, on_tool_output: callable = None) -> str:
-        """Send a message and get a response.
+    def refresh_state(self) -> None:
+        loaded = WorkflowState.load(Path(self.state.working_dir))
+        if loaded:
+            self.state = loaded
+            self.active_logger = ActiveLogger(loaded)
 
-        Args:
-            message: The user's message
-            on_tool_output: Optional callback for tool execution feedback (for TUI)
-        """
-        # Add user message to history
+    def send(self, message: str, on_tool_output: Callable[[str], None] | None = None) -> str:
+        self.refresh_state()
+        if self._is_proceed_request(message):
+            response = self._proceed_one_step(on_tool_output)
+            response = sanitize_processor_text(response)
+            self.history.append({"role": "user", "content": message})
+            self.history.append({"role": "assistant", "content": response})
+            self.state.save()
+            return response
+
+        messages = [{"role": "system", "content": build_system_prompt(self.state)}]
+        messages.extend(self.history[-12:])
+        messages.append({"role": "user", "content": message})
+
         self.history.append({"role": "user", "content": message})
-
-        # Get response - pass active_logger so tools can write to log directly
-        response = call_llm_conversation(
-            message, self.state, self.history, self.active_logger, on_tool_output
-        )
-
-        # Add assistant response to history
+        response = self._call_with_tools(messages, on_tool_output)
+        response = sanitize_processor_text(response)
         self.history.append({"role": "assistant", "content": response})
-
-        # Save state after any updates
         self.state.save()
-
         return response
 
-    def refresh_state(self):
-        """Reload state from disk."""
-        new_state = WorkflowState.load(Path(self.state.working_dir))
-        if new_state:
-            self.state = new_state
-            self.active_logger = ActiveLogger(new_state)
+    def _is_proceed_request(self, message: str) -> bool:
+        normalized = " ".join((message or "").strip().lower().split())
+        return normalized in {"proceed", "go ahead", "continue", "ok", "okay"}
+
+    def _proceed_one_step(self, on_tool_output: Callable[[str], None] | None = None) -> str:
+        next_step = self.state.get_next_step()
+        if next_step is None:
+            return "All workflow steps are already complete."
+        step_name = WORKFLOW_STEPS[next_step]["name"]
+        self._notify(on_tool_output, f"Running Step {next_step}: {step_name}")
+        executor = StepExecutor(self.state)
+        result = executor.execute_step(next_step)
+        self.refresh_state()
+        if result.success:
+            self._notify(on_tool_output, f"Completed Step {next_step}: {step_name}")
+        else:
+            self._notify(on_tool_output, f"Step {next_step} needs review: {result.message}")
+        return self._summarize_direct_step(next_step, result)
+
+    def _summarize_direct_step(self, step_num: int, result: StepResult) -> str:
+        next_step = self.state.get_next_step()
+        next_step_text = (
+            f"Step {next_step}: {WORKFLOW_STEPS[next_step]['name']}"
+            if next_step is not None
+            else "all workflow steps complete"
+        )
+        status = "completed" if result.success else "needs review"
+        visible_issues = [
+            issue for issue in result.issues
+            if not _is_internal_step_issue(issue)
+        ]
+        issue_text = "\n".join(f"- {issue}" for issue in visible_issues[:10]) or "- None recorded"
+        review_block = ""
+        if visible_issues:
+            review_block = f"\n\nProcessor review:\n{issue_text}"
+        return sanitize_processor_text(
+            f"Step {step_num} {status}: {WORKFLOW_STEPS[step_num]['name']}\n\n"
+            f"{result.message}"
+            f"{review_block}\n\n"
+            f"Next: {next_step_text}. Proceed?"
+        )
+
+    def _call_with_tools(self, messages: list[dict], on_tool_output: Callable[[str], None] | None) -> str:
+        model = (
+            os.getenv("CSES_AGENTIC_MODEL")
+            or os.getenv("CSES_CHAT_MODEL")
+            or get_profile(os.getenv("CSES_MODEL_PROFILE", DEFAULT_PROFILE_ID)).conversation_model
+        )
+        model = litellm_model_for_completion(
+            model,
+            {
+                "CSES_USE_OPENWEBUI": os.getenv("CSES_USE_OPENWEBUI", ""),
+                "OPENAI_API_BASE": os.getenv("OPENAI_API_BASE", ""),
+            },
+        )
+        if is_codex_oauth_model(model):
+            response = ModelTaskRunner(Path(self.state.working_dir), self.state).response(
+                ModelRole.AGENTIC,
+                messages=messages,
+                model_override=model,
+                purpose="Codex OAuth conversational response",
+                temperature=LLM_TEMPERATURE,
+                max_tokens=2048,
+                timeout=LLM_TIMEOUT_SECONDS,
+            )
+            content = response.choices[0].message.content or ""
+            return content.strip() or "Codex OAuth returned no text response. Use Proceed to run the next workflow step."
+        latest_user = next((m.get("content", "") for m in reversed(messages) if m.get("role") == "user"), "")
+        requires_step_tools = "proceed" in latest_user.lower()
+        turn_state = {
+            "step_started": False,
+            "step_completed": False,
+            "failed_tools": [],
+        }
+
+        runner = ModelTaskRunner(Path(self.state.working_dir), self.state)
+        response = runner.response(
+            ModelRole.AGENTIC,
+            messages=messages,
+            model_override=model,
+            purpose="Conversation tool-using turn",
+            tools=LOG_TOOLS,
+            tool_choice="auto",
+            parallel_tool_calls=False,
+            temperature=LLM_TEMPERATURE,
+            max_tokens=2048,
+            drop_params=True,
+            timeout=LLM_TIMEOUT_SECONDS,
+        )
+        current_message = response.choices[0].message
+
+        for _ in range(8):
+            tool_calls = getattr(current_message, "tool_calls", None)
+            if not tool_calls:
+                if requires_step_tools and not turn_state.get("step_started"):
+                    messages.append({"role": "assistant", "content": current_message.content or ""})
+                    messages.append(
+                        {
+                            "role": "user",
+                            "content": (
+                                "The user asked to proceed with the next workflow step. "
+                                "You must use the workflow tools: call start_step, inspect or record the required work, "
+                                "then call complete_step only if the step is genuinely complete. Do not answer in prose only."
+                            ),
+                        }
+                    )
+                    response = runner.response(
+                        ModelRole.AGENTIC,
+                        messages=messages,
+                        model_override=model,
+                        purpose="Force workflow tools after proceed request",
+                        tools=LOG_TOOLS,
+                        tool_choice="auto",
+                        parallel_tool_calls=False,
+                        temperature=LLM_TEMPERATURE,
+                        max_tokens=2048,
+                        drop_params=True,
+                        timeout=LLM_TIMEOUT_SECONDS,
+                    )
+                    current_message = response.choices[0].message
+                    continue
+
+                if turn_state.get("step_started") and not turn_state.get("step_completed"):
+                    if turn_state.get("failed_tools"):
+                        failures = "; ".join(turn_state["failed_tools"])
+                        content = current_message.content or ""
+                        return (
+                            content.strip()
+                            + f"\n\nStep remains in progress because these tool calls failed: {failures}"
+                        ).strip()
+
+                    messages.append({"role": "assistant", "content": current_message.content or ""})
+                    messages.append(
+                        {
+                            "role": "user",
+                            "content": (
+                                "You started a workflow step but did not call complete_step. "
+                                "If the step work is done, call complete_step now. If it is blocked, "
+                                "explain the blocker and do not claim the step is complete."
+                            ),
+                        }
+                    )
+                    response = runner.response(
+                        ModelRole.AGENTIC,
+                        messages=messages,
+                        model_override=model,
+                        purpose="Complete started workflow step",
+                        tools=LOG_TOOLS,
+                        tool_choice="auto",
+                        parallel_tool_calls=False,
+                        temperature=LLM_TEMPERATURE,
+                        max_tokens=2048,
+                        drop_params=True,
+                        timeout=LLM_TIMEOUT_SECONDS,
+                    )
+                    current_message = response.choices[0].message
+                    continue
+
+                content = current_message.content or ""
+                return content.strip() or "I did not receive a text response. Please try again."
+
+            messages.append(
+                {
+                    "role": "assistant",
+                    "content": current_message.content or "",
+                    "tool_calls": [
+                        {
+                            "id": tool_call.id,
+                            "type": "function",
+                            "function": {
+                                "name": tool_call.function.name,
+                                "arguments": tool_call.function.arguments,
+                            },
+                        }
+                        for tool_call in tool_calls
+                    ],
+                }
+            )
+
+            for tool_call in tool_calls:
+                result = self._execute_tool(tool_call, turn_state, on_tool_output)
+                messages.append(
+                    {
+                        "role": "tool",
+                        "tool_call_id": tool_call.id,
+                        "content": result,
+                    }
+                )
+
+            if turn_state.get("step_completed"):
+                messages.append(
+                    {
+                        "role": "user",
+                        "content": (
+                            "The workflow step is now complete. Provide a concise final message for the processor. "
+                            "Include what was checked, key evidence found, CSES wiki or standards guidance used, "
+                            "unresolved items, and the next step. Do not call more tools."
+                        ),
+                    }
+                )
+                response = runner.response(
+                    ModelRole.AGENTIC,
+                    messages=messages,
+                    model_override=model,
+                    purpose="Final processor-facing step message",
+                    temperature=LLM_TEMPERATURE,
+                    max_tokens=2048,
+                    drop_params=True,
+                    timeout=LLM_TIMEOUT_SECONDS,
+                )
+                content = response.choices[0].message.content or ""
+                return content.strip() or "The workflow step is complete. Proceed?"
+
+            response = runner.response(
+                ModelRole.AGENTIC,
+                messages=messages,
+                model_override=model,
+                purpose="Continue conversation tool loop",
+                tools=LOG_TOOLS,
+                tool_choice="auto",
+                parallel_tool_calls=False,
+                temperature=LLM_TEMPERATURE,
+                max_tokens=2048,
+                drop_params=True,
+                timeout=LLM_TIMEOUT_SECONDS,
+            )
+            current_message = response.choices[0].message
+
+        return "I completed the available tool work, but the model did not finish a final message. Check the log and try again."
+
+    def _notify(self, callback: Callable[[str], None] | None, message: str) -> None:
+        if callback:
+            cleaned = sanitize_processor_text(message)
+            if cleaned:
+                callback(cleaned)
+
+    def _execute_tool(self, tool_call, turn_state: dict, on_tool_output: Callable[[str], None] | None) -> str:
+        name = tool_call.function.name
+        try:
+            args = json.loads(tool_call.function.arguments or "{}")
+        except json.JSONDecodeError:
+            return f"FAILED: Invalid arguments for {name}"
+
+        if name == "start_step" and turn_state.get("step_completed"):
+            return "BLOCKED: One step per turn. Stop and ask the user whether to proceed."
+
+        if name == "complete_step" and turn_state.get("failed_tools"):
+            failures = "; ".join(turn_state["failed_tools"])
+            return f"BLOCKED: Cannot complete step because these tools failed: {failures}"
+
+        try:
+            result = self._dispatch_tool(name, args, turn_state, on_tool_output)
+        except Exception as exc:
+            logger.exception("Conversation tool failed")
+            turn_state.setdefault("failed_tools", []).append(f"{name}: {exc}")
+            result = f"FAILED: {name}: {exc}"
+        return result
+
+    def _dispatch_tool(
+        self,
+        name: str,
+        args: dict,
+        turn_state: dict,
+        on_tool_output: Callable[[str], None] | None,
+    ) -> str:
+        if name == "write_log_entry":
+            message = args.get("message", "")
+            success, status = self.active_logger.log_message(message)
+            self._notify(on_tool_output, status)
+            return f"{'SUCCESS' if success else 'FAILED'}: {status}"
+
+        if name == "build_or_refresh_study_kb":
+            force = bool(args.get("force", False))
+            builder = StudyKnowledgeBaseBuilder(
+                Path(self.state.working_dir),
+                progress_callback=lambda message: self._notify(on_tool_output, message),
+            )
+            payload = builder.build(self.state, force=force)
+            self.state.save()
+            self._notify(on_tool_output, "Reviewed study materials")
+            return json.dumps(
+                {
+                    "status": payload.get("status"),
+                    "model": payload.get("model"),
+                    "summary": payload.get("summary"),
+                    "missing_fields": payload.get("missing_fields", [])[:40],
+                    "contradictions": payload.get("contradictions", [])[:20],
+                    "diagnostics": payload.get("diagnostics", {}),
+                },
+                indent=2,
+            )
+
+        if name == "get_study_kb_context":
+            max_chars = int(args.get("max_chars", 12000) or 12000)
+            kb = StudyKnowledgeBase(Path(self.state.working_dir))
+            if not kb.exists():
+                return "FAILED: Study materials have not been reviewed yet."
+            self._notify(on_tool_output, "Loaded study information")
+            return kb.compact_context(max_chars=max_chars)
+
+        if name == "get_shared_workflow_context":
+            max_chars = int(args.get("max_chars", 12000) or 12000)
+            role = str(args.get("role") or ModelRole.AGENTIC.value)
+            purpose = str(args.get("purpose") or "Conversation workflow context")
+            context = SharedWorkflowContext(Path(self.state.working_dir), self.state)
+            packet = context.build_packet(role=role, purpose=purpose, max_chars=max_chars)
+            self._notify(on_tool_output, "Loaded shared workflow context")
+            return packet.toon_context
+
+        if name == "search_cses_wiki":
+            query = args.get("query", "")
+            topic = args.get("topic", "")
+            limit = args.get("limit", 5)
+            try:
+                limit = int(limit)
+            except (TypeError, ValueError):
+                limit = 5
+            results = search_wiki(query=query, topic=topic, limit=limit)
+            self._notify(on_tool_output, f"Checked CSES guidance: {query}")
+            return format_wiki_results(results)
+
+        if name == "update_study_design":
+            field = args.get("field", "")
+            value = args.get("value", "")
+            success, status = self.active_logger.update_study_design_section({field: value})
+            self._notify(on_tool_output, f"Study design: {field} = {value}")
+            return f"{'SUCCESS' if success else 'FAILED'}: {status}"
+
+        if name == "update_election_summary":
+            success, status = self.active_logger.update_election_summary(args.get("summary", ""))
+            self._notify(on_tool_output, status)
+            return f"{'SUCCESS' if success else 'FAILED'}: {status}"
+
+        if name == "update_parties_leaders":
+            success, status = self.active_logger.update_parties_leaders(args.get("content", ""))
+            self._notify(on_tool_output, status)
+            return f"{'SUCCESS' if success else 'FAILED'}: {status}"
+
+        if name == "add_collaborator_question":
+            question = args.get("question", "")
+            success, status = self.active_logger.add_collaborator_question(
+                question,
+                "From conversation",
+                self.state.get_next_step() or 0,
+            )
+            self._notify(on_tool_output, status)
+            return f"{'SUCCESS' if success else 'FAILED'}: {status}"
+
+        if name == "add_candidate_collaborator_question":
+            question = args.get("question", "")
+            context = args.get("context", "From conversation")
+            missing_items = args.get("missing_items", [])
+            if not isinstance(missing_items, list):
+                missing_items = [str(missing_items)]
+            success, status = self.active_logger.add_candidate_collaborator_question(
+                question,
+                context,
+                self.state.get_next_step() or 0,
+                missing_items=missing_items,
+            )
+            self._notify(on_tool_output, status)
+            return f"{'SUCCESS' if success else 'FAILED'}: {status}"
+
+        if name == "add_todo_item":
+            success, status = self.active_logger.add_todo_item(args.get("item", ""))
+            self._notify(on_tool_output, status)
+            return f"{'SUCCESS' if success else 'FAILED'}: {status}"
+
+        if name == "review_deposit_eligibility":
+            return self._review_deposit_eligibility(on_tool_output)
+
+        if name == "get_step_standards_guidance":
+            from src.standards.engine import WorkflowStandardsEngine
+
+            step_num = int(args.get("step_num", self.state.get_next_step() or 0))
+            engine = WorkflowStandardsEngine(Path(self.state.working_dir))
+            guidance = engine.guidance(step_num)
+            self._notify(on_tool_output, f"Loaded CSES guidance for Step {step_num}")
+            return guidance
+
+        if name == "run_step_standards_check":
+            from src.standards.engine import WorkflowStandardsEngine
+
+            step_num = int(args.get("step_num", self.state.get_next_step() or 0))
+            engine = WorkflowStandardsEngine(Path(self.state.working_dir))
+            result = engine.evaluate_step(self.state, step_num)
+            self.state.record_standards_check(step_num, result.to_dict())
+            self.active_logger.record_standards_check(step_num, result.to_dict())
+            self._notify(on_tool_output, f"Checked CSES rules for Step {step_num}: {result.status}")
+            return json.dumps(result.to_dict(), indent=2)
+
+        if name == "record_processor_decision":
+            step_num = int(args.get("step_num", self.state.get_next_step() or 0))
+            decision = args.get("decision", "")
+            context = args.get("context", "")
+            self.state.record_processor_decision(step_num, decision, context)
+            self.active_logger.record_processor_decision(step_num, decision, context)
+            self._notify(on_tool_output, f"Recorded processor decision for Step {step_num}")
+            return "SUCCESS: processor decision recorded"
+
+        if name == "validate_current_documentation":
+            from src.standards.validators import validate_documentation_text
+
+            if not self.state.log_file or not Path(self.state.log_file).exists():
+                return "FAILED: No processing log file is registered."
+            text = Path(self.state.log_file).read_text(encoding="utf-8", errors="replace")
+            result = validate_documentation_text(text)
+            self._notify(on_tool_output, "Checked current documentation against CSES rules")
+            return json.dumps({"ok": result.ok, "checks": result.checks, "issues": result.issues}, indent=2)
+
+        if name == "validate_current_stata_syntax":
+            from src.standards.validators import validate_stata_syntax_text
+
+            micro_dir = Path(self.state.working_dir) / "micro"
+            do_files = list(micro_dir.glob("cses-m6_micro_*.do"))
+            if not do_files:
+                return "FAILED: No generated CSES micro .do file found."
+            do_path = max(do_files, key=lambda path: path.stat().st_mtime)
+            result = validate_stata_syntax_text(do_path.read_text(encoding="utf-8", errors="replace"))
+            self._notify(on_tool_output, f"Validated Stata syntax: {do_path.name}")
+            return json.dumps({"file": str(do_path), "ok": result.ok, "checks": result.checks, "issues": result.issues}, indent=2)
+
+        if name == "list_files":
+            directory = args.get("directory", "")
+            root = Path(self.state.working_dir).resolve()
+            target = (root / directory).resolve()
+            if not str(target).startswith(str(root)) or not target.exists():
+                return f"FAILED: Directory not found: {directory}"
+            files = [str(path.relative_to(root)) for path in target.rglob("*") if path.is_file()]
+            self._notify(on_tool_output, f"Listed {len(files)} files in {directory or '.'}")
+            return "\n".join(files[:200])
+
+        if name == "read_file":
+            return self._read_file(args.get("path", ""), on_tool_output)
+
+        if name == "start_step":
+            return self._start_step(args.get("step_num"), turn_state, on_tool_output)
+
+        if name == "complete_step":
+            return self._complete_step(args.get("step_num"), args.get("summary", ""), turn_state, on_tool_output)
+
+        return f"FAILED: Unknown tool {name}"
+
+    def _review_deposit_eligibility(self, on_tool_output: Callable[[str], None] | None) -> str:
+        from src.workflow.eligibility import review_initial_eligibility
+
+        root = Path(self.state.working_dir)
+        review = review_initial_eligibility(
+            working_dir=root,
+            data_files=[Path(self.state.data_file)] if self.state.data_file else [],
+            questionnaire_files=[Path(path) for path in self.state.questionnaire_files or []],
+            codebook_files=[Path(self.state.codebook_file)] if self.state.codebook_file else [],
+            design_report_files=[Path(self.state.design_report_file)] if self.state.design_report_file else [],
+        )
+        if review.sample_size_rows is not None:
+            self.active_logger.update_study_design_section({"sample_size": str(review.sample_size_rows)})
+        self.active_logger.update_study_design_section({
+            "probability_sample_status": review.probability_sample_status,
+            "probability_sample_assessment": review.probability_sample_assessment,
+            "sampling_evidence": "\n".join(review.sampling_evidence[:8]),
+            "cses_item_coverage": review.cses_items_evidence,
+            "eligibility_assessment": review.eligibility_assessment,
+            "processor_eligibility_decision": review.processor_eligibility_decision,
+        })
+        self.active_logger.log_message(review.to_log_message())
+        for question in review.collaborator_questions:
+            self.active_logger.add_candidate_collaborator_question(
+                question,
+                "Initial CSES eligibility review; processor decides whether collaborator contact is needed",
+                self.state.get_next_step() or 1,
+                missing_items=review.issues,
+            )
+        summary = review.to_log_message()
+        self._notify(on_tool_output, "Completed initial CSES eligibility review")
+        if review.issues:
+            summary += "\nIssues:\n" + "\n".join(f"- {issue}" for issue in review.issues)
+        if review.collaborator_questions:
+            summary += "\nCollaborator questions:\n" + "\n".join(f"- {q}" for q in review.collaborator_questions)
+        return "SUCCESS: " + summary
+
+    def _read_file(self, relative_path: str, on_tool_output: Callable[[str], None] | None) -> str:
+        root = Path(self.state.working_dir).resolve()
+        target = (root / relative_path).resolve()
+        if not str(target).startswith(str(root)) or not target.exists() or not target.is_file():
+            return f"FAILED: File not found: {relative_path}"
+
+        suffix = target.suffix.lower()
+        if suffix == ".pdf":
+            from pypdf import PdfReader
+
+            reader = PdfReader(target)
+            content = "\n".join(page.extract_text() or "" for page in reader.pages)
+        elif suffix == ".docx":
+            from docx import Document
+
+            document = Document(target)
+            content = "\n".join(paragraph.text for paragraph in document.paragraphs)
+        else:
+            content = target.read_text(encoding="utf-8", errors="replace")
+
+        limit = MAX_LOG_READ_CHARS if suffix in {".log", ".smcl"} else MAX_TOOL_READ_CHARS
+        if len(content) > limit and suffix in {".log", ".smcl"}:
+            content = content[-limit:]
+        else:
+            content = content[:limit]
+
+        self._notify(on_tool_output, f"Read {relative_path}")
+        return content
+
+    def _start_step(self, step_num, turn_state: dict, on_tool_output: Callable[[str], None] | None) -> str:
+        if step_num not in WORKFLOW_STEPS:
+            return f"FAILED: Invalid step number {step_num}"
+
+        can_proceed, reason = self.state.check_step_prerequisites(step_num)
+        if not can_proceed:
+            return f"BLOCKED: {reason}"
+
+        step = self.state.get_step(step_num)
+        status = _status_value(step.status)
+        if status == StepStatus.COMPLETED.value:
+            return f"SKIP: Step {step_num} is already completed"
+
+        self.state.set_step_status(step_num, StepStatus.IN_PROGRESS, "Started by assistant")
+        self.state.current_step = step_num
+        self.state.save()
+        turn_state["step_started"] = True
+        self._notify(on_tool_output, f"Started Step {step_num}: {WORKFLOW_STEPS[step_num]['name']}")
+        return f"SUCCESS: Started Step {step_num}: {WORKFLOW_STEPS[step_num]['name']}"
+
+    def _complete_step(
+        self,
+        step_num,
+        summary: str,
+        turn_state: dict,
+        on_tool_output: Callable[[str], None] | None,
+    ) -> str:
+        if step_num not in WORKFLOW_STEPS:
+            return f"FAILED: Invalid step number {step_num}"
+
+        step = self.state.get_step(step_num)
+        if _status_value(step.status) != StepStatus.IN_PROGRESS.value:
+            return f"FAILED: Step {step_num} is not in progress"
+
+        artifact_error = self._validate_step_completion_artifacts(step_num)
+        if artifact_error:
+            self.state.add_step_issue(step_num, artifact_error)
+            self.state.save()
+            turn_state.setdefault("failed_tools", []).append(f"complete_step: {artifact_error}")
+            return f"BLOCKED: {artifact_error}"
+
+        self.state.set_step_status(step_num, StepStatus.COMPLETED, summary)
+        self.state.save()
+        turn_state["step_completed"] = True
+        self._notify(on_tool_output, f"Completed Step {step_num}: {WORKFLOW_STEPS[step_num]['name']}")
+
+        next_step = self.state.get_next_step()
+        if next_step is None:
+            return f"SUCCESS: Completed Step {step_num}. All workflow steps are complete."
+        return (
+            f"SUCCESS: Completed Step {step_num}. Next: Step {next_step} - "
+            f"{WORKFLOW_STEPS[next_step]['name']}. Stop and ask the user whether to proceed."
+        )
+
+    def _validate_step_completion_artifacts(self, step_num: int) -> str | None:
+        """Prevent chat from marking artifact-producing steps complete with notes only."""
+        working_dir = Path(self.state.working_dir)
+        micro_dir = working_dir / "micro"
+
+        if step_num == 1:
+            log_data_path = micro_dir / ".log_data.json"
+            if not log_data_path.exists():
+                return "Step 1 requires the initial CSES eligibility review to be logged before completion."
+            try:
+                log_data = json.loads(log_data_path.read_text(encoding="utf-8"))
+            except Exception as exc:
+                return f"Step 1 requires a readable log data file before completion: {exc}"
+            study_design = log_data.get("study_design", {})
+            missing = [
+                label
+                for key, label in [
+                    ("sample_size", "sample size"),
+                    ("probability_sample_status", "probability-sample status"),
+                    ("probability_sample_assessment", "probability-sample assessment"),
+                    ("cses_item_coverage", "CSES item coverage"),
+                    ("eligibility_assessment", "initial eligibility assessment"),
+                ]
+                if not str(study_design.get(key, "")).strip()
+            ]
+            if missing:
+                return (
+                    "Step 1 requires the initial CSES eligibility review before completion. "
+                    f"Missing: {', '.join(missing)}. Run review_deposit_eligibility first."
+                )
+
+        if step_num == 7:
+            do_files = list(micro_dir.glob("cses-m6_micro_*.do"))
+            if not do_files:
+                return "Step 7 requires generated Stata syntax in micro/cses-m6_micro_*.do. Run/generate the tracking-sheet based Stata code first."
+
+        if step_num == 8:
+            do_files = list(micro_dir.glob("cses-m6_micro_*.do"))
+            log_files = list(micro_dir.glob("*.log"))
+            if not do_files:
+                return "Step 8 requires a generated .do file before Stata debugging can run."
+            if not log_files:
+                return "Step 8 requires a Stata log artifact showing the .do file was run."
+
+        if step_num == 11:
+            final_dir = micro_dir / "FINAL dataset"
+            final_files = []
+            if final_dir.exists():
+                final_files = [
+                    path for path in final_dir.iterdir()
+                    if path.is_file() and path.suffix.lower() in {".dta", ".csv", ".xlsx"}
+                ]
+            processed_files = list(micro_dir.glob("cses-m6_micro_*.dta"))
+            if not final_files and not processed_files:
+                return "Step 11 requires a processed dataset artifact, such as micro/cses-m6_micro_*.dta."
+
+        if step_num == 12:
+            processed_files = list(micro_dir.glob("cses-m6_micro_*.dta"))
+            stata_logs = list(micro_dir.glob("cses-m6_micro_*.log"))
+            if not processed_files or not stata_logs:
+                return "Step 12 requires a processed .dta and Stata execution log before checks can be completed."
+
+        if step_num == 16:
+            final_dir = micro_dir / "FINAL dataset"
+            final_files = []
+            if final_dir.exists():
+                final_files = [
+                    path for path in final_dir.iterdir()
+                    if path.is_file() and path.suffix.lower() in {".dta", ".csv", ".xlsx"}
+                ]
+            processed_files = list(micro_dir.glob("cses-m6_micro_*.dta"))
+            if not final_files and not processed_files:
+                return "Step 16 requires a final deposit dataset artifact, such as micro/cses-m6_micro_*.dta."
+
+        return None

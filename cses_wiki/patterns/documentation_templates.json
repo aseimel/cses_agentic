@@ -1,0 +1,749 @@
+{
+  "schema_version": 1,
+  "generated_at": "deterministic",
+  "required_documentation_artifacts": [
+    "processing_log",
+    "questions_for_collaborator",
+    "things_to_do_before_release",
+    "election_study_notes",
+    "study_design_and_weights",
+    "party_leader_appendix_when_applicable"
+  ],
+  "log_required_sections": [
+    "Log File Instructions",
+    "Log File Notes",
+    "Questions for Collaborator",
+    "Things To Do Before Releasing the Data",
+    "Election Study Notes and Appendices",
+    "Election Summary",
+    "Overview of Study Design and Weights",
+    "Parties and Leaders"
+  ],
+  "collaborator_question_rules": [
+    "Group related issues instead of producing long lists of individual failure questions.",
+    "Include context and the processor's suggested resolution when possible.",
+    "Ask only about genuinely ambiguous or missing information."
+  ],
+  "examples": [
+    {
+      "path": "Argentina_2023/macro/20260317_ARGENTINA_2023_M6 Macro Data Template.xlsx",
+      "artifact_type": "macro_report",
+      "extension": ".xlsx",
+      "size_bytes": 92565
+    },
+    {
+      "path": "Argentina_2023/macro/_Old_ARG_2015/Election Study Notes -Macro- ARG_2015_Mod4_20180408.txt",
+      "artifact_type": "election_study_notes",
+      "extension": ".txt",
+      "size_bytes": 22119
+    },
+    {
+      "path": "Australia_2022/collaborator questions/CollaboratorQuestions_20240624.docx",
+      "artifact_type": "collaborator_questions",
+      "extension": ".docx",
+      "size_bytes": 46477
+    },
+    {
+      "path": "Australia_2022/District Data/CSES M6 District Data Codebook.txt",
+      "artifact_type": "district_data_codebook",
+      "extension": ".txt",
+      "size_bytes": 7167
+    },
+    {
+      "path": "Australia_2022/macro/AUS_2022_Log_Macro_20241031.docx",
+      "artifact_type": "log_file",
+      "extension": ".docx",
+      "size_bytes": 38939
+    },
+    {
+      "path": "Australia_2022/macro/AUS_2022_M6 Macro Data_20251014.xlsx",
+      "artifact_type": "macro_report",
+      "extension": ".xlsx",
+      "size_bytes": 114635
+    },
+    {
+      "path": "Australia_2022/macro/Election Study Notes -Macro- AUS_2019_Mod5_20200409.txt",
+      "artifact_type": "election_study_notes",
+      "extension": ".txt",
+      "size_bytes": 13849
+    },
+    {
+      "path": "Australia_2022/macro/Macro Report devised by SQ/CSES_Module6_MacroReport_AUS 2022.docx",
+      "artifact_type": "macro_report",
+      "extension": ".docx",
+      "size_bytes": 89512
+    },
+    {
+      "path": "Australia_2022/micro/collaborator questions/CollaboratorQuestions_20240624.docx",
+      "artifact_type": "collaborator_questions",
+      "extension": ".docx",
+      "size_bytes": 46477
+    },
+    {
+      "path": "Australia_2022/micro/collaborator questions/VettingQuestion_20241015.docx",
+      "artifact_type": "collaborator_questions",
+      "extension": ".docx",
+      "size_bytes": 15276
+    },
+    {
+      "path": "Australia_2022/micro/deposited variable list/deposited variables-m6_AUS_2022_20240612.xlsx",
+      "artifact_type": "variable_tracking",
+      "extension": ".xlsx",
+      "size_bytes": 58335
+    },
+    {
+      "path": "Australia_2022/micro/deposited variable list/deposited variables-m6_AUS_2022_20241008.xlsx",
+      "artifact_type": "variable_tracking",
+      "extension": ".xlsx",
+      "size_bytes": 58320
+    },
+    {
+      "path": "Austria_2024/macro/AUT_2024_Log_Macro_20251228.docx",
+      "artifact_type": "log_file",
+      "extension": ".docx",
+      "size_bytes": 46513
+    },
+    {
+      "path": "Austria_2024/macro/AUT_2024_M6 Macro Data_20251228.xlsx",
+      "artifact_type": "macro_report",
+      "extension": ".xlsx",
+      "size_bytes": 110512
+    },
+    {
+      "path": "Austria_2024/micro/collaborator questions/CollaboratorQuestions_AUT2024_20250325.docx",
+      "artifact_type": "collaborator_questions",
+      "extension": ".docx",
+      "size_bytes": 55647
+    },
+    {
+      "path": "Austria_2024/micro/deposited variable list/deposited variables-m6_AUT_2024_20250303.xlsx",
+      "artifact_type": "variable_tracking",
+      "extension": ".xlsx",
+      "size_bytes": 58230
+    },
+    {
+      "path": "Brazil_2022/macro/Brazil_2022_M6 Macro Data Template.xlsx",
+      "artifact_type": "macro_report",
+      "extension": ".xlsx",
+      "size_bytes": 98525
+    },
+    {
+      "path": "Brazil_2022/macro/Election Study Notes_BRAZIL_2022_M6_Macro.txt",
+      "artifact_type": "election_study_notes",
+      "extension": ".txt",
+      "size_bytes": 22973
+    },
+    {
+      "path": "Brazil_2022/macro/Old_2018/Election Study Notes _BRA_2018_M5.txt",
+      "artifact_type": "election_study_notes",
+      "extension": ".txt",
+      "size_bytes": 16697
+    },
+    {
+      "path": "Brazil_2022/micro/Collaborator Q&A/BRA_2022 - Questions for Collaborator - micro.docx",
+      "artifact_type": "collaborator_questions",
+      "extension": ".docx",
+      "size_bytes": 551464
+    },
+    {
+      "path": "Brazil_2022/micro/deposited variables list/deposited variables-m6_BRA_2022_20240422.xlsx",
+      "artifact_type": "variable_tracking",
+      "extension": ".xlsx",
+      "size_bytes": 58823
+    },
+    {
+      "path": "Denmark_2022/macro/DNK_2022_Log_Macro_20241030.docx",
+      "artifact_type": "log_file",
+      "extension": ".docx",
+      "size_bytes": 46455
+    },
+    {
+      "path": "Denmark_2022/macro/DNK_2022_M6 Macro Data.xlsx",
+      "artifact_type": "macro_report",
+      "extension": ".xlsx",
+      "size_bytes": 111526
+    },
+    {
+      "path": "Denmark_2022/macro/Macro Report/CSES_Module6_MacroReport _Denmark 2022.docx",
+      "artifact_type": "macro_report",
+      "extension": ".docx",
+      "size_bytes": 75515
+    },
+    {
+      "path": "Denmark_2022/micro/collaborator questions/20240704_Email from Collab_Micro question responses.docx",
+      "artifact_type": "collaborator_questions",
+      "extension": ".docx",
+      "size_bytes": 139500
+    },
+    {
+      "path": "Denmark_2022/micro/collaborator questions/Collaborator Questions Denmark 2022.docx",
+      "artifact_type": "collaborator_questions",
+      "extension": ".docx",
+      "size_bytes": 321666
+    },
+    {
+      "path": "Denmark_2022/micro/collaborator questions/Education Follow-up.docx",
+      "artifact_type": "collaborator_questions",
+      "extension": ".docx",
+      "size_bytes": 259497
+    },
+    {
+      "path": "Denmark_2022/micro/deposited variables list/deposited variables-m6_DNK_2022_20240513.xlsx",
+      "artifact_type": "variable_tracking",
+      "extension": ".xlsx",
+      "size_bytes": 58715
+    },
+    {
+      "path": "Ecuador_2025/micro/deposited variables-m6_ECU_2025_20260311.xlsx",
+      "artifact_type": "variable_tracking",
+      "extension": ".xlsx",
+      "size_bytes": 58885
+    },
+    {
+      "path": "France_2022/macro/cses-m6_log-file_MACRO_FRA_2022_20240902.docx",
+      "artifact_type": "log_file",
+      "extension": ".docx",
+      "size_bytes": 47592
+    },
+    {
+      "path": "France_2022/macro/Election Study Notes_FRANCE_2022_M6_Macro.txt",
+      "artifact_type": "election_study_notes",
+      "extension": ".txt",
+      "size_bytes": 7696
+    },
+    {
+      "path": "France_2022/macro/France_2022_M6 Macro Data Template.xlsx",
+      "artifact_type": "macro_report",
+      "extension": ".xlsx",
+      "size_bytes": 95550
+    },
+    {
+      "path": "France_2022/macro/Old-2017/Election Study Notes _FRA_2017_M5.txt",
+      "artifact_type": "election_study_notes",
+      "extension": ".txt",
+      "size_bytes": 8399
+    },
+    {
+      "path": "France_2022/micro/collaborator questions/CollaboratorQuestions_20240814.docx",
+      "artifact_type": "collaborator_questions",
+      "extension": ".docx",
+      "size_bytes": 1597050
+    },
+    {
+      "path": "France_2022/micro/deposited variable list/deposited variables-m6_FRA_2022_20241015.xlsx",
+      "artifact_type": "variable_tracking",
+      "extension": ".xlsx",
+      "size_bytes": 61089
+    },
+    {
+      "path": "France_2022/micro/KBK preprocessing/Copy of deposited variables-m6_FRA_2022.xlsx",
+      "artifact_type": "variable_tracking",
+      "extension": ".xlsx",
+      "size_bytes": 60793
+    },
+    {
+      "path": "Great Britain_2024/micro/COLLABORATOR QUESTIONS TO GBR 2024.docx",
+      "artifact_type": "collaborator_questions",
+      "extension": ".docx",
+      "size_bytes": 15494
+    },
+    {
+      "path": "Great Britain_2024/micro/CSES UK DOCS/ESN - Great Britain 2024.txt",
+      "artifact_type": "election_study_notes",
+      "extension": ".txt",
+      "size_bytes": 3193
+    },
+    {
+      "path": "Great Britain_2024/micro/deposited variables-m6_GBR_2024_20260106.xlsx",
+      "artifact_type": "variable_tracking",
+      "extension": ".xlsx",
+      "size_bytes": 56400
+    },
+    {
+      "path": "Ireland_2024/micro/deposited variables-m6_IRL_2024_20260126.xlsx",
+      "artifact_type": "variable_tracking",
+      "extension": ".xlsx",
+      "size_bytes": 58875
+    },
+    {
+      "path": "Mexico_2021/macro/Collaborator Questions/Questions for collaborator_Mexico_2021.docx",
+      "artifact_type": "collaborator_questions",
+      "extension": ".docx",
+      "size_bytes": 31856
+    },
+    {
+      "path": "Mexico_2021/macro/Collaborator Questions/Questions for collaborator_Mexico_2021_old.docx",
+      "artifact_type": "collaborator_questions",
+      "extension": ".docx",
+      "size_bytes": 32485
+    },
+    {
+      "path": "Mexico_2021/macro/Mexico_2021_M6 Macro Data Template.xlsx",
+      "artifact_type": "macro_report",
+      "extension": ".xlsx",
+      "size_bytes": 98576
+    },
+    {
+      "path": "Mexico_2021/micro/micro/Collaborator questions and responses/MEX_2021 - Questions for Collaborator - micro.docx",
+      "artifact_type": "collaborator_questions",
+      "extension": ".docx",
+      "size_bytes": 26486
+    },
+    {
+      "path": "Mexico_2021/micro/micro/deposited variables-m6_CNT_YEAR_DATE.xlsx",
+      "artifact_type": "variable_tracking",
+      "extension": ".xlsx",
+      "size_bytes": 56814
+    },
+    {
+      "path": "Mexico_2021/micro/micro/Macro report/CSES_Module6_MacroReportRCC.docx",
+      "artifact_type": "macro_report",
+      "extension": ".docx",
+      "size_bytes": 237711
+    },
+    {
+      "path": "Montenegro_2023/macro/Election Study Notes-MONTENEGRO_2023_M6.txt",
+      "artifact_type": "election_study_notes",
+      "extension": ".txt",
+      "size_bytes": 16082
+    },
+    {
+      "path": "Montenegro_2023/macro/Election Study Notes-MONTENEGRO_2023_M6_Macro.txt",
+      "artifact_type": "election_study_notes",
+      "extension": ".txt",
+      "size_bytes": 15212
+    },
+    {
+      "path": "Montenegro_2023/macro/Module 5/Election Study Notes-MONTENEGRO_2016_M5.txt",
+      "artifact_type": "election_study_notes",
+      "extension": ".txt",
+      "size_bytes": 10943
+    },
+    {
+      "path": "Montenegro_2023/macro/Module 5/MNE_2016_Macro Data.xlsx",
+      "artifact_type": "macro_report",
+      "extension": ".xlsx",
+      "size_bytes": 53140
+    },
+    {
+      "path": "Montenegro_2023/macro/Montenegro_2023_M6 Macro Data Template.xlsx",
+      "artifact_type": "macro_report",
+      "extension": ".xlsx",
+      "size_bytes": 99268
+    },
+    {
+      "path": "Montenegro_2023/macro/Some notes about macro data processing.docx",
+      "artifact_type": "macro_report",
+      "extension": ".docx",
+      "size_bytes": 17419
+    },
+    {
+      "path": "Montenegro_2023/micro/collaborator questions/MNES responses to CSES collaborator questions[1].docx",
+      "artifact_type": "collaborator_questions",
+      "extension": ".docx",
+      "size_bytes": 16811
+    },
+    {
+      "path": "Montenegro_2023/micro/collaborator questions/Questions for Collaborator - Montenegro 2023.docx",
+      "artifact_type": "collaborator_questions",
+      "extension": ".docx",
+      "size_bytes": 106580
+    },
+    {
+      "path": "Montenegro_2023/micro/collaborator questions/Vetting Questions - Montenegro 2023.docx",
+      "artifact_type": "collaborator_questions",
+      "extension": ".docx",
+      "size_bytes": 30969
+    },
+    {
+      "path": "Montenegro_2023/micro/deposited variables list/deposited variables-m6_MNE_2023_20240408.xlsx",
+      "artifact_type": "variable_tracking",
+      "extension": ".xlsx",
+      "size_bytes": 58246
+    },
+    {
+      "path": "New Zealand_2023/macro/Macro report deposited by Collaborators/CSES_Module6_MacroReportNZ.docx",
+      "artifact_type": "macro_report",
+      "extension": ".docx",
+      "size_bytes": 87001
+    },
+    {
+      "path": "New Zealand_2023/macro/Macro report deposited by Collaborators/CSES_Module6_MacroReportNZ_revised.docx",
+      "artifact_type": "macro_report",
+      "extension": ".docx",
+      "size_bytes": 85501
+    },
+    {
+      "path": "New Zealand_2023/macro/NZL_2023_Log_Macro_20251229.docx",
+      "artifact_type": "log_file",
+      "extension": ".docx",
+      "size_bytes": 42438
+    },
+    {
+      "path": "New Zealand_2023/macro/NZL_2023_M6 Macro Data_20251229.xlsx",
+      "artifact_type": "macro_report",
+      "extension": ".xlsx",
+      "size_bytes": 116560
+    },
+    {
+      "path": "New Zealand_2023/micro/Collaborator Questions/CollaboratorQuestions_20250704_FirstSet.docx",
+      "artifact_type": "collaborator_questions",
+      "extension": ".docx",
+      "size_bytes": 59638
+    },
+    {
+      "path": "New Zealand_2023/micro/Collaborator Questions/CollaboratorQuestions_SecondSet.docx",
+      "artifact_type": "collaborator_questions",
+      "extension": ".docx",
+      "size_bytes": 50898
+    },
+    {
+      "path": "New Zealand_2023/micro/Collaborator Questions/NZL2023_Notes.docx",
+      "artifact_type": "collaborator_questions",
+      "extension": ".docx",
+      "size_bytes": 22055
+    },
+    {
+      "path": "New Zealand_2023/micro/deposited variables-m6_NZL_2023_20250610.xlsx",
+      "artifact_type": "variable_tracking",
+      "extension": ".xlsx",
+      "size_bytes": 59460
+    },
+    {
+      "path": "North Macedonia_2024/macro/Collaborator_Questions_MACEDONIA_2024_MACRO-responses.docx",
+      "artifact_type": "collaborator_questions",
+      "extension": ".docx",
+      "size_bytes": 19205
+    },
+    {
+      "path": "North Macedonia_2024/macro/Collaborator_Questions_MACEDONIA_2024_MACRO.docx",
+      "artifact_type": "collaborator_questions",
+      "extension": ".docx",
+      "size_bytes": 17172
+    },
+    {
+      "path": "North Macedonia_2024/macro/Macedonia_2024_M6 Macro Data.xlsx",
+      "artifact_type": "macro_report",
+      "extension": ".xlsx",
+      "size_bytes": 104651
+    },
+    {
+      "path": "North Macedonia_2024/micro/collaborator questions/_old/Questions for Collaborator - North Macedonia 2024.docx",
+      "artifact_type": "collaborator_questions",
+      "extension": ".docx",
+      "size_bytes": 105104
+    },
+    {
+      "path": "North Macedonia_2024/micro/collaborator questions/Questions for Collaborator - North Macedonia 2024.docx",
+      "artifact_type": "collaborator_questions",
+      "extension": ".docx",
+      "size_bytes": 118390
+    },
+    {
+      "path": "North Macedonia_2024/micro/cses-m6_log-file_MKD_2024_20250627.docx",
+      "artifact_type": "log_file",
+      "extension": ".docx",
+      "size_bytes": 116112
+    },
+    {
+      "path": "North Macedonia_2024/micro/deposited variables-m6_MKD_2024_20250414.xlsx",
+      "artifact_type": "variable_tracking",
+      "extension": ".xlsx",
+      "size_bytes": 59259
+    },
+    {
+      "path": "Philippines_2022/_OLD_Philippines_2016/email/20170201/20170201 - email to collaborator with prelimin collab questions_micro only.docx",
+      "artifact_type": "collaborator_questions",
+      "extension": ".docx",
+      "size_bytes": 15511
+    },
+    {
+      "path": "Philippines_2022/_OLD_Philippines_2016/email/20170209/20170209 - email to collaborator with collab questions_micro only.docx",
+      "artifact_type": "collaborator_questions",
+      "extension": ".docx",
+      "size_bytes": 25841
+    },
+    {
+      "path": "Philippines_2022/_OLD_Philippines_2016/email/20170327/20170327 - email response from collaborators re vetting questions macro.docx",
+      "artifact_type": "collaborator_questions",
+      "extension": ".docx",
+      "size_bytes": 19353
+    },
+    {
+      "path": "Philippines_2022/_OLD_Philippines_2016/email/20170327/20170327 - email to collaborators re vetting questions macro.docx",
+      "artifact_type": "collaborator_questions",
+      "extension": ".docx",
+      "size_bytes": 96683
+    },
+    {
+      "path": "Philippines_2022/_OLD_Philippines_2016/references/Election Study Notes - PHILIPPINES_2010_Mod3_FR.txt",
+      "artifact_type": "election_study_notes",
+      "extension": ".txt",
+      "size_bytes": 16623
+    },
+    {
+      "path": "Philippines_2022/macro/20260321_PHL_2022_M6 Macro Data Template(AutoRecovered).xlsx",
+      "artifact_type": "macro_report",
+      "extension": ".xlsx",
+      "size_bytes": 96878
+    },
+    {
+      "path": "Philippines_2022/macro/20260321_PHL_2022_M6 Macro Data Template.xlsx",
+      "artifact_type": "macro_report",
+      "extension": ".xlsx",
+      "size_bytes": 105005
+    },
+    {
+      "path": "Philippines_2022/macro/20260412_PHL_2022_M6 Macro Data Template.xlsx",
+      "artifact_type": "macro_report",
+      "extension": ".xlsx",
+      "size_bytes": 105514
+    },
+    {
+      "path": "Philippines_2022/micro/deposited variables-m6_PHL_2022_20260114.xlsx",
+      "artifact_type": "variable_tracking",
+      "extension": ".xlsx",
+      "size_bytes": 58691
+    },
+    {
+      "path": "Poland_2023/Emails/20250326/CollaboratorQuestions Poland 2023.docx",
+      "artifact_type": "collaborator_questions",
+      "extension": ".docx",
+      "size_bytes": 57041
+    },
+    {
+      "path": "Poland_2023/Emails/20250422/CollaboratorQuestions Poland 2023.docx",
+      "artifact_type": "collaborator_questions",
+      "extension": ".docx",
+      "size_bytes": 389976
+    },
+    {
+      "path": "Poland_2023/Emails/20251020/20251020_Email To Collaborator Vetting and Micro Questions.docx",
+      "artifact_type": "collaborator_questions",
+      "extension": ".docx",
+      "size_bytes": 60496
+    },
+    {
+      "path": "Poland_2023/macro/Election Study Notes_POLAND_2023_M6_Macro-old.txt",
+      "artifact_type": "election_study_notes",
+      "extension": ".txt",
+      "size_bytes": 40236
+    },
+    {
+      "path": "Poland_2023/macro/Poland_2023_M6 Macro Data Template.xlsx",
+      "artifact_type": "macro_report",
+      "extension": ".xlsx",
+      "size_bytes": 105977
+    },
+    {
+      "path": "Poland_2023/macro/POLITYNAME_YEARELEC_M6 Macro Data Template-checkin ENEP.xlsx",
+      "artifact_type": "macro_report",
+      "extension": ".xlsx",
+      "size_bytes": 85500
+    },
+    {
+      "path": "Poland_2023/micro/collaborator questions/CollaboratorQuestions Poland 2023.docx",
+      "artifact_type": "collaborator_questions",
+      "extension": ".docx",
+      "size_bytes": 57467
+    },
+    {
+      "path": "Poland_2023/micro/deposited variables-m6_POL_2023_20250213.xlsx",
+      "artifact_type": "variable_tracking",
+      "extension": ".xlsx",
+      "size_bytes": 59219
+    },
+    {
+      "path": "Poland_2023/micro/Poland 2019/Collaborator questions/CollaboratorQuestions_20221221.docx",
+      "artifact_type": "collaborator_questions",
+      "extension": ".docx",
+      "size_bytes": 53267
+    },
+    {
+      "path": "Poland_2023/micro/Poland 2019/cses-m5_log-file_POL_2019_20230309.docx",
+      "artifact_type": "log_file",
+      "extension": ".docx",
+      "size_bytes": 128413
+    },
+    {
+      "path": "Portugal_2022/macro/Election Study Notes_PORTUGAL_2022_M6_Macro.txt",
+      "artifact_type": "election_study_notes",
+      "extension": ".txt",
+      "size_bytes": 7588
+    },
+    {
+      "path": "Portugal_2022/macro/Old/Election Study Notes_PRT_2019_M5.txt",
+      "artifact_type": "election_study_notes",
+      "extension": ".txt",
+      "size_bytes": 8904
+    },
+    {
+      "path": "Portugal_2022/macro/Portugal_2022_M6 Macro Data Template.xlsx",
+      "artifact_type": "macro_report",
+      "extension": ".xlsx",
+      "size_bytes": 100608
+    },
+    {
+      "path": "Portugal_2022/micro/Collaborator questions and responses/PRT_2022 - Questions for Collaborator - micro.docx",
+      "artifact_type": "collaborator_questions",
+      "extension": ".docx",
+      "size_bytes": 41874
+    },
+    {
+      "path": "Portugal_2022/micro/deposited variables-m6_PRT_2022_20240602.xlsx",
+      "artifact_type": "variable_tracking",
+      "extension": ".xlsx",
+      "size_bytes": 57904
+    },
+    {
+      "path": "Portugal_2022/micro/Documentation/ESN - Portugal 2022.txt",
+      "artifact_type": "election_study_notes",
+      "extension": ".txt",
+      "size_bytes": 6765
+    },
+    {
+      "path": "Portugal_2022/micro/Macro report/20221029 cses 5 MacroReport ES.docx",
+      "artifact_type": "macro_report",
+      "extension": ".docx",
+      "size_bytes": 69908
+    },
+    {
+      "path": "Portugal_2022/micro/Macro report/CSES_Module6_MacroReport.docx",
+      "artifact_type": "macro_report",
+      "extension": ".docx",
+      "size_bytes": 73145
+    },
+    {
+      "path": "Portugal_2024/macro/Portugal_2024_M6 Macro Data Template.xlsx",
+      "artifact_type": "macro_report",
+      "extension": ".xlsx",
+      "size_bytes": 104463
+    },
+    {
+      "path": "Portugal_2024/micro/Collaborator questions and responses/PRT_2024 - Questions for Collaborator - micro.docx",
+      "artifact_type": "collaborator_questions",
+      "extension": ".docx",
+      "size_bytes": 20463
+    },
+    {
+      "path": "Portugal_2024/micro/Collaborator questions and responses/response 1/20250321_Email from Collab_Response to micro questions.docx",
+      "artifact_type": "collaborator_questions",
+      "extension": ".docx",
+      "size_bytes": 15143
+    },
+    {
+      "path": "Portugal_2024/micro/Collaborator questions and responses/response 1/PRT2024_Back-translation.docx",
+      "artifact_type": "collaborator_questions",
+      "extension": ".docx",
+      "size_bytes": 83792
+    },
+    {
+      "path": "Portugal_2024/micro/deposited variables-m6_PRT_2024_20250128.xlsx",
+      "artifact_type": "variable_tracking",
+      "extension": ".xlsx",
+      "size_bytes": 57933
+    },
+    {
+      "path": "Portugal_2024/micro/Documentation/ESN - Portugal 2024.txt",
+      "artifact_type": "election_study_notes",
+      "extension": ".txt",
+      "size_bytes": 7533
+    },
+    {
+      "path": "Portugal_2024/micro/Macro report/CSES_Module6_MacroReport.docx",
+      "artifact_type": "macro_report",
+      "extension": ".docx",
+      "size_bytes": 72933
+    },
+    {
+      "path": "Slovakia_2023/macro/_BT processing (NOT USED IN PROCESSING SVK 2023)/Questions for Collaborator_SVK_2023_Macro.docx",
+      "artifact_type": "collaborator_questions",
+      "extension": ".docx",
+      "size_bytes": 27518
+    },
+    {
+      "path": "Slovakia_2023/macro/_BT processing (NOT USED IN PROCESSING SVK 2023)/Questions for Collaborator_SVK_2023_Macro_additional__OG.docx",
+      "artifact_type": "collaborator_questions",
+      "extension": ".docx",
+      "size_bytes": 28519
+    },
+    {
+      "path": "Slovakia_2023/macro/_BT processing (NOT USED IN PROCESSING SVK 2023)/Slovakia_2023_M6 Macro Data.xlsx",
+      "artifact_type": "macro_report",
+      "extension": ".xlsx",
+      "size_bytes": 106862
+    },
+    {
+      "path": "Slovakia_2023/macro/Macro report deposited by Collaborators/CSES_Module6_MacroReport_Slovakia2023 UPDATED.docx",
+      "artifact_type": "macro_report",
+      "extension": ".docx",
+      "size_bytes": 93422
+    },
+    {
+      "path": "Slovakia_2023/macro/Macro report deposited by Collaborators/CSES_Module6_MacroReport_Slovakia2023.docx",
+      "artifact_type": "macro_report",
+      "extension": ".docx",
+      "size_bytes": 88472
+    },
+    {
+      "path": "Slovakia_2023/macro/Old/Election Study Notes -Macro- SVK_2020_Mod5_20220113.txt",
+      "artifact_type": "election_study_notes",
+      "extension": ".txt",
+      "size_bytes": 10774
+    },
+    {
+      "path": "Slovakia_2023/macro/Old/SVK_2020_Log_Macro_20220207.docx",
+      "artifact_type": "log_file",
+      "extension": ".docx",
+      "size_bytes": 52449
+    },
+    {
+      "path": "Slovakia_2023/macro/Old/SVK_2020_Macro Data.xlsx",
+      "artifact_type": "macro_report",
+      "extension": ".xlsx",
+      "size_bytes": 72232
+    },
+    {
+      "path": "Slovakia_2023/macro/SVK_2023_Log_Macro_20251229.docx",
+      "artifact_type": "log_file",
+      "extension": ".docx",
+      "size_bytes": 56337
+    },
+    {
+      "path": "Slovakia_2023/macro/SVK_2023_M6 Macro Data_20251229.xlsx",
+      "artifact_type": "macro_report",
+      "extension": ".xlsx",
+      "size_bytes": 115148
+    },
+    {
+      "path": "Slovakia_2023/micro/Collaborator Questions/CollaboratorQuestions_20251007.docx",
+      "artifact_type": "collaborator_questions",
+      "extension": ".docx",
+      "size_bytes": 286598
+    },
+    {
+      "path": "Slovakia_2023/micro/deposited variables-m6_SVK_2023_20250624.xlsx",
+      "artifact_type": "variable_tracking",
+      "extension": ".xlsx",
+      "size_bytes": 58424
+    },
+    {
+      "path": "Slovenia_2022/macro/Collaborator_Questions_SLOVENIA_2022_MACRO.docx",
+      "artifact_type": "collaborator_questions",
+      "extension": ".docx",
+      "size_bytes": 27695
+    },
+    {
+      "path": "Slovenia_2022/macro/Slovenia_2022_M6 Macro Data.xlsx",
+      "artifact_type": "macro_report",
+      "extension": ".xlsx",
+      "size_bytes": 105430
+    },
+    {
+      "path": "Slovenia_2022/micro/Collaborator questions and responses/SVN_2022 - Questions for Collaborator - micro.docx",
+      "artifact_type": "collaborator_questions",
+      "extension": ".docx",
+      "size_bytes": 23181
+    }
+  ]
+}

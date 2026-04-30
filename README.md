@@ -51,6 +51,9 @@ pip install -r requirements.txt
 
 # Run
 python cses_cli.py
+
+# Open the Windows GUI
+python cses_cli.py gui
 ```
 
 ## Usage
@@ -60,9 +63,10 @@ python cses_cli.py
    cd C:\Users\YourName\Downloads\Korea_2024_deposit
    ```
 
-2. **Start the CLI**:
+2. **Start the CLI or GUI**:
    ```
    cses
+   cses gui
    ```
 
 3. **Follow the prompts** to:
@@ -90,22 +94,46 @@ KOR_2024/
 
 ## Configuration
 
-Edit `~/.cses-agent/.env` to configure:
+Use the Windows GUI Settings tab, or edit `~/.cses-agent/.env`, to configure:
 
 ```bash
-# LLM for variable matching (via GESIS API)
-LLM_MODEL_MATCH=openai/gpt-oss:120b
+# LiteLLM provider keys
 OPENAI_API_KEY=your-key-here
-OPENAI_API_BASE=https://your-api-endpoint
+ANTHROPIC_API_KEY=your-key-here
+XAI_API_KEY=your-key-here
+GEMINI_API_KEY=your-key-here
 
-# Validation model
-# Option 1: Use Claude CLI with Max subscription (no API key needed)
-LLM_MODEL_VALIDATE=claude-cli
+# Curated model profile selected in the GUI
+CSES_MODEL_PROFILE=gesis_recommended
 
-# Option 2: Use Anthropic API
-# LLM_MODEL_VALIDATE=anthropic/claude-sonnet-4-20250514
-# ANTHROPIC_API_KEY=sk-ant-...
+# Optional: main chat dropdown models selected in the GUI
+CSES_CHAT_MODELS=xai/grok-4-1-fast,openai/gpt-4.1
+CSES_CHAT_MODEL=xai/grok-4-1-fast
+
+# Optional OpenWebUI/OpenAI-compatible service.
+# Leave disabled for direct vendor APIs.
+CSES_USE_OPENWEBUI=false
+# OPENAI_API_BASE=https://your-openwebui.example.org/api/v1
+
+# Stata executable path
+STATA_PATH=C:\Program Files\Stata18\StataMP-64.exe
 ```
+
+The GUI can also create an MCP-Stata config snippet at
+`~/.cses-agent/mcp-stata.json`. MCP-Stata runs through `uvx` and uses the
+selected `STATA_PATH` when Stata cannot be discovered automatically.
+
+## Project Context
+
+Each study can define plain-text context files that the chat assistant reads:
+
+```text
+agent.md                         # assistant role and project boundaries
+workflow.md                      # project-specific workflow notes
+.agents/skills/<skill>/SKILL.md  # reusable project-specific instructions
+```
+
+The GUI's Project Context tab can create starter files for non-technical users.
 
 ## Commands
 
@@ -116,6 +144,7 @@ LLM_MODEL_VALIDATE=claude-cli
 | `cses status` | Show workflow progress |
 | `cses match` | Run variable matching |
 | `cses export` | Export mappings |
+| `cses gui` | Open the Windows GUI |
 | `cses --help` | Show all commands |
 
 ## Troubleshooting

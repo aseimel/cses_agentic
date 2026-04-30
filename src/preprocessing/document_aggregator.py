@@ -15,9 +15,10 @@ import logging
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Optional, Callable
-from litellm import completion
 
+from src.model_runtime import ModelRole, ModelTaskRunner
 from src.utils.toon_encoder import encode_table
+from src.settings import apply_settings_to_environment
 
 logger = logging.getLogger(__name__)
 
@@ -30,10 +31,13 @@ class DocumentAggregator:
     then aggregates into a single condensed summary.
     """
 
-    def __init__(self, model: Optional[str] = None):
+    def __init__(self):
         """Initialize the aggregator."""
-        self.model = model or os.getenv("LLM_MODEL_PREPROCESS", "openai/llama4:latest")
-        self.temperature = 0
+        from src.config import LLM_MODEL_PREPROCESS, LLM_TEMPERATURE
+        apply_settings_to_environment()
+        self.runner = ModelTaskRunner()
+        self.model = self.runner.model_for_role(ModelRole.LARGE_TEXT) or LLM_MODEL_PREPROCESS
+        self.temperature = LLM_TEMPERATURE
         logger.info(f"DocumentAggregator initialized with model: {self.model}")
 
     def aggregate_variable_info(
@@ -155,17 +159,20 @@ class DocumentAggregator:
             focus = """For each variable, extract:
 - The EXACT question text (the survey question asked to respondents)
 - Variable description/label
-- Value labels (response options with codes)"""
+- Value labels (response options with codes)
+- What CONCEPT this variable measures (e.g., "political interest", "gender", "age", "party vote")"""
         elif doc_type == "questionnaire":
-            focus = """For each variable, extract:
+            focus = """For each variable/question:
 - The EXACT question text as it appears in the survey
+- The variable name or question number it corresponds to (Q1, Q2, D1, etc.)
 - Response options/answer categories
-- Any skip patterns or conditions"""
+- What CONCEPT this question measures"""
         else:
             focus = """For each variable, extract any available information about:
 - Question text
 - Variable meaning
-- Response categories"""
+- Response categories
+- What CONCEPT this variable measures"""
 
         var_list = "\n".join([f"  - {v}" for v in var_names])
 
@@ -179,18 +186,41 @@ DOCUMENT CONTENT:
 
 TASK: {focus}
 
-IMPORTANT: This is CSES (Comparative Study of Electoral Systems) data. Variables often have:
-- Question codes like Q1, Q2, D1, D2, etc.
-- Standardized question texts about political attitudes, voting, demographics
-- Response scales (1-5, 1-7, etc.) with labeled categories
+IMPORTANT - This is CSES (Comparative Study of Electoral Systems) data. Common patterns:
+1. DEMOGRAPHICS (typically D01, D02, etc. or TAGE, TSEX, etc.):
+   - Age/birth year
+   - Gender/sex
+   - Education level
+   - Employment status
+   - Marital status
+   - Income
+   - Religion
+   - Region/location
 
-Return JSON with info for variables found:
+2. SURVEY QUESTIONS (typically Q01, Q02, etc.):
+   - Political interest ("How interested are you in politics?")
+   - Media consumption (TV news, newspapers, social media)
+   - Trust in institutions (parliament, government, courts)
+   - Democratic attitudes
+   - Left-right self-placement
+   - Party preferences and evaluations
+   - Vote choice
+   - Satisfaction with democracy
+
+3. COMMON SCALE TYPES:
+   - 4-point: 1=Very much...4=Not at all
+   - 5-point: 1=Strongly agree...5=Strongly disagree
+   - 11-point: 0-10 scales (left-right, like/dislike)
+   - Missing codes: 7/97/997=Refused, 8/98/998=Don't know, 9/99/999=Missing
+
+Return JSON with info for ALL variables you can identify:
 {{
   "variables": {{
     "VAR_NAME": {{
       "question_text": "The exact survey question text",
+      "concept": "What this measures (e.g., 'political interest', 'gender', 'turnout')",
       "desc": "Brief description if different from question",
-      "labels": "1=Strongly agree;2=Agree;3=Neither;4=Disagree;5=Strongly disagree"
+      "labels": "1=Male;2=Female" or "1=Very interested;2=Somewhat;3=Not very;4=Not at all"
     }},
     ...
   }}
@@ -198,8 +228,10 @@ Return JSON with info for variables found:
 
 RULES:
 - PRIORITIZE extracting the actual question text - this is most important for matching
+- Include the CONCEPT field to help with semantic matching
 - Use EXACT variable names (case-sensitive)
 - Include full value labels with codes
+- If a questionnaire has questions numbered Q1, Q2, map them to variables if possible
 - Return ONLY valid JSON"""
 
         return self._call_llm_for_extraction(prompt, var_names)
@@ -219,10 +251,14 @@ RULES:
 
         for attempt in range(max_retries):
             try:
-                response = completion(
-                    model=self.model,
+                response = self.runner.response(
+                    ModelRole.LARGE_TEXT,
+                    model_override=self.model,
                     max_tokens=max_tokens,
                     temperature=self.temperature,
+                    timeout=75,
+                    drop_params=True,
+                    purpose="Extract variable information from document",
                     messages=[{"role": "user", "content": prompt}]
                 )
 
@@ -263,6 +299,16 @@ RULES:
 
         return {}
 
+    def _connection_kwargs(self) -> dict:
+        kwargs = {}
+        api_base = os.environ.get("OPENAI_API_BASE", "").strip()
+        api_key = os.environ.get("OPENAI_API_KEY", "").strip()
+        if api_base:
+            kwargs["api_base"] = api_base
+        if api_key:
+            kwargs["api_key"] = api_key
+        return kwargs
+
     def _aggregate_extractions(
         self,
         var_names: list[str],
@@ -301,6 +347,7 @@ RULES:
 
         for var_name in var_names:
             question_text = ""
+            concept = ""
             desc = ""
             labels = ""
 
@@ -310,6 +357,8 @@ RULES:
                     var_data = extractions[doc_type].get(var_name, {})
                     if not question_text and var_data.get('question_text'):
                         question_text = var_data['question_text']
+                    if not concept and var_data.get('concept'):
+                        concept = var_data['concept']
                     if not desc and var_data.get('desc'):
                         desc = var_data['desc']
                     if not labels and var_data.get('labels'):
@@ -325,6 +374,7 @@ RULES:
 
             merged[var_name] = {
                 'question_text': question_text,
+                'concept': concept,
                 'desc': desc,
                 'labels': labels
             }
@@ -339,7 +389,7 @@ RULES:
         """
         Format aggregated info as TOON table.
 
-        Includes question_text as primary field for matching.
+        Includes question_text and concept as primary fields for matching.
         """
         rows = []
         source_lookup = {v.get('name', ''): v for v in source_variables}
@@ -350,32 +400,53 @@ RULES:
 
             # Get aggregated data
             question_text = agg.get('question_text', '')
+            concept = agg.get('concept', '')
             desc = agg.get('desc', '')
             if not desc:
                 desc = var.get('description', '')
 
-            # Combine question_text and desc for maximum info
-            full_desc = question_text if question_text else desc
-            if question_text and desc and desc not in question_text:
-                full_desc = f"{question_text} [{desc}]"
+            # Combine question_text, concept and desc for maximum info
+            parts = []
+            if question_text:
+                parts.append(question_text)
+            if concept and concept not in (question_text or ''):
+                parts.append(f"[{concept}]")
+            if desc and desc not in (question_text or '') and desc != concept:
+                parts.append(f"({desc})")
+
+            full_desc = ' '.join(parts) if parts else ''
 
             labels = agg.get('labels', '')
             if not labels:
                 labels = self._format_labels(var.get('value_labels', {}))
 
+            # Include sample values if available
+            samples = ''
+            if var.get('sample_values'):
+                sample_list = var['sample_values'][:5] if isinstance(var.get('sample_values'), list) else []
+                if sample_list:
+                    samples = ','.join(str(s) for s in sample_list)
+
             rows.append({
                 'name': name,
-                'desc': (full_desc or '')[:300],  # Allow longer for question text
-                'labels': (labels or '')[:150]
+                'desc': (full_desc or '')[:350],  # Allow longer for question text + concept
+                'labels': (labels or '')[:150],
+                'samples': samples[:50] if samples else ''
             })
+
+        # Include samples column if any variables have them
+        has_samples = any(r.get('samples') for r in rows)
+        columns = ['name', 'desc', 'labels']
+        if has_samples:
+            columns.append('samples')
 
         header = f"""# Variable Summary (3-stage parallel pipeline)
 # Variables: {len(rows)}
 # Model: {self.model}
-# Format: TOON table - name|description(includes question text)|labels
+# Format: TOON table - name|description(question text + concept)|labels|samples
 
 """
-        return header + 'vars' + encode_table(rows, ['name', 'desc', 'labels'], '|')
+        return header + 'vars' + encode_table(rows, columns, '|')
 
     def _format_labels(self, labels: dict) -> str:
         """Format value labels dictionary as compact string."""
@@ -385,6 +456,6 @@ RULES:
         return ';'.join(f"{k}={v}" for k, v in items)
 
 
-def create_aggregator(model: Optional[str] = None) -> DocumentAggregator:
+def create_aggregator() -> DocumentAggregator:
     """Factory function to create a DocumentAggregator instance."""
-    return DocumentAggregator(model=model)
+    return DocumentAggregator()

@@ -93,6 +93,14 @@ install.ps1          # Windows installer
    - Never leave users waiting with no output - they will think the tool is frozen
    - NO emojis (Windows cp1252 encoding compatibility)
 
+8. **MODEL SETTINGS ARE HARDCODED - NEVER MAKE CONFIGURABLE**
+   - LLM model settings are in `src/config.py` and must NEVER be overridable
+   - Do NOT add environment variable overrides for models
+   - Do NOT add CLI arguments for model selection
+   - Do NOT add config file options for models
+   - This tool is for non-technical users - it must "just work" with tested models
+   - Users should only configure: API key, API base URL, Stata path
+
 ## Key Files
 
 | File | Purpose |
@@ -134,3 +142,43 @@ python cses_cli.py --help
 cd /path/to/study/files
 cses
 ```
+
+## AI Architecture Rules
+
+1. **ALWAYS USE MULTI-MODEL ENSEMBLE FOR VARIABLE MATCHING**
+   - Never rely on a single LLM for variable matching decisions
+   - Use 3 diverse models (GPT-5 + GPT-OSS + Gemma) in parallel
+   - Require 2/3 quorum (67% agreement) to accept a match
+   - If models disagree significantly, flag for human review
+
+2. **MAXIMIZE AI UTILIZATION AT EVERY STAGE**
+   - Document quality assessment BEFORE expensive processing
+   - Parallel extraction from multiple documents
+   - Dedicated LLM call for recoding strategy generation
+   - Reference-based code generation using Sweden patterns
+   - Automated error fixing with LLM debug loop
+
+3. **SWEDEN IS THE REFERENCE STANDARD**
+   - All generated .do files must follow Sweden_2022 patterns
+   - Use `**>>> VARIABLE - DESCRIPTION` headers
+   - Always include `tab VARIABLE, mis` verification
+   - Cross-tabulate source vs target when recoding
+   - Handle missing values explicitly (97, 98, 99 codes)
+
+4. **QUALITY OVER QUANTITY FOR COLLABORATOR QUESTIONS**
+   - Never generate 60+ individual failure questions
+   - Group related issues into focused questions (max 20)
+   - Provide context and suggested alternatives
+   - Only ask about genuinely ambiguous cases
+
+5. **AUTOMATED TESTING IS MANDATORY**
+   - Run generated .do files through Stata before delivering
+   - Parse and fix errors automatically with LLM
+   - Iterate until clean execution (max 5 attempts)
+   - Log all fixes for transparency
+
+6. **CONFIDENCE TRACKING**
+   - Track confidence at each stage (extraction, matching, recoding, code gen)
+   - Use model votes as confidence indicator
+   - Flag low-confidence items for review
+   - Never mark as "NOT_FOUND" unless all models fail
