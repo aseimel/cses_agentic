@@ -13,6 +13,7 @@ from src.standards.schema import SchemaRegistry, SchemaVariable
 from src.workflow.state import WorkflowState
 from src.matching.demographics import DemographicRecodingDecision, DemographicRecodingDecisionStore
 from src.codegen.party_recoding import PartyRecodingPlanBuilder, PartyRecodeMap
+from src.district_data import DistrictStataSyntaxBuilder, load_district_merge_plan
 
 
 @dataclass
@@ -44,8 +45,10 @@ class RecodingPlanBuilder:
         self.registry = registry or SchemaRegistry()
         self.demographic_decisions: dict[str, DemographicRecodingDecision] = {}
         self.party_recode_maps: dict[str, PartyRecodeMap] = {}
+        self.district_merge_plan: dict[str, Any] = {}
         if state.working_dir:
             self.demographic_decisions = DemographicRecodingDecisionStore(Path(state.working_dir)).load()
+            self.district_merge_plan = load_district_merge_plan(state.working_dir)
 
     def build(self, tracking_sheet: TrackingSheet | None = None) -> list[RecodingPlan]:
         mapping_lookup = {item.cses_var: item for item in tracking_sheet.mappings} if tracking_sheet else {}
@@ -96,9 +99,31 @@ class RecodingPlanBuilder:
                 readiness_status="needs_processor_review",
                 approved=bool(mapping and mapping.verified),
             )
-        if schema_var.dependency_class in {"macro_or_party_input", "district_input"}:
-            status = "blocked_district_input" if schema_var.dependency_class == "district_input" else "blocked_external_input"
-            issue = "District data input or processor decision required." if schema_var.dependency_class == "district_input" else "External input or processor decision required."
+        if schema_var.dependency_class == "district_input":
+            if self.district_merge_plan.get("approved"):
+                return RecodingPlan(
+                    **base,
+                    plan_type="district_merged",
+                    source_variables=[self.district_merge_plan.get("normalized_dta_path", "DISTRICT_DATA")],
+                    verification_commands=[f"tab {schema_var.name}, mis"],
+                    documentation_note="Merged from the processor-approved standardized district data file.",
+                    readiness_status="ready",
+                    approved=True,
+                    issues=[],
+                )
+            return RecodingPlan(
+                **base,
+                plan_type="external_input_required",
+                source_variables=["DISTRICT_DATA_REQUIRED"],
+                verification_commands=[f"tab {schema_var.name}, mis"],
+                documentation_note="Requires a standardized district data file and processor-approved merge review.",
+                readiness_status="blocked_district_input",
+                approved=False,
+                issues=["District data review must be completed and approved before final syntax."],
+            )
+        if schema_var.dependency_class == "macro_or_party_input":
+            status = "blocked_external_input"
+            issue = "External input or processor decision required."
             return RecodingPlan(
                 **base,
                 plan_type="external_input_required",
@@ -350,6 +375,7 @@ class PlanDrivenStataSyntaxGenerator:
         year: str,
         draft: bool = False,
         exclude_district: bool = False,
+        district_merge_plan: dict[str, Any] | None = None,
     ) -> Path:
         plan_lookup = {plan.target_variable: plan for plan in plans}
         lines = [
@@ -369,12 +395,16 @@ class PlanDrivenStataSyntaxGenerator:
             "",
         ]
         current_section = ""
+        district_merge_inserted = False
         for schema_var in self.registry.variables:
             if exclude_district and schema_var.dependency_class == "district_input":
                 continue
             if schema_var.section != current_section:
                 current_section = schema_var.section
                 lines.extend(self._section_header(current_section))
+                if current_section == "district_data" and district_merge_plan and not district_merge_inserted:
+                    lines.extend(DistrictStataSyntaxBuilder().merge_lines(district_merge_plan))
+                    district_merge_inserted = True
             plan = plan_lookup.get(schema_var.name)
             if not plan:
                 plan = RecodingPlan(
@@ -456,6 +486,9 @@ class PlanDrivenStataSyntaxGenerator:
             for rule in plan.recode_rules + plan.missing_rules:
                 comment = f" // {rule.get('label')}" if rule.get("label") else ""
                 lines.append(f"replace {target} = {rule['to']} if {source} == {rule['from']}{comment}")
+        elif plan.plan_type == "district_merged":
+            lines.append(f"capture confirm variable {target}")
+            lines.append(f'if _rc display as error "District variable not found after merge: {target}"')
         else:
             value = plan.expression or "9"
             if not plan.approved and not draft:

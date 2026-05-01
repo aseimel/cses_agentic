@@ -1723,6 +1723,7 @@ class StepExecutor:
             reader = TrackingSheetReader()
             tracking_data = reader.read(sheet_path)
             from src.codegen.recoding_plan import RecodingPlanBuilder, StataSyntaxPlanner, PlanDrivenStataSyntaxGenerator
+            from src.district_data import load_district_merge_plan
 
             plan_builder = RecodingPlanBuilder(self.state)
             recoding_plans = plan_builder.build(tracking_data)
@@ -1808,6 +1809,7 @@ class StepExecutor:
                 data_file_path=self.state.data_file or "",
                 draft=False,
                 exclude_district=exclude_district,
+                district_merge_plan=load_district_merge_plan(self.working_dir),
             )
             result = type("GenerationResult", (), {
                 "success": generated_path.exists(),
@@ -1945,49 +1947,130 @@ class StepExecutor:
 
     def _step_9(self, **kwargs) -> StepResult:
         """Step 9: Collect and Integrate District Data."""
-        self.active_logger.log_message("Reviewing district data using CSES district-data workflow...")
-        district_files = [
-            path for path in self.working_dir.rglob("*")
-            if path.is_file() and any(term in path.name.lower() for term in ["district", "constituency"])
-        ]
+        self.active_logger.log_message("Reviewing district data...")
+        from src.district_data import (
+            DistrictDataTemplateParser,
+            DistrictDataValidator,
+            DistrictMergePlanner,
+        )
+
+        parser = DistrictDataTemplateParser()
+        district_file = kwargs.get("district_file")
+        approve = bool(kwargs.get("approve") or kwargs.get("processor_approved"))
+        source_variable = kwargs.get("source_variable", "")
+        if district_file:
+            table = parser.parse(Path(district_file))
+        else:
+            table = parser.parse_best(self.working_dir)
+
         review_dir = self.working_dir / "micro" / "district data"
         review_dir.mkdir(parents=True, exist_ok=True)
         review_path = review_dir / f"{self.state.country_code or 'CNT'}_{self.state.year or 'YEAR'}_district_data_review.md"
 
+        if not table:
+            lines = [
+                f"# District Data Review: {self.state.country} {self.state.year}",
+                "",
+                "No standardized district data file was found.",
+                "",
+                "Processor review needed:",
+                "- Provide the standardized district data file, or confirm that district data is not included in this run.",
+                "- Confirm the respondent district variable in the survey data.",
+            ]
+            review_path.write_text("\n".join(lines), encoding="utf-8")
+            self.state.district_review_path = str(review_path)
+            self.state.district_data_status = {
+                "status": "needs_processor_review",
+                "approved": False,
+                "district_file_found": False,
+            }
+            return StepResult(
+                success=False,
+                message="District data review needs a standardized district data file",
+                artifacts=[str(review_path)],
+                issues=["Standardized district data file not found."],
+                next_action="Add the standardized district data file and rerun District Data Review"
+            )
+
+        validation = DistrictDataValidator().validate(
+            table,
+            self.state,
+            approve=approve,
+            source_variable=source_variable,
+        )
+        planner = DistrictMergePlanner()
+        plan = planner.build(self.working_dir, table, validation)
+        plan.source_data_file = self.state.data_file or ""
+        plan_path = planner.write(self.working_dir, plan)
+        self.state.district_review_path = str(review_path)
+        self.state.district_merge_plan_path = str(plan_path)
+        self.state.district_data_status = {
+            "status": validation.status,
+            "approved": validation.approved,
+            "district_file_found": True,
+            "district_count": table.district_count,
+            "source_district_variable": validation.source_district_variable,
+            "missing_observed_district_codes": validation.missing_observed_district_codes,
+            "extra_district_codes": validation.extra_district_codes,
+            "party_order_approved": validation.party_order_approved,
+        }
+
         lines = [
             f"# District Data Review: {self.state.country} {self.state.year}",
             "",
-            "Source: cses_wiki/procedures/district-data-workflow.md",
+            f"District file: {Path(table.source_file).name}",
+            f"District rows: {table.district_count}",
+            f"Respondent district variable: {validation.source_district_variable or 'Needs processor review'}",
+            f"Party order approved: {'Yes' if validation.party_order_approved else 'No'}",
+            f"Processor approval recorded: {'Yes' if validation.approved else 'No'}",
             "",
-            "## Review Dimensions",
-            "- Raw collection material",
-            "- Cross-national comparability",
-            "- Documentation",
-            "- Merge readiness",
-            "- Release review",
-            "",
-            "## Detected Files",
+            "District variables found:",
         ]
-        if district_files:
-            lines.extend(f"- {path.relative_to(self.working_dir)}" for path in district_files)
-            issues = ["District definitions and merge keys require processor review before final integration."]
-        else:
-            lines.append("- None detected")
-            issues = ["District data/material not found."]
-            self.active_logger.add_candidate_collaborator_question(
-                "Please provide or confirm district/constituency data and definitions required for CSES district-level variables.",
-                "District data workflow; processor decides whether existing evidence is sufficient",
-                step_num=9,
-                missing_items=["District/constituency data", "District definitions", "Merge keys"],
+        lines.extend(f"- {col}" for col in table.columns if col.startswith("F400"))
+        if validation.generated_missing_party_slots:
+            lines.extend(["", "Party slots generated as not applicable/missing:"])
+            lines.extend(f"- {col}" for col in validation.generated_missing_party_slots)
+        if validation.missing_observed_district_codes:
+            lines.extend(["", "District codes needing review:"])
+            lines.extend(f"- {code}" for code in validation.missing_observed_district_codes[:100])
+        if validation.extra_district_codes:
+            lines.extend(["", "District rows not observed in the survey data:"])
+            lines.extend(f"- {code}" for code in validation.extra_district_codes[:100])
+        if validation.issues:
+            lines.extend(["", "Processor review needed:"])
+            lines.extend(f"- {issue}" for issue in validation.issues)
+        if validation.warnings:
+            lines.extend(["", "Warnings:"])
+            lines.extend(f"- {warning}" for warning in validation.warnings)
+        review_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+        self.active_logger.log_message("District data review completed.")
+
+        if validation.approved:
+            return StepResult(
+                success=True,
+                message=(
+                    "District data review approved\n\n"
+                    f"District file: {Path(table.source_file).name}\n"
+                    f"District rows: {table.district_count}\n"
+                    f"Respondent district variable: {validation.source_district_variable}\n"
+                    "District merge syntax can now be generated."
+                ),
+                artifacts=[str(review_path), str(plan_path), plan.normalized_dta_path],
+                issues=validation.warnings,
+                next_action="Continue to final Stata syntax generation"
             )
-        review_path.write_text("\n".join(lines), encoding="utf-8")
-        self.active_logger.log_message(f"District data review written: {review_path.name}")
+
         return StepResult(
-            success=True,
-            message="District data review completed with wiki-backed dimensions",
-            artifacts=[str(review_path)] + [str(path) for path in district_files],
-            issues=issues,
-            next_action="Resolve district definitions/merge readiness before final release"
+            success=False,
+            message=(
+                "District data review needs processor approval\n\n"
+                f"District file: {Path(table.source_file).name}\n"
+                f"District rows: {table.district_count}\n"
+                f"Respondent district variable: {validation.source_district_variable or 'Needs processor review'}"
+            ),
+            artifacts=[str(review_path), str(plan_path), plan.normalized_dta_path],
+            issues=validation.issues + validation.warnings,
+            next_action="Review the district file, source district variable, party order alignment, and district-code coverage"
         )
 
     def _step_10(self, **kwargs) -> StepResult:

@@ -224,6 +224,9 @@ class WorkflowState:
     party_order_review_path: str = ""
     party_order_decision_path: str = ""
     party_order_status: dict = field(default_factory=dict)
+    district_review_path: str = ""
+    district_merge_plan_path: str = ""
+    district_data_status: dict = field(default_factory=dict)
     stata_execution_status: dict = field(default_factory=dict)
     readiness_mode: str = "full_release"
     district_excluded_by_processor: bool = False
@@ -348,6 +351,8 @@ class WorkflowState:
         self.election_results_intake_path = remap(self.election_results_intake_path)
         self.party_order_review_path = remap(self.party_order_review_path)
         self.party_order_decision_path = remap(self.party_order_decision_path)
+        self.district_review_path = remap(self.district_review_path)
+        self.district_merge_plan_path = remap(self.district_merge_plan_path)
         self.benchmark_scorecard_path = remap(self.benchmark_scorecard_path)
         self.questionnaire_files = [remap(path) for path in self.questionnaire_files or []]
 

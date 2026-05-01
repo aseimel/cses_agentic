@@ -138,6 +138,7 @@ class DocumentationRenderer:
     def render_processing_log(self, output_path: Path) -> ArtifactResult:
         output_path.parent.mkdir(parents=True, exist_ok=True)
         party_status = getattr(self.state, "party_order_status", {}) or {}
+        district_status = getattr(self.state, "district_data_status", {}) or {}
         recoding = getattr(self.state, "recoding_coverage", {}) or {}
         stata = getattr(self.state, "stata_execution_status", {}) or {}
         readiness = getattr(self.state, "final_readiness", {}) or {}
@@ -170,6 +171,10 @@ class DocumentationRenderer:
             "Election Study Notes and Appendices",
             "Election Summary",
             "Review election context, party order, and macro agreement before final release.",
+            "",
+            "District Data",
+            f"District data review: {'approved' if district_status.get('approved') else district_status.get('status', 'not reviewed')}",
+            f"Respondent district variable: {district_status.get('source_district_variable', 'To be confirmed')}",
             "",
             "Overview of Study Design and Weights",
         ])
@@ -232,6 +237,9 @@ class FinalReadinessValidator:
             issues.append(f"{len(self.state.get_pending_questions())} collaborator question(s) remain pending.")
         if self.state.candidate_collaborator_questions:
             issues.append(f"{len(self.state.candidate_collaborator_questions)} potential collaborator question(s) require processor review.")
+        district_status = getattr(self.state, "district_data_status", {}) or {}
+        if not exclude_district and not district_status.get("approved"):
+            issues.append("District data review is not approved.")
         tracking = getattr(self.state, "workflow_tracking", None) or {}
         target_count = tracking.get("target_count") or self.registry.required_count()
         if exclude_district:
