@@ -33,6 +33,29 @@ class StataExecutionVerifier:
         self.working_dir = Path(working_dir)
 
     def run(self, do_path: Path, stata_path: str | None = None) -> StataExecutionResult:
+        from src.stata_mcp import MCPStataRunner
+
+        mcp_result = MCPStataRunner(stata_path=stata_path or "").run_do_file(do_path)
+        if mcp_result.success or mcp_result.log_path or mcp_result.error:
+            output_dataset = self._detect_output_dataset(do_path)
+            parsed_errors = self._parse_log_errors(Path(mcp_result.log_path)) if mcp_result.log_path else []
+            if mcp_result.rc not in (None, 0) and not parsed_errors:
+                parsed_errors.append({"line_number": 0, "error_line": f"Stata returned r({mcp_result.rc})."})
+            success = bool(mcp_result.success and output_dataset and not parsed_errors)
+            error = mcp_result.error
+            if mcp_result.success and not output_dataset:
+                error = "Stata completed but no processed CSES dataset was created."
+            payload = StataExecutionResult(
+                success=success,
+                do_file=str(do_path),
+                log_path=mcp_result.log_path,
+                output_dataset=str(output_dataset) if output_dataset else "",
+                error=error,
+                errors=parsed_errors[:20],
+            )
+            self.write(payload)
+            return payload
+
         if os.name == "nt" and os.environ.get("CSES_ALLOW_VISIBLE_STATA", "").strip() != "1":
             result = StataExecutionResult(
                 success=False,
