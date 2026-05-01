@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import os
 import re
 from dataclasses import asdict, dataclass, field
 from datetime import datetime, timezone
@@ -32,6 +33,19 @@ class StataExecutionVerifier:
         self.working_dir = Path(working_dir)
 
     def run(self, do_path: Path, stata_path: str | None = None) -> StataExecutionResult:
+        if os.name == "nt" and os.environ.get("CSES_ALLOW_VISIBLE_STATA", "").strip() != "1":
+            result = StataExecutionResult(
+                success=False,
+                do_file=str(do_path),
+                error=(
+                    "Automatic Stata execution is blocked because the configured Stata "
+                    "application opens a visible window. Run the generated .do file in "
+                    "Stata manually, then return to the workflow for review."
+                ),
+            )
+            self.write(result)
+            return result
+
         from src.agent.tool_wrappers import run_stata_debug
 
         result = run_stata_debug(do_path, stata_path=stata_path)
