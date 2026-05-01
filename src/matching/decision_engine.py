@@ -207,6 +207,10 @@ class MatchingDecisionEngine:
                 if schema_var.dependency_class == "macro_or_party_input":
                     decisions.append(self._party_order_generated_decision(schema_var, party_order_summary or {}))
                     continue
+                context_decision = self._party_context_decision(schema_var, party_order_summary or {})
+                if context_decision:
+                    decisions.append(context_decision)
+                    continue
             if schema_var.dependency_class == "derived_metadata":
                 decisions.append(self._derived_decision(schema_var, administrative_lookup.get(schema_var.name)))
                 continue
@@ -235,7 +239,18 @@ class MatchingDecisionEngine:
                     candidates = self._merge_candidate(candidates, proposal_candidate)
 
             candidates = sorted(candidates, key=lambda item: item.score, reverse=True)
+            if party_order_approved and is_party_order_dependent_variable(
+                schema_var.name,
+                description=schema_var.description,
+                dependency_class=schema_var.dependency_class,
+                item_type=str(profile.get("canonical_item_type") or ""),
+            ):
+                candidates = self._merge_party_specific_candidates(schema_var, candidates, source_contexts)
             if not candidates:
+                party_context_decision = self._party_context_decision(schema_var, party_order_summary or {})
+                if party_order_approved and party_context_decision:
+                    decisions.append(party_context_decision)
+                    continue
                 decisions.append(
                     MatchingDecision(
                         target_variable=schema_var.name,
@@ -357,6 +372,65 @@ class MatchingDecisionEngine:
         for candidate in evidence_candidates:
             candidates = self._merge_candidate(candidates, candidate)
         return candidates
+
+    def _merge_party_specific_candidates(
+        self,
+        schema_var: SchemaVariable,
+        candidates: list[SourceCandidate],
+        source_contexts: list[dict[str, Any]],
+    ) -> list[SourceCandidate]:
+        """Handle party/leader source-name variants after party order approval."""
+        source_by_upper = {str(source.get("name", "")).upper(): source for source in source_contexts}
+        for alias in MODULE6_SOURCE_ALIASES.get(schema_var.name, []):
+            prefix_hits = [
+                str(source.get("name"))
+                for key, source in source_by_upper.items()
+                if re.match(rf"^{re.escape(alias.upper())}(?:[_-]?\d+)$", key)
+            ]
+            for source_name in sorted(prefix_hits, key=_natural_sort_key):
+                _boost_or_add_candidate(
+                    candidates,
+                    SourceCandidate(
+                        source_variable=source_name,
+                        score=1.0,
+                        evidence=[f"Source variable is a split variant of expected party/leader item {alias}."],
+                        conflict_flags=["split_party_or_leader_item_variant"],
+                    )
+                )
+                break
+        if re.match(r"^F3019_[A-I]$", schema_var.name):
+            target_letter = schema_var.name.rsplit("_", 1)[-1]
+            direct_alias = f"Q17{target_letter.lower()}"
+            if direct_alias.upper() not in source_by_upper and not any(name.startswith(direct_alias.upper()) for name in source_by_upper):
+                extra = self._additional_split_leader_source(source_contexts)
+                if extra:
+                    _boost_or_add_candidate(
+                        candidates,
+                        SourceCandidate(
+                            source_variable=extra,
+                            score=1.0,
+                            evidence=[
+                                "Additional leader source item detected from a split party-leader battery.",
+                                "Processor must confirm the leader-party association before code generation.",
+                            ],
+                            conflict_flags=["additional_leader_variant_requires_review"],
+                        ),
+                    )
+        return sorted(candidates, key=lambda item: (item.score, _party_candidate_priority(item)), reverse=True)
+
+    def _additional_split_leader_source(self, source_contexts: list[dict[str, Any]]) -> str:
+        split_sources = sorted(
+            [
+                str(source.get("name"))
+                for source in source_contexts
+                if re.match(r"^Q17[a-i](?:[_-]?\d+)$", str(source.get("name", "")), re.IGNORECASE)
+            ],
+            key=_natural_sort_key,
+        )
+        for source in split_sources:
+            if not re.search(r"1$", source, re.IGNORECASE):
+                return source
+        return ""
 
     def _matching_evidence_candidates(
         self,
@@ -571,6 +645,55 @@ class MatchingDecisionEngine:
             notes="Generated from the approved Party Order Agreement and related macro/election inputs.",
         )
 
+    def _party_context_decision(self, schema_var: SchemaVariable, party_order_summary: dict[str, Any]) -> MatchingDecision | None:
+        context = str(party_order_summary.get("selected_context") or "")
+        name = schema_var.name
+        party_count = int(party_order_summary.get("party_count") or 0)
+        party_letter_match = re.match(r"^F30(18|20|21)_([A-I])$", name)
+        if party_letter_match and party_count:
+            letter_index = ord(party_letter_match.group(2)) - ord("A") + 1
+            if letter_index > party_count:
+                return self._generated_from_party_context(schema_var, "no_approved_party_for_this_slot")
+        if name == "F3021" or re.match(r"^F3021(?:_[A-IR])?$", name):
+            return self._generated_from_party_context(schema_var, "optional_alternative_scale_not_collected")
+        if context == "lower_house" and name in {"F3010", "F3010_ME"}:
+            return self._generated_from_party_context(schema_var, "derived_from_lower_house_main_election")
+        if context == "lower_house" and re.match(r"^F3010_PR_", name):
+            return self._generated_from_party_context(schema_var, "not_applicable_presidential_election")
+        if context == "lower_house" and name == "F3010_UH":
+            return self._generated_from_party_context(schema_var, "not_applicable_upper_house_election")
+        if name in {"F3010_TS", "F3010_FTV"}:
+            return self._generated_from_party_context(schema_var, "derived_from_current_and_previous_turnout")
+        if context == "lower_house" and re.match(r"^F3015_PR_", name):
+            return self._generated_from_party_context(schema_var, "not_applicable_presidential_election")
+        if context == "lower_house" and name == "F3015_UH":
+            return self._generated_from_party_context(schema_var, "not_applicable_upper_house_election")
+        if name.startswith("F3100_"):
+            return self._generated_from_party_context(schema_var, "derived_from_approved_party_metadata")
+        if context == "lower_house" and re.match(r"^F30(11|16)_PR_", name):
+            return self._generated_from_party_context(schema_var, "not_applicable_presidential_election")
+        if context == "lower_house" and re.match(r"^F30(11|16)_UH_", name):
+            return self._generated_from_party_context(schema_var, "not_applicable_upper_house_election")
+        if context == "lower_house" and re.match(r"^F30(11|16)_LH_DC", name):
+            return self._generated_from_party_context(schema_var, "not_applicable_district_candidate_vote")
+        if name in {"F3011_OUTGOV", "F3011_LR_CSES", "F3011_LR_MARPOR", "F3011_IF_CSES", "F3011_VS_1"}:
+            return self._generated_from_party_context(schema_var, "derived_from_approved_vote_choice_and_party_metadata")
+        return None
+
+    def _generated_from_party_context(self, schema_var: SchemaVariable, source_variable: str) -> MatchingDecision:
+        return MatchingDecision(
+            target_variable=schema_var.name,
+            description=schema_var.description,
+            status="generated_from_party_context",
+            source_variable=source_variable.upper(),
+            confidence="processor_review",
+            dependency_class=schema_var.dependency_class,
+            evidence=["Generated from approved election context and party-order decision."],
+            conflict_flags=[],
+            processor_verification_required=True,
+            notes="Not an ordinary source-variable match; generated from election context, party order, and CSES missing/not-applicable rules.",
+        )
+
     def _proposal_lookup(self, proposals: list[Any]) -> dict[str, dict]:
         lookup = {}
         for proposal in proposals:
@@ -586,7 +709,12 @@ class MatchingDecisionEngine:
             source = decision.source_variable
             if not source or source in {"DERIVED_METADATA", "EXTERNAL_INPUT_REQUIRED", "NOT_FOUND"}:
                 continue
-            if decision.status in {"generated_from_administrative_information", "demographic_recoding_assessment"}:
+            if decision.status in {
+                "generated_from_administrative_information",
+                "demographic_recoding_assessment",
+                "generated_from_party_context",
+                "generated_from_party_order",
+            }:
                 continue
             by_source.setdefault(source, []).append(decision)
         for source, items in by_source.items():
@@ -626,7 +754,7 @@ def matching_category_summary(decisions: list[MatchingDecision], matching_eviden
         item_type = str(profile.get("canonical_item_type") or "")
         section = str(profile.get("section") or "")
         dep = decision.dependency_class
-        matched = decision.status in {"proposed_match", "demographic_recoding_assessment", "generated_from_party_order"} and decision.source_variable not in {"", "NOT_FOUND", "ERROR"}
+        matched = decision.status in {"proposed_match", "demographic_recoding_assessment", "generated_from_party_order", "generated_from_party_context"} and decision.source_variable not in {"", "NOT_FOUND", "ERROR"}
         if dep == "derived_metadata":
             bucket = categories["administrative_metadata"]
             bucket["total"] += 1
@@ -689,6 +817,37 @@ def _tokens(text: str) -> set[str]:
 def _question_hint(text: str) -> str:
     match = re.search(r"\b([AQD]\d{1,2}[A-Za-z0-9_]*)\b", text)
     return match.group(1) if match else ""
+
+
+def _natural_sort_key(value: str) -> list[Any]:
+    return [
+        int(part) if part.isdigit() else part.casefold()
+        for part in re.split(r"(\d+)", str(value))
+    ]
+
+
+def _boost_or_add_candidate(candidates: list[SourceCandidate], proposal: SourceCandidate) -> None:
+    for candidate in candidates:
+        if candidate.source_variable == proposal.source_variable:
+            candidate.score = max(candidate.score, proposal.score)
+            candidate.evidence.extend(item for item in proposal.evidence if item and item not in candidate.evidence)
+            candidate.conflict_flags.extend(
+                item for item in proposal.conflict_flags if item and item not in candidate.conflict_flags
+            )
+            return
+    candidates.append(proposal)
+
+
+def _party_candidate_priority(candidate: SourceCandidate) -> int:
+    flags = set(candidate.conflict_flags or [])
+    evidence = " ".join(candidate.evidence or []).casefold()
+    if "additional_leader_variant_requires_review" in flags:
+        return 3
+    if "split_party_or_leader_item_variant" in flags:
+        return 2
+    if "expected party/leader item" in evidence:
+        return 1
+    return 0
 
 
 def _kb_evidence(target_variable: str, study_kb: dict | None) -> list[str]:

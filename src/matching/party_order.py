@@ -425,6 +425,8 @@ def party_agreement_summary(proposal: PartyOrderProposal) -> dict[str, int]:
         "warnings": len(proposal.warnings),
         "micro_variables_affected": len(proposal.affected_micro_variables),
         "macro_variables_affected": len(proposal.affected_macro_variables),
+        "selected_context": proposal.selected_context,
+        "ordering_rule": proposal.ordering_rule,
     }
 
 

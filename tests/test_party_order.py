@@ -104,6 +104,73 @@ class PartyOrderWorkflowTests(unittest.TestCase):
         self.assertIn("Social Democratic Party", observed[0][2])
         self.assertEqual(proposal.selected_context, "lower_house")
 
+    def test_sweden_party_matching_after_party_order_approval_matches_reference_sources(self):
+        from src.ingest.data_loader import DataLoader
+        from src.matching.decision_engine import MatchingDecisionEngine, matching_category_summary
+
+        root = Path.cwd()
+        source = root / "Sweden_2022" / "micro" / "deposited datasets" / "CSES6_SWEDEN.dta"
+        workbook = root / "Sweden_2022" / "Election Results" / "SWE_2022_Election results.xlsx"
+        if not source.exists() or not workbook.exists():
+            self.skipTest("Sweden reference files are not available in this checkout")
+
+        dataset = DataLoader().load(source)
+        source_contexts = [
+            {"name": item.name, "description": item.description or "", "value_labels": item.value_labels or {}, "sample_values": item.sample_values or []}
+            for item in dataset.variables.values()
+        ]
+        proposal = PartyOrderingRulesEngine().propose(
+            ElectionResultsWorkbookParser().parse_file(workbook),
+            source_variables=[item["name"] for item in source_contexts],
+            context_hint=infer_election_context_from_macro_material(root / "Sweden_2022"),
+        )
+        decisions = MatchingDecisionEngine().decide(
+            source_contexts=source_contexts,
+            party_order_approved=True,
+            party_order_summary={
+                "party_count": len(proposal.proposed_parties),
+                "selected_context": proposal.selected_context,
+            },
+        )
+        by_target = {item.target_variable: item for item in decisions}
+        expected_sources = {
+            "F3011_LH_PL": "Q10LHb",
+            "F3011_LH_PF": "Q10LHd",
+            "F3016_LH_PL": "Q14b",
+            "F3018_A": "Q16a",
+            "F3018_H": "Q16h",
+            "F3019_G": "Q17g1",
+            "F3019_H": "Q17h",
+            "F3019_I": "Q17g2",
+            "F3020_A": "Q18a",
+            "F3020_H": "Q18h",
+            "F3023_1": "Q23a",
+            "F3023_3": "Q23c",
+        }
+        for target, source_name in expected_sources.items():
+            with self.subTest(target=target):
+                self.assertEqual(by_target[target].source_variable, source_name)
+                self.assertEqual(by_target[target].status, "proposed_match")
+
+        generated = {
+            "F3011_PR_1": "NOT_APPLICABLE_PRESIDENTIAL_ELECTION",
+            "F3011_UH_PL": "NOT_APPLICABLE_UPPER_HOUSE_ELECTION",
+            "F3011_LH_DC": "NOT_APPLICABLE_DISTRICT_CANDIDATE_VOTE",
+            "F3018_I": "NO_APPROVED_PARTY_FOR_THIS_SLOT",
+            "F3021_A": "OPTIONAL_ALTERNATIVE_SCALE_NOT_COLLECTED",
+            "F3011_OUTGOV": "DERIVED_FROM_APPROVED_VOTE_CHOICE_AND_PARTY_METADATA",
+            "F5000_A": "APPROVED_PARTY_ORDER",
+            "F6000_LH_PL": "APPROVED_PARTY_ORDER",
+        }
+        for target, source_name in generated.items():
+            with self.subTest(target=target):
+                self.assertEqual(by_target[target].source_variable, source_name)
+                self.assertIn(by_target[target].status, {"generated_from_party_context", "generated_from_party_order"})
+
+        summary = matching_category_summary(decisions)
+        self.assertEqual(summary["party_election_items"]["awaiting_party_ordering"], 0)
+        self.assertEqual(summary["party_election_items"]["matched"], summary["party_election_items"]["total"])
+
     def test_intake_summary_detects_standardized_tables(self):
         with tempfile.TemporaryDirectory() as folder:
             study_dir = Path(folder)
