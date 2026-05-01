@@ -14,6 +14,7 @@ from src.workflow.state import WorkflowState
 from src.matching.demographics import DemographicRecodingDecision, DemographicRecodingDecisionStore
 from src.codegen.party_recoding import PartyRecodingPlanBuilder, PartyRecodeMap
 from src.district_data import DistrictStataSyntaxBuilder, load_district_merge_plan
+from src.ingest.data_loader import DataLoader
 
 
 @dataclass
@@ -46,9 +47,12 @@ class RecodingPlanBuilder:
         self.demographic_decisions: dict[str, DemographicRecodingDecision] = {}
         self.party_recode_maps: dict[str, PartyRecodeMap] = {}
         self.district_merge_plan: dict[str, Any] = {}
+        self.source_variables: set[str] | None = None
+        self.generated_variables = {variable.name for variable in self.registry.variables}
         if state.working_dir:
             self.demographic_decisions = DemographicRecodingDecisionStore(Path(state.working_dir)).load()
             self.district_merge_plan = load_district_merge_plan(state.working_dir)
+            self.source_variables = self._load_source_variables()
 
     def build(self, tracking_sheet: TrackingSheet | None = None) -> list[RecodingPlan]:
         mapping_lookup = {item.cses_var: item for item in tracking_sheet.mappings} if tracking_sheet else {}
@@ -90,14 +94,15 @@ class RecodingPlanBuilder:
         if party_recode:
             return self._plan_from_party_recode(schema_var, party_recode, mapping, base)
         if schema_var.dependency_class == "derived_metadata":
+            approved = bool(mapping and mapping.verified)
             return RecodingPlan(
                 **base,
                 plan_type="constant_metadata",
                 expression=self._metadata_expression(schema_var),
                 verification_commands=[f"tab {schema_var.name}, mis"],
                 documentation_note="Derived from study metadata and processor-approved study information.",
-                readiness_status="needs_processor_review",
-                approved=bool(mapping and mapping.verified),
+                readiness_status="ready" if approved else "needs_processor_review",
+                approved=approved,
             )
         if schema_var.dependency_class == "district_input":
             if self.district_merge_plan.get("approved"):
@@ -257,6 +262,27 @@ class RecodingPlanBuilder:
     ) -> RecodingPlan:
         source = decision.source_variable
         plan_type = decision.plan_type
+        if plan_type == "missing_not_collected" or not source:
+            plan_type = "missing_not_collected"
+            source = ""
+        elif source == schema_var.name and not self._source_variable_exists(source, allow_generated=False):
+            plan_type = "missing_not_collected"
+            source = ""
+        elif not self._source_variable_exists(source) and not decision.value_map and self._is_not_collected_note(decision):
+            plan_type = "missing_not_collected"
+            source = ""
+        elif not self._source_variable_exists(source):
+            return RecodingPlan(
+                **base,
+                plan_type="manual_processor_decision",
+                source_variables=[source],
+                expression=self._missing_value(schema_var),
+                verification_commands=[f"tab {schema_var.name}, mis"],
+                documentation_note=decision.log_note or decision.processor_note,
+                readiness_status="needs_processor_review",
+                approved=False,
+                issues=[f"Approved demographic decision references source variable not found in deposited data: {source}"],
+            )
         if plan_type == "crosswalk_required" and decision.value_map:
             plan_type = "recode"
         if plan_type == "direct_copy" and decision.value_map and not self._is_identity_map(decision.value_map):
@@ -292,6 +318,10 @@ class RecodingPlanBuilder:
         decision: DemographicRecodingDecision,
         plan_type: str,
     ) -> str:
+        if plan_type == "missing_not_collected":
+            if decision.value_map:
+                return str(next(iter(decision.value_map.values())))
+            return self._missing_value(schema_var)
         if plan_type == "offset_transform" and schema_var.name == "F2002":
             return f"{decision.source_variable} - 1"
         if plan_type == "derived_age":
@@ -302,6 +332,33 @@ class RecodingPlanBuilder:
 
     def _is_identity_map(self, value_map: dict[str, object]) -> bool:
         return all(str(key) == str(value) for key, value in value_map.items())
+
+    def _source_variable_exists(self, source: str, allow_generated: bool = True) -> bool:
+        if self.source_variables is None or not source:
+            return True
+        if source in self.source_variables:
+            return True
+        return allow_generated and source in self.generated_variables
+
+    def _is_not_collected_note(self, decision: DemographicRecodingDecision) -> bool:
+        note = f"{decision.plan_type} {decision.processor_note} {decision.log_note}".lower()
+        return "not collected" in note or "not applicable" in note or "code intentionally" in note
+
+    def _load_source_variables(self) -> set[str] | None:
+        if not self.state.data_file:
+            return None
+        data_file = Path(self.state.data_file)
+        if not data_file.is_absolute() and self.state.working_dir:
+            data_file = Path(self.state.working_dir) / data_file
+        if not data_file.exists():
+            return None
+        try:
+            info = DataLoader().load(data_file)
+        except Exception:
+            return None
+        if not info:
+            return None
+        return set(info.variables)
 
     def _metadata_expression(self, schema_var: SchemaVariable) -> str:
         country_code = self.state.country_code or "CNT"
@@ -328,11 +385,46 @@ class RecodingPlanBuilder:
         return source
 
     def _verification_commands(self, target: str, source: str, plan_type: str) -> list[str]:
-        if plan_type in {"direct_copy", "offset_transform", "recode", "replace_ladder"}:
+        if plan_type in {"direct_copy", "offset_transform"}:
+            if self._needs_compact_verification(target, source):
+                return [f"capture noisily compare {source} {target}", f"tab {target}, mis"]
+            return [f"tab {source} {target}, mis", f"tab {target}, mis"]
+        if plan_type in {"recode", "replace_ladder"}:
+            if self._needs_compact_verification(target, source):
+                return [f"capture noisily codebook {source} {target}, compact", f"tab {target}, mis"]
             return [f"tab {source} {target}, mis", f"tab {target}, mis"]
         return [f"tab {target}, mis"]
 
+    def _needs_compact_verification(self, target: str, source: str) -> bool:
+        high_cardinality_prefixes = (
+            "F1003_",
+            "F1010_",
+            "F1011_",
+            "F1019_",
+            "F1020_",
+            "F2001_Y",
+            "F2001_A",
+            "F2019",
+            "F400",
+        )
+        high_cardinality_sources = {
+            "A1",
+            "D01b",
+            "D18",
+        }
+        if target.startswith(high_cardinality_prefixes):
+            return True
+        if source in high_cardinality_sources:
+            return True
+        if target.endswith(("_Y", "_M", "_D", "_A")):
+            return True
+        return False
+
     def _missing_value(self, schema_var: SchemaVariable) -> str:
+        if schema_var.name in {"F2013", "F2014"}:
+            return "999"
+        if schema_var.name == "F2021":
+            return "99"
         if schema_var.name.startswith(("F3011", "F3016", "F3023", "F5", "F6")):
             return "999999"
         if schema_var.name.startswith(("F3018", "F3019", "F3020", "F3021")):
@@ -391,7 +483,7 @@ class PlanDrivenStataSyntaxGenerator:
             "capture log close",
             f'use "{data_file_path}", clear',
             "",
-            f'log using "cses-m6_micro_{country_code}_{year}.log", replace text',
+            f'log using "cses-m6_processing_{country_code}_{year}.log", replace text',
             "",
         ]
         current_section = ""

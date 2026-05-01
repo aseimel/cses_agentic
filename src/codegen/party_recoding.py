@@ -151,6 +151,25 @@ class PartyRecodingPlanBuilder:
             )
         if target.startswith(self.PARTY_IDENTIFIER_PREFIXES):
             code = self.party_code_for_letter(letter or "")
+            if letter and not code:
+                return PartyRecodeMap(
+                    target_variable=target,
+                    source_variable="NO_APPROVED_PARTY_FOR_THIS_SLOT",
+                    map_type="not_applicable_party_slot",
+                    value_map={"*": _party_code_missing(target)},
+                    approved=True,
+                    evidence=[f"No approved Party {letter} entry exists for this slot."],
+                )
+            if not letter:
+                return PartyRecodeMap(
+                    target_variable=target,
+                    source_variable=source or "APPROVED_PARTY_ORDER",
+                    map_type="party_context",
+                    value_map={"*": _party_code_missing(target)},
+                    approved=mapping_approved,
+                    issues=[] if mapping_approved else ["Processor must approve party or leader metadata generation."],
+                    evidence=["Derived from approved party or leader metadata."],
+                )
             return PartyRecodeMap(
                 target_variable=target,
                 source_variable="APPROVED_PARTY_ORDER",

@@ -1620,19 +1620,64 @@ def run_stata_debug(
                 error=f"Stata executable not found: {stata_path}"
             )
 
+        if os.name == "nt" and os.environ.get("CSES_ALLOW_VISIBLE_STATA", "").strip() != "1":
+            return ToolResult(
+                success=False,
+                error=(
+                    "Automatic Stata execution is blocked because the configured Stata "
+                    "executable opens a visible application window. Run the generated .do "
+                    "file in Stata manually, or set CSES_ALLOW_VISIBLE_STATA=1 for a "
+                    "developer-controlled test run."
+                ),
+                metadata={"blocked_visible_stata": True, "stata_path": stata_path},
+            )
+
         # Run Stata in batch mode
         print(f"Running Stata on: {do_file_path.name}")
 
         log_path = do_file_path.with_suffix(".log")
         result = None
+        batch_flag = "/b" if os.name == "nt" else "-b"
+        startupinfo = None
+        creationflags = 0
+        if os.name == "nt":
+            startupinfo = subprocess.STARTUPINFO()
+            startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
+            startupinfo.wShowWindow = 0
+            creationflags = getattr(subprocess, "CREATE_NO_WINDOW", 0)
+            def ps_quote(value: str) -> str:
+                return "'" + value.replace("'", "''") + "'"
+
+            powershell_command = (
+                "$p=Start-Process "
+                f"-FilePath {ps_quote(stata_path)} "
+                f"-ArgumentList @('/b','do',{ps_quote(str(do_file_path))}) "
+                f"-WorkingDirectory {ps_quote(str(do_file_path.parent))} "
+                "-WindowStyle Hidden "
+                "-Wait -PassThru; "
+                "if ($null -eq $p.ExitCode) { exit 0 } else { exit $p.ExitCode }"
+            )
+            command = [
+                "powershell.exe",
+                "-NoProfile",
+                "-ExecutionPolicy",
+                "Bypass",
+                "-Command",
+                powershell_command,
+            ]
+        else:
+            command = [stata_path, batch_flag, "do", str(do_file_path)]
         process = subprocess.Popen(
-            [stata_path, "-b", "do", str(do_file_path)],
+            command,
             cwd=str(do_file_path.parent),
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             text=True,
+            startupinfo=startupinfo,
+            creationflags=creationflags,
         )
-        deadline = time.time() + 300
+        timeout_seconds = int(os.environ.get("CSES_STATA_TIMEOUT_SECONDS", "1800"))
+        deadline = time.time() + timeout_seconds
         while True:
             if process.poll() is not None:
                 stdout, stderr = process.communicate()
@@ -1647,8 +1692,8 @@ def run_stata_debug(
                 stdout, stderr = process.communicate()
                 return ToolResult(
                     success=False,
-                    error="Stata execution timed out after 5 minutes",
-                    metadata={"timeout": True}
+                    error=f"Stata execution timed out after {timeout_seconds // 60} minutes",
+                    metadata={"timeout": True, "timeout_seconds": timeout_seconds}
                 )
             time.sleep(1)
 
