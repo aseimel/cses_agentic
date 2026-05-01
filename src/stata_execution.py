@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import json
-import os
 import re
 from dataclasses import asdict, dataclass, field
 from datetime import datetime, timezone
@@ -36,51 +35,16 @@ class StataExecutionVerifier:
         from src.stata_mcp import MCPStataRunner
 
         mcp_result = MCPStataRunner(stata_path=stata_path or "").run_do_file(do_path)
-        if mcp_result.success or mcp_result.log_path or mcp_result.error:
-            output_dataset = self._detect_output_dataset(do_path)
-            parsed_errors = self._parse_log_errors(Path(mcp_result.log_path)) if mcp_result.log_path else []
-            if mcp_result.rc not in (None, 0) and not parsed_errors:
-                parsed_errors.append({"line_number": 0, "error_line": f"Stata returned r({mcp_result.rc})."})
-            success = bool(mcp_result.success and output_dataset and not parsed_errors)
-            error = mcp_result.error
-            if mcp_result.success and not output_dataset:
-                error = "Stata completed but no processed CSES dataset was created."
-            payload = StataExecutionResult(
-                success=success,
-                do_file=str(do_path),
-                log_path=mcp_result.log_path,
-                output_dataset=str(output_dataset) if output_dataset else "",
-                error=error,
-                errors=parsed_errors[:20],
-            )
-            self.write(payload)
-            return payload
-
-        if os.name == "nt" and os.environ.get("CSES_ALLOW_VISIBLE_STATA", "").strip() != "1":
-            result = StataExecutionResult(
-                success=False,
-                do_file=str(do_path),
-                error=(
-                    "Automatic Stata execution is blocked because the configured Stata "
-                    "application opens a visible window. Run the generated .do file in "
-                    "Stata manually, then return to the workflow for review."
-                ),
-            )
-            self.write(result)
-            return result
-
-        from src.agent.tool_wrappers import run_stata_debug
-
-        result = run_stata_debug(do_path, stata_path=stata_path)
-        data = result.data if isinstance(result.data, dict) else {}
-        log_path = data.get("log_path", "")
+        log_path = mcp_result.log_path
         output_dataset = self._detect_output_dataset(do_path)
-        parsed_errors = data.get("errors", []) or []
+        parsed_errors = []
         if not parsed_errors and log_path:
             parsed_errors = self._parse_log_errors(Path(log_path))
-        success = bool(result.success and output_dataset and not parsed_errors)
-        error = result.error or ""
-        if result.success and not output_dataset:
+        if mcp_result.rc not in (None, 0) and not parsed_errors:
+            parsed_errors.append({"line_number": 0, "error_line": f"Stata returned r({mcp_result.rc})."})
+        success = bool(mcp_result.success and output_dataset and not parsed_errors)
+        error = mcp_result.error
+        if mcp_result.success and not output_dataset:
             error = "Stata completed but no processed CSES dataset was created."
         payload = StataExecutionResult(
             success=success,

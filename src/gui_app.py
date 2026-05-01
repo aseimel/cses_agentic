@@ -13,6 +13,7 @@ import json
 import subprocess
 import sys
 import threading
+import tempfile
 from pathlib import Path
 import tkinter as tk
 from tkinter import filedialog, messagebox, ttk
@@ -46,7 +47,7 @@ from src.settings import (
     load_settings,
     save_settings,
 )
-from src.stata_mcp import MCP_STATA_REPOSITORY, write_mcp_stata_config
+from src.stata_mcp import MCP_STATA_REPOSITORY, MCPStataRunner
 from src.study_kb import StudyKnowledgeBase, StudyKnowledgeBaseBuilder
 from src.ui_text import format_study_review_status, sanitize_processor_text
 from src.workflow.evidence_packet import EvidencePacketBuilder
@@ -430,14 +431,13 @@ class CSESGui(tk.Tk):
         button_row = ttk.Frame(self.settings_tab)
         button_row.pack(fill="x", pady=18)
         ttk.Button(button_row, text="Save Settings", command=self._save_settings).pack(side="left")
-        ttk.Button(button_row, text="Create MCP-Stata Config", command=self._write_mcp_config).pack(side="left", padx=8)
+        ttk.Button(button_row, text="Check Stata Connection", command=self._check_stata_connection).pack(side="left", padx=8)
 
     def _build_about_tab(self) -> None:
-        ttk.Label(self.about_tab, text="MCP-Stata integration", style="Section.TLabel").pack(anchor="w")
+        ttk.Label(self.about_tab, text="Stata connection", style="Section.TLabel").pack(anchor="w")
         text = (
-            "This prototype writes a ready-to-use MCP-Stata server config. "
-            "The server runs through uvx and connects to your local licensed Stata installation. "
-            "If Stata cannot be discovered automatically, the selected Stata executable path is passed as STATA_PATH.\n\n"
+            "The app connects to your local licensed Stata installation through its bundled Stata bridge. "
+            "If Stata cannot be discovered automatically, choose the Stata executable in Settings.\n\n"
             f"Repository: {MCP_STATA_REPOSITORY}\n\n"
             "The chat assistant remains human-in-the-loop: it should explain what it did, document findings, "
             "and wait before moving to the next workflow step."
@@ -861,10 +861,27 @@ class CSESGui(tk.Tk):
         )
         self._set_panel_text(self.context_text, text)
 
-    def _write_mcp_config(self) -> None:
+    def _check_stata_connection(self) -> None:
         stata_path = self.setting_vars.get("STATA_PATH", tk.StringVar()).get()
-        config_path = write_mcp_stata_config(Path.home() / ".cses-agent", stata_path)
-        messagebox.showinfo("MCP-Stata config created", f"MCP-Stata config was written to:\n{config_path}")
+        with tempfile.TemporaryDirectory(prefix="cses_stata_check_") as temp_dir:
+            do_path = Path(temp_dir) / "stata_connection_check.do"
+            do_path.write_text(
+                "\n".join([
+                    "clear",
+                    "set obs 1",
+                    "gen cses_connection_check = 1",
+                    'save "cses_connection_check.dta", replace',
+                ]),
+                encoding="utf-8",
+            )
+            result = MCPStataRunner(stata_path=stata_path, timeout_seconds=45).run_do_file(do_path)
+        if result.success:
+            messagebox.showinfo("Stata connection", "Stata connection works.")
+        else:
+            messagebox.showerror(
+                "Stata connection",
+                result.error or "Stata could not be reached. Check the selected executable path.",
+            )
 
     def _build_refresh_study_kb(self) -> None:
         state = self.loaded_state or self._load_state_from_folder(Path(self.folder_var.get()).expanduser())

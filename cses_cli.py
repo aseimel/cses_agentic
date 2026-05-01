@@ -1653,6 +1653,11 @@ Examples:
 
 
 if __name__ == "__main__":
+    if len(sys.argv) > 1 and sys.argv[1] == "__cses_stata_mcp_runner__":
+        from src.stata_mcp_runner import main as stata_mcp_runner_main
+
+        sys.argv = [sys.argv[0], *sys.argv[2:]]
+        raise SystemExit(stata_mcp_runner_main())
     try:
         main()
     except Exception as e:

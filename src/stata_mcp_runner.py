@@ -51,7 +51,8 @@ async def _run(do_path: Path, stata_path: str, max_output_lines: int) -> dict:
 
     env = {
         **os.environ,
-        "MCP_STATA_LOGLEVEL": os.environ.get("MCP_STATA_LOGLEVEL", "WARNING"),
+        "MCP_STATA_LOGLEVEL": os.environ.get("MCP_STATA_LOGLEVEL", "ERROR"),
+        "PYTHONWARNINGS": os.environ.get("PYTHONWARNINGS", "ignore::DeprecationWarning"),
     }
     if stata_path:
         env["STATA_PATH"] = stata_path

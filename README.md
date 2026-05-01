@@ -119,9 +119,8 @@ CSES_USE_OPENWEBUI=false
 STATA_PATH=C:\Program Files\Stata18\StataMP-64.exe
 ```
 
-The GUI can also create an MCP-Stata config snippet at
-`~/.cses-agent/mcp-stata.json`. MCP-Stata runs through `uvx` and uses the
-selected `STATA_PATH` when Stata cannot be discovered automatically.
+Stata execution runs through the app's bundled Stata bridge. Select the Stata
+executable in the GUI Settings tab, or set `STATA_PATH` in `~/.cses-agent/.env`.
 
 ## Project Context
 

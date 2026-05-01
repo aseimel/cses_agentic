@@ -1567,7 +1567,7 @@ def run_stata_debug(
     Run a Stata .do file and return errors for debugging.
 
     This tool allows the agent to:
-    1. Execute a .do file in Stata batch mode
+    1. Execute a .do file through the package-owned Stata bridge
     2. Parse the log file for errors
     3. Return structured error information for fixing
 
@@ -1581,10 +1581,10 @@ def run_stata_debug(
         - data: Dict with log content, errors, and context
         - metadata: Execution details
     """
-    import os
-    import subprocess
     import re
+    import os
     from src.settings import apply_settings_to_environment
+    from src.stata_mcp import MCPStataRunner
 
     try:
         apply_settings_to_environment()
@@ -1620,53 +1620,11 @@ def run_stata_debug(
                 error=f"Stata executable not found: {stata_path}"
             )
 
-        if os.name == "nt" and os.environ.get("CSES_ALLOW_VISIBLE_STATA", "").strip() != "1":
-            return ToolResult(
-                success=False,
-                error=(
-                    "Automatic Stata execution is blocked because the configured Stata "
-                    "executable opens a visible application window. Run the generated .do "
-                    "file in Stata manually, or set CSES_ALLOW_VISIBLE_STATA=1 for a "
-                    "developer-controlled test run."
-                ),
-                metadata={"blocked_visible_stata": True, "stata_path": stata_path},
-            )
-
-        # Run Stata in batch mode
         print(f"Running Stata on: {do_file_path.name}")
-
-        log_path = do_file_path.with_suffix(".log")
-        result = None
-        command = [stata_path, "-b", "do", str(do_file_path)]
-        process = subprocess.Popen(
-            command,
-            cwd=str(do_file_path.parent),
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            text=True,
-        )
-        timeout_seconds = int(os.environ.get("CSES_STATA_TIMEOUT_SECONDS", "1800"))
-        deadline = time.time() + timeout_seconds
-        while True:
-            if process.poll() is not None:
-                stdout, stderr = process.communicate()
-                result = type("CompletedProcess", (), {
-                    "stdout": stdout,
-                    "stderr": stderr,
-                    "returncode": process.returncode,
-                })()
-                break
-            if time.time() > deadline:
-                process.kill()
-                stdout, stderr = process.communicate()
-                return ToolResult(
-                    success=False,
-                    error=f"Stata execution timed out after {timeout_seconds // 60} minutes",
-                    metadata={"timeout": True, "timeout_seconds": timeout_seconds}
-                )
-            time.sleep(1)
+        result = MCPStataRunner(stata_path=stata_path).run_do_file(do_file_path)
 
         # Read log file
+        log_path = Path(result.log_path) if result.log_path else do_file_path.with_suffix(".log")
         if not log_path.exists():
             # Try smcl file
             smcl_path = do_file_path.with_suffix(".smcl")
@@ -1676,11 +1634,11 @@ def run_stata_debug(
         if not log_path.exists():
             return ToolResult(
                 success=False,
-                error="Stata ran but no log file was generated",
+                error=result.error or "Stata ran but no log file was generated",
                 data={
                     "stdout": result.stdout,
                     "stderr": result.stderr,
-                    "returncode": result.returncode
+                    "returncode": result.rc,
                 }
             )
 
@@ -1722,7 +1680,15 @@ def run_stata_debug(
                         "context": context
                     })
 
-        if errors:
+        if result.rc not in (None, 0) and not errors:
+            errors.append({
+                "line_number": 0,
+                "error_code": str(result.rc),
+                "error_line": f"Stata returned r({result.rc}).",
+                "context": result.stderr or result.stdout[-1000:],
+            })
+
+        if errors or not result.success:
             # Build error summary for the agent
             error_summary = []
             for e in errors[:10]:  # Limit to first 10 errors
@@ -1742,9 +1708,10 @@ def run_stata_debug(
                 },
                 metadata={
                     "total_errors": len(errors),
-                    "log_lines": len(lines)
+                    "log_lines": len(lines),
+                    "stata_bridge": "mcp-stata",
                 },
-                error=f"Found {len(errors)} error(s) in Stata execution"
+                error=result.error or f"Found {len(errors)} error(s) in Stata execution"
             )
         else:
             return ToolResult(
@@ -1756,7 +1723,8 @@ def run_stata_debug(
                 },
                 metadata={
                     "log_lines": len(lines),
-                    "log_size": len(log_content)
+                    "log_size": len(log_content),
+                    "stata_bridge": "mcp-stata",
                 }
             )
 

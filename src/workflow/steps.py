@@ -2152,12 +2152,13 @@ class StepExecutor:
         check_run_issues = []
         stata_status = getattr(self.state, "stata_execution_status", {}) or {}
         if stata_status.get("success") and stata_status.get("output_dataset"):
-            from src.agent.tool_wrappers import run_stata_debug
+            from src.stata_mcp import MCPStataRunner
 
+            runner = MCPStataRunner(stata_path=kwargs.get("stata_path") or "")
             for generated in generated_checks:
-                result = run_stata_debug(generated.path)
-                if isinstance(result.data, dict) and result.data.get("log_path"):
-                    check_run_artifacts.append(result.data.get("log_path"))
+                result = runner.run_do_file(generated.path)
+                if result.log_path:
+                    check_run_artifacts.append(result.log_path)
                 if not result.success:
                     check_run_issues.append(f"{generated.path.name} did not pass cleanly: {result.error or 'review log'}")
         check_files = list(micro_dir.glob("data_checks/*.do")) + list(micro_dir.glob("*check*.do"))

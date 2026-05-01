@@ -1,9 +1,4 @@
-"""
-MCP-Stata configuration helpers.
-
-MCP-Stata is distributed as a uvx runnable tool:
-uvx --refresh --refresh-package mcp-stata --from mcp-stata@latest mcp-stata
-"""
+"""Package-owned Stata bridge built on the installed MCP-Stata dependency."""
 
 from __future__ import annotations
 
@@ -17,15 +12,8 @@ from typing import Any
 
 
 MCP_STATA_REPOSITORY = "https://github.com/tmonk/mcp-stata"
-MCP_STATA_COMMAND = "uvx"
-MCP_STATA_ARGS = [
-    "--refresh",
-    "--refresh-package",
-    "mcp-stata",
-    "--from",
-    "mcp-stata@latest",
-    "mcp-stata",
-]
+MCP_STATA_COMMAND = sys.executable
+MCP_STATA_ARGS = ["-m", "mcp_stata.server"]
 
 
 def build_mcp_stata_config(stata_path: str = "") -> dict:
@@ -40,7 +28,7 @@ def build_mcp_stata_config(stata_path: str = "") -> dict:
 
 
 def write_mcp_stata_config(config_dir: Path, stata_path: str = "") -> Path:
-    """Write a user-visible MCP-Stata config snippet."""
+    """Write an optional MCP-Stata config snippet for external MCP clients."""
     config_dir.mkdir(parents=True, exist_ok=True)
     config_path = config_dir / "mcp-stata.json"
     config = build_mcp_stata_config(stata_path)
@@ -80,16 +68,7 @@ class MCPStataRunner:
                 success=False,
                 error="MCP-Stata is not installed. Install the mcp and mcp-stata Python packages.",
             )
-        command = [
-            sys.executable,
-            "-m",
-            "src.stata_mcp_runner",
-            str(Path(do_path)),
-            "--stata-path",
-            self.stata_path,
-            "--max-output-lines",
-            os.environ.get("CSES_MCP_STATA_MAX_OUTPUT_LINES", "2000"),
-        ]
+        command = self._runner_command(Path(do_path))
         try:
             process = subprocess.Popen(
                 command,
@@ -149,6 +128,29 @@ class MCPStataRunner:
             os.kill(pid, 9)
         except Exception:
             pass
+
+    def _runner_command(self, do_path: Path) -> list[str]:
+        max_output_lines = os.environ.get("CSES_MCP_STATA_MAX_OUTPUT_LINES", "2000")
+        if getattr(sys, "frozen", False):
+            return [
+                sys.executable,
+                "__cses_stata_mcp_runner__",
+                str(do_path),
+                "--stata-path",
+                self.stata_path,
+                "--max-output-lines",
+                max_output_lines,
+            ]
+        return [
+            sys.executable,
+            "-m",
+            "src.stata_mcp_runner",
+            str(do_path),
+            "--stata-path",
+            self.stata_path,
+            "--max-output-lines",
+            max_output_lines,
+        ]
 
     def _extract_runner_payload(self, stdout: str) -> str:
         for line in reversed(stdout.splitlines()):
