@@ -7,6 +7,7 @@ from pathlib import Path
 
 from src.standards.schema import SchemaRegistry
 from src.workflow.state import WorkflowState
+from src.codegen.party_recoding import PartyRecodingPlanBuilder
 
 
 @dataclass
@@ -25,6 +26,7 @@ class LabelFileGenerator:
     def generate_micro_labels(self, output_dir: Path) -> ArtifactResult:
         output_dir.mkdir(parents=True, exist_ok=True)
         path = output_dir / f"{self.state.country_code or 'CNT'}_{self.state.year or 'YEAR'}_micro_label_updates.do"
+        party_builder = PartyRecodingPlanBuilder(Path(self.state.working_dir)) if self.state.working_dir else None
         lines = [
             "* CSES release-specific micro label updates",
             "* Source: cses_wiki/procedures/value-label-updates.md",
@@ -33,6 +35,27 @@ class LabelFileGenerator:
         ]
         for item in self.registry.variables:
             lines.append(f'capture label variable {item.name} "{_stata_label(item.description)}"')
+        if party_builder and party_builder.approved:
+            lines.extend(["", "* Party and leader numeric labels from approved Party Order Agreement"])
+            label_names = ["F3023_3_", "F5000_", "F5000_L_", "F6000_"]
+            for label_name in label_names:
+                for letter in party_builder.party_letters():
+                    code = party_builder.party_code_for_letter(letter)
+                    name = party_builder.party_name_for_letter(letter)
+                    if code and name:
+                        lines.append(f'label define {label_name} {code} "{_stata_label(code + ". " + name)}", modify')
+            lines.extend([
+                "capture label values F3023_3 F3023_3_",
+                "capture label values F5000_A F5000_",
+                "capture label values F5000_B F5000_",
+                "capture label values F5000_C F5000_",
+                "capture label values F5000_D F5000_",
+                "capture label values F5000_E F5000_",
+                "capture label values F5000_F F5000_",
+                "capture label values F5000_G F5000_",
+                "capture label values F5000_H F5000_",
+                "capture label values F5000_I F5000_",
+            ])
         path.write_text("\n".join(lines) + "\n", encoding="utf-8")
         return ArtifactResult(path=path)
 
@@ -50,6 +73,8 @@ class CheckFileGenerator:
             self._write_check(output_dir / "validation_checks.do", "validation"),
             self._write_check(output_dir / "missing_value_checks.do", "missing_value"),
             self._write_check(output_dir / "party_code_checks.do", "party_code", prefix=("F5", "F6")),
+            self._write_check(output_dir / "label_checks.do", "label"),
+            self._write_check(output_dir / "theoretical_inconsistency_checks.do", "theoretical_inconsistency"),
             self._write_check(output_dir / "district_checks.do", "district", prefix=("F4",)),
         ]
 
@@ -65,6 +90,9 @@ class CheckFileGenerator:
             f'log using "{path.with_suffix(".smcl").name}", replace',
             "",
         ]
+        dataset = (getattr(self.state, "stata_execution_status", {}) or {}).get("output_dataset", "")
+        if dataset:
+            lines.extend([f'use "{dataset}", clear', ""])
         for name in variables:
             lines.extend([
                 f"capture confirm variable {name}",
@@ -107,6 +135,64 @@ class DocumentationRenderer:
         output_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
         return ArtifactResult(path=output_path)
 
+    def render_processing_log(self, output_path: Path) -> ArtifactResult:
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        party_status = getattr(self.state, "party_order_status", {}) or {}
+        recoding = getattr(self.state, "recoding_coverage", {}) or {}
+        stata = getattr(self.state, "stata_execution_status", {}) or {}
+        readiness = getattr(self.state, "final_readiness", {}) or {}
+        lines = [
+            "Log File Instructions",
+            "Review each section before final deposit.",
+            "",
+            "Log File Notes",
+            f"Study: {self.state.country} {self.state.year}",
+            "",
+            "Questions for Collaborator",
+        ]
+        pending = self.state.get_pending_questions()
+        candidates = self.state.candidate_collaborator_questions or []
+        if pending:
+            lines.extend(f"- {item.get('question')}" for item in pending)
+        else:
+            lines.append("- No confirmed outgoing questions recorded.")
+        if candidates:
+            lines.append("Potential questions for processor review:")
+            lines.extend(f"- {item.get('question')}" for item in candidates)
+        lines.extend([
+            "",
+            "Things To Do Before Releasing the Data",
+        ])
+        issues = readiness.get("issues", []) or []
+        lines.extend(f"- {issue}" for issue in issues) if issues else lines.append("- No unresolved release issues recorded.")
+        lines.extend([
+            "",
+            "Election Study Notes and Appendices",
+            "Election Summary",
+            "Review election context, party order, and macro agreement before final release.",
+            "",
+            "Overview of Study Design and Weights",
+        ])
+        evidence = self.state.evidence_index or {}
+        for key in ("sample_design", "sample_size", "response_rate", "mode", "fieldwork_dates", "weights"):
+            value = evidence.get(key) or "To be confirmed"
+            lines.append(f"{key.replace('_', ' ').title()}: {value}")
+        lines.extend([
+            "",
+            "Parties and Leaders",
+            f"Party order status: {party_status.get('status', 'not reviewed')}",
+            f"Party count: {party_status.get('party_count', 0)}",
+            "",
+            "Variable Matching and Recoding",
+            f"Approved recoding plans: {recoding.get('approved_count', 0)}/{recoding.get('target_count', 0)}",
+            "",
+            "Stata Execution and Checks",
+            f"Stata run: {'clean' if stata.get('success') else 'not clean or not run'}",
+            f"Output dataset: {stata.get('output_dataset', '')}",
+        ])
+        output_path.write_text("\n".join(str(item) for item in lines) + "\n", encoding="utf-8")
+        return ArtifactResult(path=output_path)
+
 
 class FinalReadinessValidator:
     """Evaluate final release readiness against schema-backed gates."""
@@ -116,6 +202,10 @@ class FinalReadinessValidator:
         self.registry = registry or SchemaRegistry()
 
     def evaluate(self, working_dir: Path) -> dict:
+        exclude_district = (
+            getattr(self.state, "readiness_mode", "") == "release_ready_except_district"
+            and bool(getattr(self.state, "district_excluded_by_processor", False))
+        )
         issues = []
         do_files = list((working_dir / "micro").glob("cses-m6_micro_*.do"))
         data_files = list((working_dir / "micro").glob("cses-m6_micro_*.dta"))
@@ -131,8 +221,8 @@ class FinalReadinessValidator:
             issues.append("Recoding plans artifact not found.")
         recoding = getattr(self.state, "recoding_coverage", {}) or {}
         if recoding:
-            target_count = recoding.get("target_count", self.registry.required_count())
-            approved_count = recoding.get("approved_count", 0)
+            target_count = recoding.get("non_district_target_count" if exclude_district else "target_count", self.registry.required_count())
+            approved_count = recoding.get("non_district_approved_count" if exclude_district else "approved_count", 0)
             if approved_count < target_count:
                 issues.append(f"Recoding plan approvals incomplete: {approved_count}/{target_count}.")
         stata_status = getattr(self.state, "stata_execution_status", {}) or {}
@@ -144,14 +234,26 @@ class FinalReadinessValidator:
             issues.append(f"{len(self.state.candidate_collaborator_questions)} potential collaborator question(s) require processor review.")
         tracking = getattr(self.state, "workflow_tracking", None) or {}
         target_count = tracking.get("target_count") or self.registry.required_count()
+        if exclude_district:
+            target_count = len([item for item in self.registry.variables if item.dependency_class != "district_input"])
         generated_count = 0
         if do_files:
             text = max(do_files, key=lambda p: p.stat().st_mtime).read_text(encoding="utf-8", errors="replace")
-            generated_count = sum(1 for name in self.registry.ordered_names() if name in text)
+            names = [
+                item.name for item in self.registry.variables
+                if not (exclude_district and item.dependency_class == "district_input")
+            ]
+            generated_count = sum(1 for name in names if name in text)
             if generated_count < target_count:
                 issues.append(f"Generated syntax covers {generated_count}/{target_count} schema variables.")
+        if exclude_district:
+            issues = [
+                issue for issue in issues
+                if "district" not in issue.lower()
+            ]
         return {
             "status": "ready" if not issues else "needs_review",
+            "mode": "release_ready_except_district" if exclude_district else "full_release",
             "schema_target_count": target_count,
             "syntax_schema_coverage": generated_count,
             "issues": issues,

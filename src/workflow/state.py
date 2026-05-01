@@ -225,6 +225,8 @@ class WorkflowState:
     party_order_decision_path: str = ""
     party_order_status: dict = field(default_factory=dict)
     stata_execution_status: dict = field(default_factory=dict)
+    readiness_mode: str = "full_release"
+    district_excluded_by_processor: bool = False
     benchmark_scorecard_path: str = ""
 
     # Study-specific KB built from deposited files and deterministic data summaries
@@ -529,6 +531,8 @@ class WorkflowState:
             "recoding_plans_path": self.recoding_plans_path,
             "approval_status": self.approval_status,
             "stata_execution_status": self.stata_execution_status,
+            "readiness_mode": self.readiness_mode,
+            "district_excluded_by_processor": self.district_excluded_by_processor,
             "benchmark_scorecard_path": self.benchmark_scorecard_path,
             "study_kb_status": self.study_kb_status,
             "study_kb_path": self.study_kb_path,

@@ -12,6 +12,7 @@ from src.codegen.sheet_reader import TrackingSheet, VariableMapping
 from src.standards.schema import SchemaRegistry, SchemaVariable
 from src.workflow.state import WorkflowState
 from src.matching.demographics import DemographicRecodingDecision, DemographicRecodingDecisionStore
+from src.codegen.party_recoding import PartyRecodingPlanBuilder, PartyRecodeMap
 
 
 @dataclass
@@ -42,11 +43,17 @@ class RecodingPlanBuilder:
         self.state = state
         self.registry = registry or SchemaRegistry()
         self.demographic_decisions: dict[str, DemographicRecodingDecision] = {}
+        self.party_recode_maps: dict[str, PartyRecodeMap] = {}
         if state.working_dir:
             self.demographic_decisions = DemographicRecodingDecisionStore(Path(state.working_dir)).load()
 
     def build(self, tracking_sheet: TrackingSheet | None = None) -> list[RecodingPlan]:
         mapping_lookup = {item.cses_var: item for item in tracking_sheet.mappings} if tracking_sheet else {}
+        if self.state.working_dir and mapping_lookup:
+            party_builder = PartyRecodingPlanBuilder(Path(self.state.working_dir))
+            party_maps = party_builder.build_maps(mapping_lookup, self.state.data_file or "")
+            party_builder.write(party_maps)
+            self.party_recode_maps = {item.target_variable: item for item in party_maps}
         plans: list[RecodingPlan] = []
         for schema_var in self.registry.variables:
             mapping = mapping_lookup.get(schema_var.name)
@@ -76,6 +83,9 @@ class RecodingPlanBuilder:
         demographic_decision = self.demographic_decisions.get(schema_var.name)
         if demographic_decision and demographic_decision.approved:
             return self._plan_from_demographic_decision(schema_var, demographic_decision, base)
+        party_recode = self.party_recode_maps.get(schema_var.name)
+        if party_recode:
+            return self._plan_from_party_recode(schema_var, party_recode, mapping, base)
         if schema_var.dependency_class == "derived_metadata":
             return RecodingPlan(
                 **base,
@@ -87,15 +97,17 @@ class RecodingPlanBuilder:
                 approved=bool(mapping and mapping.verified),
             )
         if schema_var.dependency_class in {"macro_or_party_input", "district_input"}:
+            status = "blocked_district_input" if schema_var.dependency_class == "district_input" else "blocked_external_input"
+            issue = "District data input or processor decision required." if schema_var.dependency_class == "district_input" else "External input or processor decision required."
             return RecodingPlan(
                 **base,
                 plan_type="external_input_required",
                 source_variables=["EXTERNAL_INPUT_REQUIRED"],
                 verification_commands=[f"tab {schema_var.name}, mis"],
                 documentation_note="Requires macro/election-result/party/district input or a recorded processor decision.",
-                readiness_status="blocked_external_input",
+                readiness_status=status,
                 approved=False,
-                issues=["External input or processor decision required."],
+                issues=[issue],
             )
         if not mapping:
             return RecodingPlan(
@@ -153,6 +165,63 @@ class RecodingPlanBuilder:
             readiness_status=readiness,
             approved=approved,
             issues=issues,
+        )
+
+    def _plan_from_party_recode(
+        self,
+        schema_var: SchemaVariable,
+        party_recode: PartyRecodeMap,
+        mapping: VariableMapping | None,
+        base: dict,
+    ) -> RecodingPlan:
+        source = party_recode.source_variable
+        if party_recode.map_type in {"party_identifier", "not_applicable", "not_applicable_party_slot", "not_collected", "derived_party_metadata", "party_context"}:
+            plan_type = "constant_metadata"
+            expression = next(iter(party_recode.value_map.values()), self._missing_value(schema_var))
+            source_variables = [source] if source else []
+            recode_rules = []
+            missing_rules = []
+            verification = [f"tab {schema_var.name}, mis"]
+        elif party_recode.map_type == "party_vote_choice":
+            plan_type = "recode"
+            expression = source
+            source_variables = [source]
+            recode_rules = [
+                {"from": key, "to": value, "label": "Approved party order"}
+                for key, value in party_recode.value_map.items()
+            ]
+            missing_rules = [
+                {"from": key, "to": value, "label": "CSES missing"}
+                for key, value in party_recode.missing_map.items()
+            ]
+            verification = self._verification_commands(schema_var.name, source, plan_type)
+        elif party_recode.map_type == "party_scale_direct":
+            plan_type = "direct_copy"
+            expression = source
+            source_variables = [source]
+            recode_rules = []
+            missing_rules = []
+            verification = self._verification_commands(schema_var.name, source, plan_type)
+        else:
+            plan_type = "manual_processor_decision"
+            expression = self._missing_value(schema_var)
+            source_variables = [source] if source else []
+            recode_rules = []
+            missing_rules = []
+            verification = [f"tab {schema_var.name}, mis"]
+        approved = party_recode.approved or bool(mapping and mapping.verified and not party_recode.issues)
+        return RecodingPlan(
+            **base,
+            plan_type=plan_type,
+            source_variables=source_variables,
+            expression=expression,
+            recode_rules=recode_rules,
+            missing_rules=missing_rules,
+            verification_commands=verification,
+            documentation_note="Party recoding uses the approved Party Order Agreement.",
+            readiness_status="ready" if approved else "needs_processor_review",
+            approved=approved,
+            issues=[] if approved else party_recode.issues,
         )
 
     def _plan_from_demographic_decision(
@@ -239,6 +308,10 @@ class RecodingPlanBuilder:
         return [f"tab {target}, mis"]
 
     def _missing_value(self, schema_var: SchemaVariable) -> str:
+        if schema_var.name.startswith(("F3011", "F3016", "F3023", "F5", "F6")):
+            return "999999"
+        if schema_var.name.startswith(("F3018", "F3019", "F3020", "F3021")):
+            return "99"
         if schema_var.name.startswith(("F4", "F5", "F6")):
             return "999999"
         if schema_var.name.endswith(("_Y", "_A")):
@@ -252,11 +325,12 @@ class StataSyntaxPlanner:
     def __init__(self, registry: SchemaRegistry | None = None):
         self.registry = registry or SchemaRegistry()
 
-    def unresolved_required(self, plans: list[RecodingPlan]) -> list[RecodingPlan]:
+    def unresolved_required(self, plans: list[RecodingPlan], exclude_district: bool = False) -> list[RecodingPlan]:
         return [
             plan for plan in plans
             if plan.readiness_status != "ready"
             and plan.plan_type not in {"missing_not_collected"}
+            and not (exclude_district and plan.dependency_class == "district_input")
         ]
 
 
@@ -275,6 +349,7 @@ class PlanDrivenStataSyntaxGenerator:
         country_code: str,
         year: str,
         draft: bool = False,
+        exclude_district: bool = False,
     ) -> Path:
         plan_lookup = {plan.target_variable: plan for plan in plans}
         lines = [
@@ -295,6 +370,8 @@ class PlanDrivenStataSyntaxGenerator:
         ]
         current_section = ""
         for schema_var in self.registry.variables:
+            if exclude_district and schema_var.dependency_class == "district_input":
+                continue
             if schema_var.section != current_section:
                 current_section = schema_var.section
                 lines.extend(self._section_header(current_section))
@@ -307,7 +384,11 @@ class PlanDrivenStataSyntaxGenerator:
                     issues=["No recoding plan available."],
                 )
             lines.extend(self._plan_lines(plan, draft=draft))
-        ordered = " ".join(self.registry.ordered_names())
+        ordered_names = [
+            name for name in self.registry.ordered_names()
+            if not (exclude_district and (self.registry.by_name(name) and self.registry.by_name(name).dependency_class == "district_input"))
+        ]
+        ordered = " ".join(ordered_names)
         lines.extend([
             "",
             "*-------------------------------------------------------------------------*",

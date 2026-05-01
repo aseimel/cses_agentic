@@ -324,6 +324,12 @@ class TrackingSheetReader:
             "derived_generation",
             "crosswalk_required",
             "missing_not_collected",
+            "party_order_agreement_required",
+            "party_order_information",
+            "party_vote_choice",
+            "party_scale_direct",
+            "not_applicable",
+            "not_collected",
         ):
             transform_type = "direct"
 

@@ -1671,6 +1671,15 @@ class StepExecutor:
 
         print("Step 7c: Generating Stata code from tracking sheet...")
         self.active_logger.log_message("Starting deterministic code generation (Step 7c)...")
+        exclude_district = bool(kwargs.get("exclude_district") or kwargs.get("non_district_benchmark"))
+        if exclude_district:
+            self.state.readiness_mode = "release_ready_except_district"
+            self.state.district_excluded_by_processor = True
+            self.state.record_processor_decision(
+                7,
+                "District data not included in this run",
+                "Non-district benchmark/finalization path selected by processor.",
+            )
 
         # Find tracking sheet
         if tracking_sheet:
@@ -1722,10 +1731,14 @@ class StepExecutor:
             for plan in recoding_plans:
                 plan_counts[plan.readiness_status] = plan_counts.get(plan.readiness_status, 0) + 1
             approved_count = sum(1 for plan in recoding_plans if plan.approved)
+            non_district_plans = [plan for plan in recoding_plans if plan.dependency_class != "district_input"]
+            non_district_approved = sum(1 for plan in non_district_plans if plan.approved)
             self.state.recoding_plans_path = str(recoding_path)
             self.state.recoding_coverage = {
                 "target_count": len(recoding_plans),
                 "approved_count": approved_count,
+                "non_district_target_count": len(non_district_plans),
+                "non_district_approved_count": non_district_approved,
                 "readiness_counts": plan_counts,
             }
             self.state.approval_status = {
@@ -1735,7 +1748,16 @@ class StepExecutor:
             self.state.save()
 
             # Check for unverified mappings
-            needs_review = tracking_data.get_needs_review()
+            from src.standards.schema import SchemaRegistry
+            schema_registry = SchemaRegistry()
+            needs_review = [
+                item for item in tracking_data.get_needs_review()
+                if not (
+                    exclude_district
+                    and schema_registry.by_name(item.cses_var)
+                    and schema_registry.by_name(item.cses_var).dependency_class == "district_input"
+                )
+            ]
             if needs_review:
                 print(f"  Warning: {len(needs_review)} mappings need review")
                 for m in needs_review[:5]:
@@ -1760,13 +1782,16 @@ class StepExecutor:
             # Generate code
             print("  Generating Stata code...")
             planner = StataSyntaxPlanner()
-            unresolved = planner.unresolved_required(recoding_plans)
+            unresolved = planner.unresolved_required(recoding_plans, exclude_district=exclude_district)
             if unresolved:
                 return StepResult(
                     success=False,
                     message="Recoding plans are not ready for final Stata generation",
                     artifacts=[str(sheet_path), str(recoding_path)],
-                    issues=[f"{len(unresolved)} recoding plan(s) require processor decision or external input"],
+                    issues=[
+                        f"{len(unresolved)} recoding plan(s) require processor decision or external input",
+                        *[f"{plan.target_variable}: {', '.join(plan.issues[:2]) or plan.readiness_status}" for plan in unresolved[:20]],
+                    ],
                     next_action="Resolve recoding plan issues, external inputs, or recorded processor decisions before rerunning Step 7c"
                 )
 
@@ -1782,6 +1807,7 @@ class StepExecutor:
                 country_name=self.state.country or country_code,
                 data_file_path=self.state.data_file or "",
                 draft=False,
+                exclude_district=exclude_district,
             )
             result = type("GenerationResult", (), {
                 "success": generated_path.exists(),
@@ -1834,7 +1860,7 @@ class StepExecutor:
         This step runs the generated .do file through Stata and checks for errors.
         If errors are found, the agent can use the debugging tools to fix them.
         """
-        from src.agent.tool_wrappers import run_stata_debug
+        from src.stata_execution import StataExecutionVerifier
 
         self.active_logger.log_message("Starting Stata debugging...")
 
@@ -1861,27 +1887,15 @@ class StepExecutor:
 
         self.active_logger.log_message(f"Running Stata on: {do_path.name}")
 
-        # Run Stata debug
-        result = run_stata_debug(do_path)
-        import json
-        from datetime import datetime, timezone
-
-        execution_payload = {
-            "generated_at": datetime.now(timezone.utc).isoformat(),
-            "do_file": str(do_path),
-            "success": bool(result.success),
-            "error": result.error,
-            "data": result.data if isinstance(result.data, dict) else {},
-            "metadata": result.metadata or {},
-        }
         execution_path = self.working_dir / ".cses" / "stata_execution.json"
-        execution_path.parent.mkdir(parents=True, exist_ok=True)
-        execution_path.write_text(json.dumps(execution_payload, indent=2, ensure_ascii=False), encoding="utf-8")
+        result = StataExecutionVerifier(self.working_dir).run(do_path, stata_path=kwargs.get("stata_path"))
         self.state.stata_execution_status = {
             "success": bool(result.success),
             "do_file": str(do_path),
             "execution_path": str(execution_path),
             "error": result.error or "",
+            "output_dataset": result.output_dataset,
+            "log_path": result.log_path,
         }
         self.state.save()
 
@@ -1890,15 +1904,14 @@ class StepExecutor:
             return StepResult(
                 success=True,
                 message="Stata executed .do file successfully",
-                artifacts=[result.data.get("log_path", str(do_path)), str(execution_path)],
+                artifacts=[result.log_path or str(do_path), result.output_dataset, str(execution_path)],
                 next_action="Review log file and proceed to quality checks"
             )
         else:
             # Get error details for the agent to fix
-            if result.data and "errors" in result.data:
-                error_count = result.data.get("error_count", 0)
-                errors = result.data.get("errors", [])
-                error_summary = result.data.get("error_summary", "")
+            if result.errors:
+                error_count = len(result.errors)
+                errors = result.errors
 
                 self.active_logger.log_message(
                     f"Stata found {error_count} error(s) - debugging required",
@@ -1910,18 +1923,18 @@ class StepExecutor:
                     "type": "stata_debug",
                     "do_file": str(do_path),
                     "errors": errors,
-                    "error_summary": error_summary
+                    "error_summary": result.error,
                 }]
                 self.state.save()
 
-                issues = [f"Line {e['line_number']}: {e['error_line']}" for e in errors[:5]]
+                issues = [f"Line {e.get('line_number')}: {e.get('error_line')}" for e in errors[:5]]
 
                 return StepResult(
                     success=False,
-                    message=f"Stata found {error_count} error(s) in .do file. Use debugging tools to fix.",
-                    artifacts=[result.data.get("log_path", ""), str(execution_path)],
+                    message=f"Stata found {error_count} error(s) in .do file.",
+                    artifacts=[result.log_path, str(execution_path)],
                     issues=issues,
-                    next_action="Use run_stata_debug, read_do_file, and fix_do_file_line tools to debug"
+                    next_action="Fix reproducible syntax errors, rerun Stata, and ask the processor before changing any coding decision"
                 )
             else:
                 return StepResult(
@@ -2052,6 +2065,18 @@ class StepExecutor:
         micro_dir = self.working_dir / "micro"
         data_checks_dir = micro_dir / "data_checks"
         generated_checks = CheckFileGenerator(self.state).generate_checks(data_checks_dir)
+        check_run_artifacts = []
+        check_run_issues = []
+        stata_status = getattr(self.state, "stata_execution_status", {}) or {}
+        if stata_status.get("success") and stata_status.get("output_dataset"):
+            from src.agent.tool_wrappers import run_stata_debug
+
+            for generated in generated_checks:
+                result = run_stata_debug(generated.path)
+                if isinstance(result.data, dict) and result.data.get("log_path"):
+                    check_run_artifacts.append(result.data.get("log_path"))
+                if not result.success:
+                    check_run_issues.append(f"{generated.path.name} did not pass cleanly: {result.error or 'review log'}")
         check_files = list(micro_dir.glob("data_checks/*.do")) + list(micro_dir.glob("*check*.do"))
         check_outputs = list(micro_dir.glob("data_checks/*.log")) + list(micro_dir.glob("data_checks/*.smcl")) + list(micro_dir.glob("*check*.log")) + list(micro_dir.glob("*check*.smcl"))
         issues = []
@@ -2099,6 +2124,9 @@ class StepExecutor:
         ]
         lines.extend(f"- File: {path.relative_to(self.working_dir)}" for path in check_files)
         lines.extend(f"- Output: {path.relative_to(self.working_dir)}" for path in check_outputs)
+        if check_run_issues:
+            lines.extend(["", "## Check Results Needing Review"])
+            lines.extend(f"- {issue}" for issue in check_run_issues)
         report_path.write_text("\n".join(lines), encoding="utf-8")
         for issue in issues:
             self.active_logger.add_todo_item(issue)
@@ -2106,8 +2134,8 @@ class StepExecutor:
         return StepResult(
             success=True,
             message="CSES check-file review completed",
-            artifacts=[str(report_path)] + [str(item.path) for item in generated_checks] + [str(path) for path in check_files + check_outputs],
-            issues=issues + warnings,
+            artifacts=[str(report_path)] + [str(item.path) for item in generated_checks] + [str(path) for path in check_files + check_outputs] + check_run_artifacts,
+            issues=issues + warnings + check_run_issues,
             next_action="Review any warnings and draft collaborator questions if needed"
         )
 
@@ -2283,11 +2311,18 @@ class StepExecutor:
 
     def _step_15(self, **kwargs) -> StepResult:
         """Step 15: Transfer ESNs to Codebook."""
+        from src.standards.artifacts import DocumentationRenderer
+
         doc_dir = self.working_dir / "micro" / "Documentation"
         doc_dir.mkdir(parents=True, exist_ok=True)
         esn_path = doc_dir / f"ESN - {self.state.country} {self.state.year}.txt"
+        rendered_log = DocumentationRenderer(self.state).render_processing_log(
+            self.working_dir / "micro" / f"cses-m6_log-file_{self.state.country_code or 'CNT'}_{self.state.year or 'YEAR'}.txt"
+        )
         log_text = ""
-        if self.state.log_file and Path(self.state.log_file).exists():
+        if rendered_log.path.exists():
+            log_text = rendered_log.path.read_text(encoding="utf-8", errors="replace")
+        elif self.state.log_file and Path(self.state.log_file).exists():
             log_text = Path(self.state.log_file).read_text(encoding="utf-8", errors="replace")
         sd = self.active_logger.log_data.study_design if self.active_logger.log_data else {}
         lines = [
@@ -2317,7 +2352,7 @@ class StepExecutor:
         return StepResult(
             success=True,
             message="Election Study Notes draft created from processing log",
-            artifacts=[str(esn_path)],
+            artifacts=[str(esn_path), str(rendered_log.path)],
             issues=issues,
             next_action="Review ESN text and transfer approved notes to codebook"
         )
@@ -2356,6 +2391,9 @@ class StepExecutor:
         missing_report = DocumentationRenderer(self.state).render_missing_input_report(
             report_dir / f"{self.state.country_code or 'CNT'}_{self.state.year or 'YEAR'}_missing_input_report.md"
         )
+        processing_log = DocumentationRenderer(self.state).render_processing_log(
+            report_dir / f"cses-m6_log-file_{self.state.country_code or 'CNT'}_{self.state.year or 'YEAR'}.txt"
+        )
         lines = [
             f"# Final Readiness Report: {self.state.country} {self.state.year}",
             "",
@@ -2363,6 +2401,7 @@ class StepExecutor:
             "Source: cses_wiki/patterns/module6_schema.json",
             "",
             f"Status: {readiness.get('status')}",
+            f"Readiness mode: {readiness.get('mode', 'full_release')}",
             f"Schema target count: {readiness.get('schema_target_count')}",
             f"Syntax schema coverage: {readiness.get('syntax_schema_coverage')}",
             "",
@@ -2373,7 +2412,7 @@ class StepExecutor:
         return StepResult(
             success=True,
             message=f"Final readiness review completed: {readiness.get('status')}",
-            artifacts=[str(report_path), str(missing_report.path)],
+            artifacts=[str(report_path), str(missing_report.path), str(processing_log.path)],
             issues=issues,
             next_action="Proceed with final deposit only after unresolved risks are accepted or resolved"
         )

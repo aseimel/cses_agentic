@@ -14,6 +14,7 @@ from .sheet_reader import TrackingSheetReader, VariableMapping
 from .code_templates import StataTemplates
 from .generator import StataCodeGenerator
 from .recoding_plan import RecodingPlan, RecodingPlanBuilder, StataSyntaxPlanner, PlanDrivenStataSyntaxGenerator
+from .party_recoding import PartyRecodingPlanBuilder, PartyRecodeMap
 
 __all__ = [
     'TrackingSheetReader',
@@ -24,4 +25,6 @@ __all__ = [
     'RecodingPlanBuilder',
     'StataSyntaxPlanner',
     'PlanDrivenStataSyntaxGenerator',
+    'PartyRecodingPlanBuilder',
+    'PartyRecodeMap',
 ]
