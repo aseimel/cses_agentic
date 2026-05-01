@@ -80,57 +80,75 @@ class MCPStataRunner:
                 success=False,
                 error="MCP-Stata is not installed. Install the mcp and mcp-stata Python packages.",
             )
+        command = [
+            sys.executable,
+            "-m",
+            "src.stata_mcp_runner",
+            str(Path(do_path)),
+            "--stata-path",
+            self.stata_path,
+            "--max-output-lines",
+            os.environ.get("CSES_MCP_STATA_MAX_OUTPUT_LINES", "2000"),
+        ]
         try:
-            completed = subprocess.run(
-                [
-                    sys.executable,
-                    "-m",
-                    "src.stata_mcp_runner",
-                    str(Path(do_path)),
-                    "--stata-path",
-                    self.stata_path,
-                    "--max-output-lines",
-                    os.environ.get("CSES_MCP_STATA_MAX_OUTPUT_LINES", "2000"),
-                ],
+            process = subprocess.Popen(
+                command,
                 cwd=str(Path(__file__).resolve().parent.parent),
-                capture_output=True,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
                 text=True,
-                timeout=self.timeout_seconds,
             )
+            stdout, stderr = process.communicate(timeout=self.timeout_seconds)
+            returncode = process.returncode
         except subprocess.TimeoutExpired:
+            self._kill_process_tree(process.pid)
             return MCPStataRunResult(
                 success=False,
                 error=f"MCP-Stata did not return within {self.timeout_seconds} seconds while running the .do file.",
             )
         except Exception as exc:
             return MCPStataRunResult(success=False, error=str(exc))
-        text = self._extract_runner_payload(completed.stdout)
+        text = self._extract_runner_payload(stdout)
         if not text:
             return MCPStataRunResult(
                 success=False,
-                stdout=completed.stdout,
-                stderr=completed.stderr,
-                error=completed.stderr.strip() or f"MCP-Stata runner exited with code {completed.returncode}.",
+                stdout=stdout,
+                stderr=stderr,
+                error=stderr.strip() or f"MCP-Stata runner exited with code {returncode}.",
             )
         try:
             runner_payload = json.loads(text)
         except Exception:
             return MCPStataRunResult(
                 success=False,
-                stdout=completed.stdout,
-                stderr=completed.stderr,
+                stdout=stdout,
+                stderr=stderr,
                 error="MCP-Stata runner returned non-JSON output.",
-                raw={"stdout": completed.stdout, "stderr": completed.stderr},
+                raw={"stdout": stdout, "stderr": stderr},
             )
         if not runner_payload.get("ok"):
             return MCPStataRunResult(
                 success=False,
-                stdout=completed.stdout,
-                stderr=completed.stderr,
+                stdout=stdout,
+                stderr=stderr,
                 error=runner_payload.get("error") or "MCP-Stata runner failed.",
                 raw=runner_payload,
             )
         return self._parse_tool_text(runner_payload.get("text", ""))
+
+    def _kill_process_tree(self, pid: int) -> None:
+        if os.name == "nt":
+            subprocess.run(
+                ["taskkill", "/F", "/T", "/PID", str(pid)],
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                check=False,
+            )
+            return
+        try:
+            os.kill(pid, 9)
+        except Exception:
+            pass
 
     def _extract_runner_payload(self, stdout: str) -> str:
         for line in reversed(stdout.splitlines()):
