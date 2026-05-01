@@ -479,13 +479,12 @@ def main() -> int:
     parser.add_argument("--year", default="2022")
     parser.add_argument("--max-steps", type=int, default=17)
     parser.add_argument("--mode", choices=["email_only", "full_reference_inputs"], default="email_only")
+    parser.add_argument("--stata-path", default="", help="Optional Stata executable path used by the MCP-Stata bridge")
     args = parser.parse_args()
 
     apply_settings_to_environment()
-    os.environ["STATA_PATH"] = os.environ.get(
-        "STATA_PATH",
-        r"C:\Users\seimelan\OneDrive - GESIS\Documents\Stata-SE-19\StataSE-64.exe",
-    )
+    if args.stata_path:
+        os.environ["STATA_PATH"] = args.stata_path
 
     work_dir = args.work_dir or Path(tempfile.gettempdir()) / (
         f"cses_sweden_{args.mode}_replication_" + datetime.now().strftime("%Y%m%d_%H%M%S")
