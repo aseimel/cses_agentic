@@ -69,7 +69,7 @@ class PartyRecodingPlanBuilder:
             source = str(getattr(mapping, "source_var", "") or "")
             if not self._is_party_target(target):
                 continue
-            maps.append(self._map_for(target, source, source_values.get(source, []), bool(getattr(mapping, "verified", False))))
+            maps.append(self._map_for(target, source, source_values.get(source, []), mapping))
         return maps
 
     def write(self, maps: list[PartyRecodeMap]) -> Path:
@@ -101,8 +101,9 @@ class PartyRecodingPlanBuilder:
         target: str,
         source: str,
         observed_values: list[str],
-        mapping_approved: bool,
+        mapping: Any,
     ) -> PartyRecodeMap:
+        mapping_approved = bool(getattr(mapping, "verified", False))
         if not self.approved:
             return PartyRecodeMap(
                 target_variable=target,
@@ -111,7 +112,7 @@ class PartyRecodingPlanBuilder:
                 issues=["Party Order Agreement must be approved before party recoding."],
             )
         letter = _target_party_letter(target)
-        if source.startswith("NO_APPROVED_PARTY_FOR_THIS_SLOT") or (letter and letter not in self.parties):
+        if source.startswith("NO_APPROVED_PARTY_FOR_THIS_SLOT"):
             return PartyRecodeMap(
                 target_variable=target,
                 source_variable=source,
@@ -160,7 +161,7 @@ class PartyRecodingPlanBuilder:
                 evidence=[f"Party {letter}: {self.party_name_for_letter(letter or '')}"],
             )
         if target in self.VOTE_CODE_TARGETS:
-            value_map, issues = self._vote_choice_map(target, observed_values)
+            value_map, issues = self._vote_choice_map(target, observed_values, mapping)
             return PartyRecodeMap(
                 target_variable=target,
                 source_variable=source,
@@ -189,7 +190,14 @@ class PartyRecodingPlanBuilder:
             issues=[] if mapping_approved else ["Processor must approve party-context generation."],
         )
 
-    def _vote_choice_map(self, target: str, observed_values: list[str]) -> tuple[dict[str, str], list[str]]:
+    def _vote_choice_map(self, target: str, observed_values: list[str], mapping: Any) -> tuple[dict[str, str], list[str]]:
+        recode_rules = getattr(mapping, "recode_rules", []) or []
+        if recode_rules:
+            return {
+                str(rule.from_value): str(rule.to_value)
+                for rule in recode_rules
+                if str(rule.from_value).strip() and str(rule.to_value).strip()
+            }, []
         values = [value for value in observed_values if _is_simple_numeric(value)]
         party_count = len(self.parties)
         eligible = [value for value in values if 1 <= int(float(value)) <= party_count]

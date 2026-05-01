@@ -7,7 +7,7 @@ import pandas as pd
 
 from src.codegen.party_recoding import PartyRecodingPlanBuilder
 from src.codegen.recoding_plan import RecodingPlan, StataSyntaxPlanner
-from src.codegen.sheet_reader import TrackingSheet, VariableMapping
+from src.codegen.sheet_reader import RecodeRule, TrackingSheet, VariableMapping
 from src.standards.artifacts import FinalReadinessValidator, LabelFileGenerator
 from src.workflow.state import WorkflowState
 
@@ -82,6 +82,33 @@ class FinalizationWorkflowTests(unittest.TestCase):
 
             self.assertEqual(party_id.readiness_status, "needs_processor_review")
             self.assertIn("Party-identification", " ".join(party_id.issues))
+
+    def test_processor_approved_party_recode_map_overrides_default_order(self):
+        with tempfile.TemporaryDirectory() as folder:
+            study_dir = Path(folder)
+            self._write_party_decision(study_dir)
+            data_path = study_dir / "source.csv"
+            pd.DataFrame({"party_id": [1, 2, 3]}).to_csv(data_path, index=False)
+            mappings = {
+                "F3023_3": VariableMapping(
+                    cses_var="F3023_3",
+                    cses_desc="party id",
+                    source_var="party_id",
+                    verified=True,
+                    recode_rules=[
+                        RecodeRule("1", "999003"),
+                        RecodeRule("2", "999001"),
+                        RecodeRule("3", "999002"),
+                    ],
+                )
+            }
+
+            maps = PartyRecodingPlanBuilder(study_dir).build_maps(mappings, str(data_path))
+            party_id = {item.target_variable: item for item in maps}["F3023_3"]
+
+            self.assertTrue(party_id.approved)
+            self.assertEqual(party_id.value_map["1"], "999003")
+            self.assertEqual(party_id.value_map["2"], "999001")
 
     def test_stata_planner_can_exclude_district_for_benchmark_mode(self):
         plans = [
