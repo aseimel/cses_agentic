@@ -17,9 +17,9 @@ class WorkflowPhase:
 WORKFLOW_PHASES: tuple[WorkflowPhase, ...] = (
     WorkflowPhase("setup", "Setup", (0,)),
     WorkflowPhase("intake", "Intake and Eligibility", (1, 2, 4)),
-    WorkflowPhase("inventory", "Source Inventory and Tracking", (3, 6)),
+    WorkflowPhase("inventory", "Source Inventory and Tracking", (3, 5, 6)),
     WorkflowPhase("mapping", "Mapping and Recoding", (7, 8, 11)),
-    WorkflowPhase("external", "External Inputs", (5, 9, 10, 13, 14)),
+    WorkflowPhase("external", "External Inputs", (9, 10, 13, 14)),
     WorkflowPhase("release", "Release Documentation and Deposit", (12, 15, 16)),
 )
 

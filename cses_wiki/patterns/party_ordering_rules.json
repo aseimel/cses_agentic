@@ -1,0 +1,43 @@
+{
+  "schema_version": 1,
+  "source_policy": "Runtime party-ordering rules distilled into cses_wiki. Country folders and processed examples are development references only.",
+  "rules": {
+    "lower_house_vote_share": {
+      "context": "lower_house",
+      "description": "Use the relevant lower-house election result as the main party-ordering source.",
+      "ordering_basis": "Parties are ordered by lower-house vote share for the election covered by the study. In two-vote systems, use the party-list or national party vote rather than the district-candidate vote.",
+      "requires_joint_approval": true
+    },
+    "upper_house_vote_share_when_applicable": {
+      "context": "upper_house",
+      "description": "Use upper-house results only for upper-house variables or when the upper-house election is the CSES main election.",
+      "ordering_basis": "Upper-house vote share may drive upper-house party variables, but it should not replace the main lower-house party order unless explicitly approved for the study.",
+      "requires_joint_approval": true
+    },
+    "presidential_first_round_vote_share": {
+      "context": "presidential_round_1",
+      "description": "For presidential election studies, presidential first-round results define the main presidential candidate or party order unless CSES project guidance requires another basis.",
+      "ordering_basis": "Use first-round presidential vote share as the default presidential ordering basis. Second-round participation is documented separately.",
+      "requires_joint_approval": true
+    },
+    "presidential_second_round_context_only": {
+      "context": "presidential_round_2",
+      "description": "Second-round presidential results are needed for second-round vote variables, but are not enough by themselves to define the full party order.",
+      "ordering_basis": "Use second-round results only with the approved first-round or main-election party order and document non-contesting parties as not applicable where required.",
+      "requires_joint_approval": true
+    },
+    "processor_review_required": {
+      "context": "unknown",
+      "description": "Election context or electoral system is not clear enough to compute party order automatically.",
+      "ordering_basis": "Processor and macro coder must identify the correct election result table and ordering rule before party coding proceeds.",
+      "requires_joint_approval": true
+    }
+  },
+  "validation_rules": [
+    "Party A-I order must match the selected ordering basis or have a recorded approved override.",
+    "Party A-I labels must be consistent across micro vote-choice variables, party batteries, leader batteries, macro party variables, labels, and documentation.",
+    "Others or aggregate residual rows must not be assigned a Party A-I slot unless explicitly approved under CSES rules.",
+    "Numeric party codes must be unique and must match the approved party table.",
+    "Micro processor and macro coder approval are required before final party recoding, labels, macro party variables, or party appendix documentation are marked ready."
+  ]
+}

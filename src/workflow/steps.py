@@ -16,6 +16,15 @@ from src.workflow.phases import current_phase_id, phase_status_payload
 from src.preprocessing.evidence_extractor import ParallelEvidenceExtractionService, summarize_evidence_index
 from src.study_kb import StudyKnowledgeBase, StudyKnowledgeBaseBuilder
 from src.ui_text import format_study_review_status, sanitize_processor_text
+from src.matching.party_order import (
+    ElectionResultsWorkbookParser,
+    PartyOrderingRulesEngine,
+    election_results_intake_summary,
+    infer_election_context_from_macro_material,
+    party_agreement_summary,
+    party_order_message,
+    write_election_results_intake,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -132,37 +141,17 @@ class StepExecutor:
 
     def _review_party_ordering_inputs(self) -> dict[str, Any]:
         """Find early party-ordering inputs needed for vote-choice coding."""
-        patterns = [
-            "*Election*Results*",
-            "*election*results*",
-            "*election_result*",
-            "*results*.xlsx",
-            "*results*.xls",
-            "*results*.csv",
-            "*results*.docx",
-            "*results*.pdf",
-        ]
-        roots = [
-            self.working_dir,
-            self.working_dir / "Election Results",
-            self.working_dir / "macro",
-            self.working_dir / "E-mails",
-            self.working_dir / "emails",
-        ]
-        found: list[Path] = []
-        for root in roots:
-            if not root.exists():
-                continue
-            for pattern in patterns:
-                found.extend(path for path in root.rglob(pattern) if path.is_file())
-        unique = sorted({str(path.resolve()).lower(): path for path in found}.values(), key=lambda p: str(p).lower())
-        status = "found" if unique else "needs_review"
+        summary = election_results_intake_summary(self.working_dir)
+        files = summary.get("files", [])
+        tables = summary.get("tables", [])
+        status = "found" if files else "needs_review"
         return {
             "status": status,
-            "files": [str(path) for path in unique],
+            "files": files,
+            "tables": tables,
             "message": (
-                f"Election results material found ({len(unique)} file(s))."
-                if unique
+                f"Election results material found ({len(files)} file(s)); standardized table(s) detected: {len(tables)}."
+                if files
                 else "Election results material not found in the deposited files."
             ),
         }
@@ -868,55 +857,79 @@ class StepExecutor:
         )
 
     def _step_5(self, **kwargs) -> StepResult:
-        """Step 5: Request Election Results Table."""
-        self.active_logger.log_message("Checking election results material for party ordering...")
-        patterns = ["*Election*Results*", "*election*results*", "*results*.xlsx", "*results*.csv", "*results*.docx", "*results*.pdf"]
-        found = []
-        for pattern in patterns:
-            found.extend(path for path in self.working_dir.glob(pattern) if path.is_file())
-            found.extend(path for path in (self.working_dir / "Election Results").glob(pattern) if path.is_file())
+        """Step 5: Register election-results material without locking party order."""
+        self.active_logger.log_message("Checking election results material for later party-order agreement...")
+        summary = election_results_intake_summary(self.working_dir)
+        intake_path = write_election_results_intake(self.working_dir, summary)
+        self.state.election_results_intake_path = str(intake_path)
 
+        files = summary.get("files", []) or []
+        tables = summary.get("tables", []) or []
         request_dir = self.working_dir / "Election Results"
         request_dir.mkdir(parents=True, exist_ok=True)
-        request_path = request_dir / f"{self.state.country_code or 'CNT'}_{self.state.year or 'YEAR'}_election_results_request.md"
+        review_path = request_dir / f"{self.state.country_code or 'CNT'}_{self.state.year or 'YEAR'}_election_results_review.md"
 
-        if found:
-            request_path.write_text(
-                "# Election Results Review\n\n"
-                "Source: cses_wiki/topics/macro-data.md\n\n"
-                "Detected election-results material:\n"
-                + "\n".join(f"- {path.name}" for path in sorted(set(found))),
-                encoding="utf-8",
-            )
-            issues = []
-            message = f"Election results material detected ({len(set(found))} file(s))"
+        if files:
+            lines = [
+                "# Election Results Material Review",
+                "",
+                "Election-results material was found. The final party order will be agreed later, immediately before party and vote-choice matching.",
+                "",
+                "Files found:",
+                *[f"- {Path(path).name}" for path in files],
+                "",
+                "Standardized election-result tables detected:",
+            ]
+            if tables:
+                for table in tables:
+                    lines.append(
+                        f"- {table.get('title') or table.get('sheet_name') or 'Untitled table'} "
+                        f"({table.get('election_context', 'unknown').replace('_', ' ')}, "
+                        f"{len(table.get('parties', []) or [])} rows)"
+                    )
+                issues = []
+                message = (
+                    "Election-results material registered.\n\n"
+                    f"Files found: {len(files)}\n"
+                    f"Standardized tables detected: {len(tables)}\n\n"
+                    "Party order will be proposed later, after non-party matching has clarified the affected source variables."
+                )
+            else:
+                lines.append("- None detected in the expected table format.")
+                issues = ["Election-results file found, but no standardized party table was detected."]
+                message = (
+                    "Election-results material registered, but the standardized table format still needs processor review."
+                )
         else:
-            question = (
-                "Please provide or confirm the election results table needed for CSES party ordering, "
-                "vote-choice coding, and macro/micro consistency checks."
-            )
+            lines = [
+                "# Election Results Material Review",
+                "",
+                "No election-results workbook was found in the study materials.",
+                "",
+                "Processor review needed:",
+                "- Provide the standardized election-results workbook, or confirm whether an approved public-source lookup should be used.",
+            ]
             self.active_logger.add_candidate_collaborator_question(
-                question,
-                "Election results table required for party ordering; processor decides whether to request externally",
+                "Please provide the standardized election-results workbook needed for CSES party order agreement.",
+                "Election results are needed for party order, vote-choice coding, macro-party consistency, and labels. Processor should first confirm whether the file exists elsewhere.",
                 step_num=5,
-                missing_items=["Election results table/material"],
+                missing_items=["Standardized election-results workbook"],
             )
-            request_path.write_text(
-                "# Election Results Request\n\n"
-                "Source: cses_wiki/topics/macro-data.md\n\n"
-                f"{question}\n",
-                encoding="utf-8",
+            issues = ["Standardized election-results workbook not found."]
+            message = (
+                "Election-results material not found.\n\n"
+                "Processor review needed:\n"
+                "- Provide the standardized election-results workbook, or confirm an approved public-source lookup."
             )
-            issues = ["Election results material not found; potential request recorded for processor review."]
-            message = "Election results request drafted"
 
-        self.active_logger.log_message(message)
+        review_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+        self.active_logger.log_message("Election-results material review prepared.")
         return StepResult(
             success=True,
             message=message,
-            artifacts=[str(request_path)] + [str(path) for path in sorted(set(found))],
+            artifacts=[str(review_path), str(intake_path)] + files,
             issues=issues,
-            next_action="Use election results for party ordering and vote-choice processing"
+            next_action="Continue non-party source review. Party order agreement happens before party and vote-choice matching."
         )
 
     def _step_6(self, **kwargs) -> StepResult:
@@ -1195,6 +1208,30 @@ class StepExecutor:
             ]
             print(f"  {len(source_contexts)} source variables found")
 
+            print("Reviewing election results for later party-order agreement...")
+            party_tables = ElectionResultsWorkbookParser().parse_directory(self.working_dir)
+            party_order_engine = PartyOrderingRulesEngine()
+            party_order_proposal = party_order_engine.propose(
+                party_tables,
+                source_variables=[item["name"] for item in source_contexts],
+                context_hint=infer_election_context_from_macro_material(self.working_dir),
+            )
+            party_review_path, party_decision_path = party_order_engine.write_review(
+                self.working_dir,
+                party_order_proposal,
+            )
+            party_order_approved = party_order_engine.is_approved(self.working_dir)
+            party_summary = party_agreement_summary(party_order_proposal)
+            self.state.party_order_review_path = str(party_review_path)
+            self.state.party_order_decision_path = str(party_decision_path)
+            self.state.party_order_status = {
+                "status": "approved" if party_order_approved else party_order_proposal.status,
+                "party_count": party_summary.get("party_count", 0),
+                "warnings": party_summary.get("warnings", 0),
+                "micro_variables_affected": party_summary.get("micro_variables_affected", 0),
+                "macro_variables_affected": party_summary.get("macro_variables_affected", 0),
+            }
+
             # Load documents
             print("Loading documentation...")
             doc_parser = DocumentParser()
@@ -1312,6 +1349,8 @@ class StepExecutor:
                 remote_similarity_scores=remote_scores,
                 administrative_plans=administrative_plans,
                 demographic_assessments=demographic_assessments,
+                party_order_approved=party_order_approved,
+                party_order_summary=party_summary,
             )
             candidates_path, decisions_path = decision_engine.write_artifacts(self.working_dir, decisions)
             status_counts = decision_summary(decisions)
@@ -1327,6 +1366,7 @@ class StepExecutor:
                 "external_input_required_count": status_counts.get("external_input_required", 0),
                 "derived_metadata_count": status_counts.get("derived_metadata", 0),
                 "administrative_generated_count": status_counts.get("generated_from_administrative_information", 0),
+                "party_order_status": self.state.party_order_status,
                 "administrative_summary": administrative_summary,
                 "demographic_summary": demographic_summary,
             }
@@ -1416,6 +1456,10 @@ class StepExecutor:
                             recode_map = "; ".join(f"{k}={v}" for k, v in assessment.value_map.items())
                         if assessment.missing_map:
                             missing_map = "; ".join(f"{k}={v}" for k, v in assessment.missing_map.items())
+                elif decision.status == "awaiting_party_order_agreement":
+                    transform_type = "party_order_agreement_required"
+                elif decision.status == "generated_from_party_order":
+                    transform_type = "party_order_information"
                 elif decision.status in {"derived_metadata", "external_input_required", "blocked_for_processor_review"}:
                     transform_type = "not_found" if not source or source in {"DERIVED_METADATA", "EXTERNAL_INPUT_REQUIRED"} else transform_type
 
@@ -1537,6 +1581,10 @@ class StepExecutor:
             )
             print(f"    Party/election variables awaiting party ordering: {party.get('awaiting_party_ordering', 0)}/{party.get('total', 0)}")
             print(f"    District variables awaiting district input: {district.get('awaiting_district_input', 0)}/{district.get('total', 0)}")
+            print(
+                "    Party Order Agreement: "
+                + ("approved" if party_order_approved else f"{party_order_proposal.status.replace('_', ' ')}")
+            )
             print()
             print(f"Output: {tracking_path.relative_to(self.working_dir)}")
 
@@ -1564,6 +1612,8 @@ class StepExecutor:
                         str(demographic_assessments_path),
                         str(demographic_dossiers_path),
                         str(demographic_decisions_path),
+                        str(party_review_path),
+                        str(party_decision_path),
                     ],
                     issues=[
                         f"Matching errors: {error_count}",
@@ -1580,7 +1630,11 @@ class StepExecutor:
 
             return StepResult(
                 success=True,
-                message=f"Proposed source matches for {valid_matched}/{total} CSES variables; {unresolved_count} remain unresolved",
+                message=(
+                    f"Proposed source matches for {valid_matched}/{total} CSES variables; "
+                    f"{unresolved_count} remain unresolved.\n\n"
+                    + party_order_message(party_order_proposal)
+                ),
                 artifacts=[
                     str(tracking_path),
                     str(candidates_path),
@@ -1589,9 +1643,13 @@ class StepExecutor:
                     str(demographic_assessments_path),
                     str(demographic_dossiers_path),
                     str(demographic_decisions_path),
+                    str(party_review_path),
+                    str(party_decision_path),
                 ],
-                next_action="Review tracking sheet in Excel (yellow=review, red=requires attention), "
-                           "set VERIFIED=TRUE for approved mappings, then run: cses step 7c"
+                next_action=(
+                    "Review non-party matches and the Party Order Agreement. "
+                    "Party, vote-choice, leader, and macro-party coding stays paused until micro and macro approve the same party order."
+                )
             )
 
         except Exception as e:
@@ -1637,6 +1695,19 @@ class StepExecutor:
             sheet_path = max(sheets, key=lambda p: p.stat().st_mtime)
 
         print(f"  Reading: {sheet_path.name}")
+        if not PartyOrderingRulesEngine().is_approved(self.working_dir):
+            return StepResult(
+                success=False,
+                message=(
+                    "Party Order Agreement is not approved yet.\n\n"
+                    "Stata syntax for party, vote-choice, leader, and macro-party variables needs one locked party order "
+                    "approved by both the micro processor and macro coder."
+                ),
+                issues=[
+                    "Micro processor and macro coder approval are required before final party-related Stata generation.",
+                ],
+                next_action="Review the Party Order Agreement from Step 7 and record both approvals before rerunning Step 7c."
+            )
 
         try:
             # Read tracking sheet

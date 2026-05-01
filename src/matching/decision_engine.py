@@ -20,6 +20,7 @@ from src.standards.questionnaire_registry import normalize_item_key
 from src.standards.schema import SchemaRegistry, SchemaVariable
 from src.standards.administrative import AdministrativeVariablePlan
 from src.matching.demographics import DemographicRecodingAssessment
+from src.matching.party_order import is_party_order_dependent_variable
 
 
 MODULE6_SOURCE_ALIASES = {
@@ -172,6 +173,8 @@ class MatchingDecisionEngine:
         remote_similarity_scores: dict[str, float] | None = None,
         administrative_plans: list[AdministrativeVariablePlan] | None = None,
         demographic_assessments: list[DemographicRecodingAssessment] | None = None,
+        party_order_approved: bool = False,
+        party_order_summary: dict[str, Any] | None = None,
     ) -> list[MatchingDecision]:
         source_lookup = {str(item.get("name", "")): item for item in source_contexts if item.get("name")}
         proposal_lookup = self._proposal_lookup(llm_proposals or [])
@@ -183,9 +186,27 @@ class MatchingDecisionEngine:
         demographic_lookup = {
             item.target_variable: item for item in (demographic_assessments or [])
         }
+        target_profiles = {
+            item.get("name"): item
+            for item in matching_evidence.get("target_variable_profiles", []) or []
+            if isinstance(item, dict)
+        }
         decisions: list[MatchingDecision] = []
 
         for schema_var in self.registry.variables:
+            profile = target_profiles.get(schema_var.name, {})
+            if is_party_order_dependent_variable(
+                schema_var.name,
+                description=schema_var.description,
+                dependency_class=schema_var.dependency_class,
+                item_type=str(profile.get("canonical_item_type") or ""),
+            ):
+                if not party_order_approved:
+                    decisions.append(self._awaiting_party_order_decision(schema_var, party_order_summary or {}))
+                    continue
+                if schema_var.dependency_class == "macro_or_party_input":
+                    decisions.append(self._party_order_generated_decision(schema_var, party_order_summary or {}))
+                    continue
             if schema_var.dependency_class == "derived_metadata":
                 decisions.append(self._derived_decision(schema_var, administrative_lookup.get(schema_var.name)))
                 continue
@@ -516,6 +537,40 @@ class MatchingDecisionEngine:
             notes="Requires external election, macro, party, or district material, or a recorded processor decision.",
         )
 
+    def _awaiting_party_order_decision(self, schema_var: SchemaVariable, party_order_summary: dict[str, Any]) -> MatchingDecision:
+        return MatchingDecision(
+            target_variable=schema_var.name,
+            description=schema_var.description,
+            status="awaiting_party_order_agreement",
+            source_variable="PARTY_ORDER_AGREEMENT",
+            confidence="processor_review",
+            dependency_class=schema_var.dependency_class,
+            evidence=[
+                f"Party order proposal covers {party_order_summary.get('party_count', 0)} parties.",
+                "Party, vote-choice, leader, and macro-party variables must use the same approved party order.",
+            ],
+            conflict_flags=["micro_macro_agreement_required"],
+            processor_verification_required=True,
+            notes="Party Order Agreement must be approved by the micro processor and macro coder before this variable is matched or generated.",
+        )
+
+    def _party_order_generated_decision(self, schema_var: SchemaVariable, party_order_summary: dict[str, Any]) -> MatchingDecision:
+        return MatchingDecision(
+            target_variable=schema_var.name,
+            description=schema_var.description,
+            status="generated_from_party_order",
+            source_variable="APPROVED_PARTY_ORDER",
+            confidence="processor_review",
+            dependency_class=schema_var.dependency_class,
+            evidence=[
+                f"Approved party order covers {party_order_summary.get('party_count', 0)} parties.",
+                "Macro-party variables must remain consistent with the approved micro/macro party order.",
+            ],
+            conflict_flags=[],
+            processor_verification_required=True,
+            notes="Generated from the approved Party Order Agreement and related macro/election inputs.",
+        )
+
     def _proposal_lookup(self, proposals: list[Any]) -> dict[str, dict]:
         lookup = {}
         for proposal in proposals:
@@ -571,7 +626,7 @@ def matching_category_summary(decisions: list[MatchingDecision], matching_eviden
         item_type = str(profile.get("canonical_item_type") or "")
         section = str(profile.get("section") or "")
         dep = decision.dependency_class
-        matched = decision.status in {"proposed_match", "demographic_recoding_assessment"} and decision.source_variable not in {"", "NOT_FOUND", "ERROR"}
+        matched = decision.status in {"proposed_match", "demographic_recoding_assessment", "generated_from_party_order"} and decision.source_variable not in {"", "NOT_FOUND", "ERROR"}
         if dep == "derived_metadata":
             bucket = categories["administrative_metadata"]
             bucket["total"] += 1
@@ -593,7 +648,9 @@ def matching_category_summary(decisions: list[MatchingDecision], matching_eviden
         elif dep == "macro_or_party_input" or item_type == "party_vote_item":
             bucket = categories["party_election_items"]
             bucket["total"] += 1
-            if matched:
+            if decision.status == "awaiting_party_order_agreement":
+                bucket["awaiting_party_ordering"] += 1
+            elif matched:
                 bucket["matched"] += 1
             else:
                 bucket["awaiting_party_ordering"] += 1
@@ -611,7 +668,12 @@ def matching_category_summary(decisions: list[MatchingDecision], matching_eviden
                 bucket["matched"] += 1
             else:
                 bucket["needs_review"] += 1
-        if not matched and decision.status not in {"derived_metadata", "generated_from_administrative_information", "external_input_required"}:
+        if not matched and decision.status not in {
+            "derived_metadata",
+            "generated_from_administrative_information",
+            "external_input_required",
+            "awaiting_party_order_agreement",
+        }:
             categories["unresolved_items"]["total"] += 1
     return categories
 

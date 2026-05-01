@@ -58,8 +58,8 @@ WORKFLOW_STEPS = {
         "requires_llm": True
     },
     5: {
-        "name": "Request Election Results Table",
-        "description": "Contact macro coder for election results for party ordering",
+        "name": "Register Election Results Material",
+        "description": "Check whether standardized election-results material is available for later party order agreement",
         "automatable": False,
         "requires_llm": False
     },
@@ -220,6 +220,10 @@ class WorkflowState:
     recoding_coverage: dict = field(default_factory=dict)
     recoding_plans_path: str = ""
     approval_status: dict = field(default_factory=dict)
+    election_results_intake_path: str = ""
+    party_order_review_path: str = ""
+    party_order_decision_path: str = ""
+    party_order_status: dict = field(default_factory=dict)
     stata_execution_status: dict = field(default_factory=dict)
     benchmark_scorecard_path: str = ""
 
@@ -339,6 +343,9 @@ class WorkflowState:
         self.input_manifest_path = remap(self.input_manifest_path)
         self.matching_decisions_path = remap(self.matching_decisions_path)
         self.recoding_plans_path = remap(self.recoding_plans_path)
+        self.election_results_intake_path = remap(self.election_results_intake_path)
+        self.party_order_review_path = remap(self.party_order_review_path)
+        self.party_order_decision_path = remap(self.party_order_decision_path)
         self.benchmark_scorecard_path = remap(self.benchmark_scorecard_path)
         self.questionnaire_files = [remap(path) for path in self.questionnaire_files or []]
 
