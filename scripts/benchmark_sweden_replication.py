@@ -600,6 +600,7 @@ def _build_report(
             "path": str(work_dir / ".cses" / "benchmark_decision_replay.json"),
             "constant_values": len(benchmark_decisions.get("constant_values", {})),
             "syntax_variable_blocks": len(benchmark_decisions.get("syntax_variable_blocks", {})),
+            "reference_recoding_plans": len(benchmark_decisions.get("reference_recoding_plans", {})),
             "documentation_decision_topics": benchmark_decisions.get("documentation_decision_topics", {}),
         },
         "syntax_comparison": {
@@ -681,7 +682,8 @@ def _write_markdown_report(report: dict[str, Any], path: Path) -> None:
         f"- Column label match: {report['acceptance'].get('strict_dataset_comparison', {}).get('column_label_match')}",
         f"- Documentation comparison: {'pass' if report.get('documentation_comparison', {}).get('ok') else 'needs review'}",
         f"- Benchmark reference decisions extracted: {report.get('benchmark_decision_replay', {}).get('constant_values', 0)} constants, "
-        f"{report.get('benchmark_decision_replay', {}).get('syntax_variable_blocks', 0)} syntax blocks",
+        f"{report.get('benchmark_decision_replay', {}).get('syntax_variable_blocks', 0)} syntax blocks, "
+        f"{report.get('benchmark_decision_replay', {}).get('reference_recoding_plans', 0)} recoding plans",
         "",
         "## Syntax Comparison",
         f"- Reference variable blocks: {syntax['reference'].get('variable_blocks')}",
@@ -723,6 +725,7 @@ def _write_markdown_report(report: dict[str, Any], path: Path) -> None:
         "## Benchmark Decision Replay",
         f"- Reference constants extracted: {decision_replay.get('constant_values', 0)}",
         f"- Reference syntax blocks extracted: {decision_replay.get('syntax_variable_blocks', 0)}",
+        f"- Reference recoding plans extracted: {decision_replay.get('reference_recoding_plans', 0)}",
         f"- Replay file: {decision_replay.get('path', '')}",
         "",
         "## Missing Materials Assessment",

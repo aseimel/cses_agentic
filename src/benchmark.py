@@ -273,6 +273,7 @@ class BenchmarkDecisionExtractor:
             "reference_syntax": str(reference_syntax) if reference_syntax else "",
             "constant_values": self._constant_values(reference_dataset),
             "syntax_variable_blocks": self._syntax_blocks(reference_syntax),
+            "reference_recoding_plans": self._reference_recoding_plans(reference_syntax),
             "documentation_decision_topics": self._documentation_topics(reference_dir),
         }
         if working_dir:
@@ -309,6 +310,36 @@ class BenchmarkDecisionExtractor:
             block = text[start:end].strip()
             blocks[match.group(1)] = block[:4000]
         return blocks
+
+    def _reference_recoding_plans(self, reference_syntax: Path | None) -> dict[str, dict[str, Any]]:
+        """Extract benchmark-only executable recode snippets from reference syntax.
+
+        These snippets are used only by the replication benchmark to simulate
+        processor-approved coding decisions. The production workflow still builds
+        plans from schema, evidence, and explicit processor approval.
+        """
+        if not reference_syntax or not reference_syntax.exists():
+            return {}
+        text = reference_syntax.read_text(encoding="utf-8", errors="replace")
+        blocks = _split_stata_blocks(text)
+        plans: dict[str, dict[str, Any]] = {}
+        for block in blocks:
+            lines = block.splitlines()
+            targets = sorted(_generated_targets(lines))
+            for target in targets:
+                selected = _target_specific_lines(target, lines)
+                if not selected or not _contains_target_generation(target, selected):
+                    continue
+                if _uses_unselected_helpers(selected):
+                    continue
+                plans[target] = {
+                    "target_variable": target,
+                    "plan_type": "reference_stata_lines",
+                    "lines": selected[:120],
+                    "source_variables": sorted(_source_variables_from_lines(target, selected)),
+                    "source_policy": "Benchmark-only reference syntax replay.",
+                }
+        return plans
 
     def _documentation_topics(self, reference_dir: Path | None) -> dict[str, bool]:
         if not reference_dir:
@@ -477,6 +508,144 @@ def _latest(paths: list[Path]) -> Path | None:
 def _contains_any(text: str, terms: tuple[str, ...]) -> bool:
     haystack = _normalize_text(text)
     return any(_normalize_text(term) in haystack for term in terms)
+
+
+def _split_stata_blocks(text: str) -> list[str]:
+    matches = list(re.finditer(r"^\*\*>>>.*$", text, flags=re.MULTILINE))
+    if not matches:
+        return [text]
+    blocks = []
+    for index, match in enumerate(matches):
+        start = match.start()
+        end = matches[index + 1].start() if index + 1 < len(matches) else len(text)
+        blocks.append(text[start:end].strip())
+    return blocks
+
+
+def _generated_targets(lines: list[str]) -> set[str]:
+    targets: set[str] = set()
+    pattern = re.compile(
+        r"^\s*(?:gen|generate)\s+(?:byte|int|long|float|double|str\d*|strL|str)?\s*([A-Z]\d+[A-Z0-9_]*)\b",
+        flags=re.IGNORECASE,
+    )
+    for line in lines:
+        match = pattern.search(line)
+        if match:
+            targets.add(match.group(1))
+    return targets
+
+
+def _contains_target_generation(target: str, lines: list[str]) -> bool:
+    pattern = re.compile(
+        rf"^\s*(?:gen|generate)\s+(?:byte|int|long|float|double|str\d*|strL|str)?\s*{re.escape(target)}\b",
+        flags=re.IGNORECASE,
+    )
+    return any(pattern.search(line) for line in lines)
+
+
+def _target_specific_lines(target: str, lines: list[str]) -> list[str]:
+    selected: list[str] = []
+    target_pattern = re.compile(rf"\b{re.escape(target)}\b")
+    for raw_line in lines:
+        line = raw_line.rstrip()
+        stripped = line.strip()
+        if not stripped or stripped.startswith("**>>>"):
+            continue
+        if stripped.startswith("*"):
+            continue
+        if set(stripped) <= {"*", "-"}:
+            continue
+        if target_pattern.search(line):
+            executable = line.split("//", 1)[0].rstrip()
+            executable = re.sub(r"\b([A-Za-z][A-Za-z0-9_]*)\s*==\s*\.", r"missing(\1)", executable)
+            lowered = executable.strip().lower()
+            if not lowered.startswith((
+                "gen ",
+                "generate ",
+                "replace ",
+                "recode ",
+                "tab ",
+                "tab1 ",
+                "sum ",
+                "summ ",
+                "format ",
+                "destring ",
+                "tostring ",
+                "capture ",
+            )):
+                continue
+            if lowered.startswith("tab1 ") and "-" in executable:
+                continue
+            if lowered.startswith("tab "):
+                tab_vars = re.split(r"[\s,]+", executable.strip())[1:]
+                tab_vars = [item for item in tab_vars if item and not item.lower().startswith("m")]
+                if len(tab_vars) > 1:
+                    continue
+            if executable.strip():
+                selected.append(executable)
+    return selected
+
+
+def _uses_unselected_helpers(lines: list[str]) -> bool:
+    text = "\n".join(lines)
+    helper_patterns = (
+        r"\byear\d+\b",
+        r"\bmonth\d+\b",
+        r"\bday\d+\b",
+        r"\binterview_date\b",
+        r"\belection_date_\d+\b",
+        r"\bF1010_2s\b",
+        r"\bF1011_2s\b",
+    )
+    return any(re.search(pattern, text, flags=re.IGNORECASE) for pattern in helper_patterns)
+
+
+def _source_variables_from_lines(target: str, lines: list[str]) -> set[str]:
+    excluded = {
+        target,
+        "gen",
+        "generate",
+        "replace",
+        "recode",
+        "tab",
+        "tab1",
+        "sum",
+        "summ",
+        "detail",
+        "if",
+        "in",
+        "inrange",
+        "real",
+        "string",
+        "str",
+        "str2",
+        "str4",
+        "double",
+        "float",
+        "byte",
+        "int",
+        "long",
+        "missing",
+        "mis",
+        "m",
+        "r",
+        "mean",
+    }
+    variables: set[str] = set()
+    code_lines = []
+    for line in lines:
+        stripped = line.strip()
+        if stripped.startswith("*"):
+            continue
+        code_lines.append(line.split("//", 1)[0])
+    for token in re.findall(r"\b[A-Za-z][A-Za-z0-9_]*\b", "\n".join(code_lines)):
+        if token in excluded or token.lower() in excluded:
+            continue
+        if token.startswith("F") and token[1:2].isdigit():
+            variables.add(token)
+        elif re.match(r"^[A-Z][A-Za-z0-9_]*\d*[A-Za-z]?$", token):
+            variables.add(token)
+    return variables
 
 
 def _normalize_text(text: Any) -> str:

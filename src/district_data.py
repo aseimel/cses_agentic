@@ -520,12 +520,18 @@ def _district_variable_sort_key(name: str) -> tuple[int, str]:
 
 
 def _district_missing_value(name: str) -> str:
+    if name.endswith("_N"):
+        if name == "F4002_N":
+            return "9997"
+        if name == "F4007_N":
+            return "99999997"
+        return "997"
     if name == "F4002":
         return "9999"
     if name == "F4007":
         return "99999999"
     if name.startswith("F4005") or name == "F4003" or name == "F4006":
-        return "99"
+        return "999"
     return "999"
 
 

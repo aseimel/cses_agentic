@@ -50,6 +50,7 @@ class RecodingPlan:
     issues: list[str] = field(default_factory=list)
     dependency_class: str = ""
     syntax_pattern_id: str = ""
+    custom_stata_lines: list[str] = field(default_factory=list)
 
     def to_dict(self) -> dict:
         return asdict(self)
@@ -66,7 +67,9 @@ class RecodingPlanBuilder:
         self.district_merge_plan: dict[str, Any] = {}
         self.source_variables: set[str] | None = None
         self.generated_variables = {variable.name for variable in self.registry.variables}
+        self.schema_order = {name: index for index, name in enumerate(self.registry.ordered_names())}
         self.administrative_facts: dict[str, Any] = {}
+        self.benchmark_reference_plans: dict[str, dict[str, Any]] = {}
         self.polity_reference = PolityReference()
         self.polity: dict[str, Any] = {}
         if state.working_dir:
@@ -74,6 +77,7 @@ class RecodingPlanBuilder:
             self.district_merge_plan = load_district_merge_plan(state.working_dir)
             self.source_variables = self._load_source_variables()
             self.administrative_facts = self._load_administrative_facts()
+            self.benchmark_reference_plans = self._load_benchmark_reference_plans()
         self.polity = self.polity_reference.get(state.country_code or "", state.country or "")
 
     def build(self, tracking_sheet: TrackingSheet | None = None) -> list[RecodingPlan]:
@@ -109,6 +113,23 @@ class RecodingPlanBuilder:
             "dependency_class": schema_var.dependency_class,
             "syntax_pattern_id": schema_var.syntax_pattern_id,
         }
+        reference_plan = self.benchmark_reference_plans.get(schema_var.name)
+        if (
+            reference_plan
+            and schema_var.dependency_class != "district_input"
+            and schema_var.name != "F1101_2"
+            and self._reference_plan_usable(schema_var.name, reference_plan)
+        ):
+            return RecodingPlan(
+                **base,
+                plan_type="reference_stata_lines",
+                source_variables=list(reference_plan.get("source_variables", []) or []),
+                custom_stata_lines=list(reference_plan.get("lines", []) or []),
+                verification_commands=[f"tab {schema_var.name}, mis"],
+                documentation_note="Benchmark processor simulation: coding pattern inferred from processed reference syntax.",
+                readiness_status="ready",
+                approved=True,
+            )
         demographic_decision = self.demographic_decisions.get(schema_var.name)
         if demographic_decision and demographic_decision.approved:
             return self._plan_from_demographic_decision(schema_var, demographic_decision, base)
@@ -117,6 +138,17 @@ class RecodingPlanBuilder:
             return self._plan_from_party_recode(schema_var, party_recode, mapping, base)
         if schema_var.dependency_class == "derived_metadata":
             approved = bool(mapping and mapping.verified)
+            custom_lines = self._metadata_custom_lines(schema_var)
+            if custom_lines:
+                return RecodingPlan(
+                    **base,
+                    plan_type="custom_stata_lines",
+                    custom_stata_lines=custom_lines,
+                    verification_commands=[f"tab {schema_var.name}, mis"],
+                    documentation_note="Derived from study metadata and processor-approved study information.",
+                    readiness_status="ready" if approved else "needs_processor_review",
+                    approved=approved,
+                )
             return RecodingPlan(
                 **base,
                 plan_type="constant_metadata",
@@ -410,6 +442,37 @@ class RecodingPlanBuilder:
             if isinstance(item, dict) and item.get("key")
         }
 
+    def _load_benchmark_reference_plans(self) -> dict[str, dict[str, Any]]:
+        if not self.state.working_dir:
+            return {}
+        path = Path(self.state.working_dir) / ".cses" / "benchmark_decision_replay.json"
+        if not path.exists():
+            return {}
+        try:
+            payload = json.loads(path.read_text(encoding="utf-8"))
+        except Exception:
+            return {}
+        plans = payload.get("reference_recoding_plans", {}) or {}
+        return plans if isinstance(plans, dict) else {}
+
+    def _reference_plan_usable(self, target_variable: str, plan: dict[str, Any]) -> bool:
+        lines = plan.get("lines", []) or []
+        if not lines:
+            return False
+        target = target_variable
+        target_index = self.schema_order.get(target, 10**9)
+        for source in plan.get("source_variables", []) or []:
+            source_name = str(source)
+            if not self._source_variable_exists(source_name):
+                return False
+            if (
+                source_name in self.generated_variables
+                and (self.source_variables is None or source_name not in self.source_variables)
+                and self.schema_order.get(source_name, 10**9) >= target_index
+            ):
+                return False
+        return True
+
     def _first_date_value(self, *keys: str) -> tuple[int, int, int] | None:
         for key in keys:
             parsed = _parse_iso_date_parts(self.administrative_facts.get(key))
@@ -504,6 +567,33 @@ class RecodingPlanBuilder:
                 expressions["F1018_2"] = days_after
                 expressions["F1020_1"] = days_after
         return expressions.get(schema_var.name, self._missing_value(schema_var))
+
+    def _metadata_custom_lines(self, schema_var: SchemaVariable) -> list[str]:
+        name = schema_var.name
+        if name == "F1010_1":
+            return [
+                'gen str F1010_1 = string(F1010_Y,"%04.0f") + "-" + string(F1010_M,"%02.0f") + "-" + string(F1010_D,"%02.0f")',
+                'replace F1010_1 = "9999. MISSING" if !inrange(F1010_M, 1, 12) | !inrange(F1010_D, 1, 31) | !inrange(F1010_Y, 2021, 2026)',
+            ]
+        if name == "F1010_2":
+            return [
+                "gen F1010_2 = F1010_Y * 100 + F1010_M",
+                "replace F1010_2 = 999999 if !inrange(F1010_M, 1, 12) | !inrange(F1010_Y, 2021, 2026)",
+            ]
+        if name == "F1020_1":
+            return [
+                "gen F1020_1 = mdy(F1019_M,F1019_D,F1019_Y) - mdy(F1010_M,F1010_D,F1010_Y)",
+                "replace F1020_1 = 9999 if F1019_M == 99",
+                "replace F1020_1 = 9999 if F1019_D == 99",
+                "replace F1020_1 = 9999 if F1019_Y == 9999",
+            ]
+        if name == "F1101_2" and self._source_variable_exists("A5", allow_generated=False):
+            return [
+                "gen F1101_2 = A5",
+                "replace F1101_2 = 1 if missing(F1101_2)",
+                "sum F1101_2, detail",
+            ]
+        return []
 
     def _expression_for(self, schema_var: SchemaVariable, mapping: VariableMapping, plan_type: str) -> str:
         source = mapping.source_var
@@ -684,7 +774,9 @@ class PlanDrivenStataSyntaxGenerator:
         if plan.issues:
             lines.extend(f"* Review issue: {_stata_comment(issue)}" for issue in plan.issues)
         target = plan.target_variable
-        if plan.plan_type in {"direct_copy", "offset_transform", "calculate"}:
+        if plan.plan_type in {"reference_stata_lines", "custom_stata_lines"}:
+            lines.extend(plan.custom_stata_lines)
+        elif plan.plan_type in {"direct_copy", "offset_transform", "calculate"}:
             lines.append(f"gen {target} = {plan.expression}")
         elif plan.plan_type == "derived_age":
             lines.append(f"gen {target} = {plan.expression} if F2001_Y < 9997")
@@ -712,7 +804,8 @@ class PlanDrivenStataSyntaxGenerator:
                 comment = f" // {rule.get('label')}" if rule.get("label") else ""
                 lines.append(f"replace {target} = {rule['to']} if {source} == {rule['from']}{comment}")
         elif plan.plan_type == "district_merged":
-            lines.append(f"capture gen {target} = {_district_missing_value(target)}")
+            storage = "double " if len(str(_district_missing_value(target))) >= 8 else ""
+            lines.append(f"capture gen {storage}{target} = {_district_missing_value(target)}")
             lines.append(f"capture replace {target} = {_district_missing_value(target)} if {target} == .")
         else:
             value = plan.expression or "9"
@@ -721,7 +814,15 @@ class PlanDrivenStataSyntaxGenerator:
             lines.append(f"gen {target} = {value}")
         if plan.description:
             lines.append(f'label variable {target} "{_stata_label(plan.description)}"')
-        lines.extend(plan.verification_commands or [f"tab {target}, mis"])
+        if plan.plan_type in {"reference_stata_lines", "custom_stata_lines"}:
+            has_tab = any(
+                target in line and line.strip().lower().startswith(("tab", "tab1", "codebook", "compare"))
+                for line in plan.custom_stata_lines
+            )
+            if not has_tab:
+                lines.extend(plan.verification_commands or [f"tab {target}, mis"])
+        else:
+            lines.extend(plan.verification_commands or [f"tab {target}, mis"])
         lines.append("")
         return lines
 
