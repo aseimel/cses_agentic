@@ -271,6 +271,7 @@ class TrackingSheetReader:
             missing_map = self._get_cell_value(ws, row, col("MISSING VALUE TREATMENT", default=8)) or ""
             confidence = self._get_cell_value(ws, row, col("CONFIDENCE", default=5)) or "medium"
             verified = self._parse_bool(self._get_cell_value(ws, row, col("VERIFIED", default=6)))
+            transform_cell = self._get_cell_value(ws, row, col("TRANSFORM", default=6)) or ""
             notes_parts = [
                 self._get_cell_value(ws, row, col("REMARKS", default=10)) or "",
                 self._get_cell_value(ws, row, col("PROCESSOR DECISION", default=15)) or "",
@@ -278,7 +279,9 @@ class TrackingSheetReader:
             notes = " | ".join(str(part) for part in notes_parts if str(part).strip())
             recode_rules = self._parse_recode_map(recode_map)
             missing_rules = self._parse_recode_map(missing_map)
-            if source_var in {"NOT_FOUND", "EXTERNAL_INPUT_REQUIRED", "DERIVED_METADATA", ""}:
+            if transform_cell:
+                transform_type = transform_cell
+            elif source_var in {"NOT_FOUND", "EXTERNAL_INPUT_REQUIRED", "DERIVED_METADATA", ""}:
                 transform_type = "not_found"
             elif recode_rules or missing_rules:
                 transform_type = "recode"

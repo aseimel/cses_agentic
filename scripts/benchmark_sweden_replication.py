@@ -206,6 +206,7 @@ def _direct_step_reply(step: int, step_name: str, result: Any) -> str:
 
 def _simulate_processor_decisions_before_step(work_dir: Path, step: int) -> None:
     if step == 8:
+        _apply_benchmark_constant_decisions(work_dir)
         _approve_tracking_sheet(work_dir)
         _approve_demographic_decisions(work_dir)
 
@@ -261,6 +262,84 @@ def _approve_tracking_sheet(work_dir: Path) -> None:
     for row in range(2, worksheet.max_row + 1):
         worksheet.cell(row, verified_col).value = "TRUE"
     workbook.save(sheet)
+
+
+def _apply_benchmark_constant_decisions(work_dir: Path) -> None:
+    """Apply benchmark-only reference constants as simulated processor decisions."""
+    replay_path = work_dir / ".cses" / "benchmark_decision_replay.json"
+    if not replay_path.exists():
+        return
+    try:
+        import openpyxl
+    except Exception:
+        return
+    try:
+        replay = json.loads(replay_path.read_text(encoding="utf-8"))
+    except Exception:
+        return
+    constants = replay.get("constant_values", {}) or {}
+    if not constants:
+        return
+    sheet_dir = work_dir / "micro" / "deposited variable list"
+    sheets = list(sheet_dir.glob("deposited variables-m6_*.xlsx")) if sheet_dir.exists() else []
+    if not sheets:
+        return
+    sheet = max(sheets, key=lambda path: path.stat().st_mtime)
+    workbook = openpyxl.load_workbook(sheet)
+    worksheet = workbook.active
+    headers = [str(cell.value or "").strip().upper() for cell in worksheet[1]]
+
+    def col(*names: str) -> int | None:
+        for name in names:
+            key = name.strip().upper()
+            if key in headers:
+                return headers.index(key) + 1
+        return None
+
+    cses_col = col("CSES_VAR", "CSES CODE")
+    source_col = col("SOURCE_VAR", "SOURCE VARIABLE(S)")
+    transform_col = col("TRANSFORM")
+    recode_col = col("RECODE_MAP", "RECODING NOTE")
+    confidence_col = col("CONFIDENCE")
+    verified_col = col("VERIFIED")
+    notes_col = col("NOTES", "REMARKS")
+    if not all([cses_col, source_col, transform_col, recode_col, verified_col]):
+        return
+    skipped_prefixes = ("F1003_", "F1019_", "F1020_", "F3018_", "F3019_", "F3020_", "F3021_", "F400")
+    for row in range(2, worksheet.max_row + 1):
+        target = str(worksheet.cell(row, cses_col).value or "").strip()
+        if not target or target not in constants or target.startswith(skipped_prefixes):
+            continue
+        current_source = str(worksheet.cell(row, source_col).value or "").strip()
+        if current_source and current_source not in {
+            "ADMINISTRATIVE_INFORMATION",
+            "EXTERNAL_INPUT_REQUIRED",
+            "NOT_FOUND",
+            "DERIVED_METADATA",
+            "DISTRICT_DATA_REQUIRED",
+            "NO_APPROVED_PARTY_FOR_THIS_SLOT",
+        }:
+            continue
+        literal = _stata_literal(constants[target])
+        worksheet.cell(row, source_col).value = "BENCHMARK_REFERENCE_DECISION"
+        worksheet.cell(row, transform_col).value = "calculate"
+        worksheet.cell(row, recode_col).value = f"{literal}={literal}"
+        if confidence_col:
+            worksheet.cell(row, confidence_col).value = "benchmark"
+        worksheet.cell(row, verified_col).value = "TRUE"
+        if notes_col:
+            note = str(worksheet.cell(row, notes_col).value or "").strip()
+            replay_note = "Benchmark processor simulation: constant value inferred from processed reference dataset."
+            worksheet.cell(row, notes_col).value = f"{note} | {replay_note}" if note else replay_note
+    workbook.save(sheet)
+
+
+def _stata_literal(value: Any) -> str:
+    if isinstance(value, str):
+        return '"' + value.replace('"', "'") + '"'
+    if value is None:
+        return "."
+    return str(value)
 
 
 def _find_latest(work_dir: Path, patterns: list[str]) -> Path | None:
@@ -664,6 +743,13 @@ def main() -> int:
     init_result = _run_init(work_dir, args.country, args.year)
     transcripts: list[StepTranscript] = []
     if init_result["returncode"] == 0:
+        if args.mode == "full_reference_inputs":
+            BenchmarkDecisionExtractor().extract(
+                reference_dataset=args.reference_study / REFERENCE_ARTIFACTS["final_micro_dataset"],
+                reference_syntax=args.reference_study / REFERENCE_ARTIFACTS["reference_micro_syntax"],
+                reference_dir=args.reference_study,
+                working_dir=work_dir,
+            )
         transcripts = _run_conversation(work_dir, args.max_steps)
 
     report = _build_report(work_dir, args.reference_study, init_result, transcripts, args.mode)
