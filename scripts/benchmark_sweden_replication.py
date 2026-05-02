@@ -433,15 +433,25 @@ def _strict_dataset_comparison(reference_path: Path, generated_path: Path | None
                 alignment_key = candidate
                 break
         value_mismatches = []
+        group_metrics: dict[str, dict[str, Any]] = {}
         common = [var for var in ref_vars if var in gen.columns]
         for var in common:
             ref_series = ref[var]
             gen_series = gen[var]
             equal = _series_values_match(ref_series, gen_series)
+            group = _variable_group(var)
+            metric = group_metrics.setdefault(group, {"total": 0, "exact": 0, "mismatch_examples": []})
+            metric["total"] += 1
+            if equal:
+                metric["exact"] += 1
+            elif len(metric["mismatch_examples"]) < 25:
+                metric["mismatch_examples"].append(var)
             if not equal:
-                value_mismatches.append(var)
-                if len(value_mismatches) >= 50:
-                    break
+                if len(value_mismatches) < 50:
+                    value_mismatches.append(var)
+        for metric in group_metrics.values():
+            total = metric["total"] or 0
+            metric["exact_share"] = round(metric["exact"] / total, 4) if total else 0.0
         label_match = (getattr(ref_meta, "column_labels", []) or []) == (getattr(gen_meta, "column_labels", []) or [])
         return {
             "status": "compared",
@@ -449,6 +459,7 @@ def _strict_dataset_comparison(reference_path: Path, generated_path: Path | None
             "exact_value_match": not value_mismatches and exact_inventory,
             "column_label_match": label_match,
             "alignment_key": alignment_key,
+            "group_metrics": group_metrics,
             "value_mismatch_examples": value_mismatches,
             "missing_reference_variables": [var for var in ref_vars if var not in gen_vars],
             "extra_generated_variables": [var for var in gen_vars if var not in ref_vars],
@@ -482,6 +493,18 @@ def _series_values_match(reference: Any, generated: Any) -> bool:
             return reference.fillna("__NA__").astype(str).equals(generated.fillna("__NA__").astype(str))
         except Exception:
             return False
+
+
+def _variable_group(variable: str) -> str:
+    if variable.startswith(("F100", "F101", "F102", "F110")):
+        return "administrative"
+    if variable.startswith("F20"):
+        return "demographic"
+    if variable.startswith(("F30", "F31", "F5", "F6")):
+        return "party_vote_leader_macro"
+    if variable.startswith("F4"):
+        return "district"
+    return "core_questionnaire"
 
 
 def _missing_materials(reference_root: Path, work_dir: Path) -> list[dict[str, str]]:
@@ -673,8 +696,18 @@ def _write_markdown_report(report: dict[str, Any], path: Path) -> None:
         f"- Overlap: {dataset.get('overlap_count')}",
         f"- Row count match: {dataset.get('row_count_match')}",
         "",
-        "## Documentation Comparison",
+        "### Dataset Replication by Area",
     ]
+    group_metrics = report["acceptance"].get("strict_dataset_comparison", {}).get("group_metrics", {})
+    for group, metric in group_metrics.items():
+        lines.append(
+            f"- {group}: {metric.get('exact')}/{metric.get('total')} exact "
+            f"({metric.get('exact_share')})"
+        )
+    lines.extend([
+        "",
+        "## Documentation Comparison",
+    ])
     documentation = report.get("documentation_comparison", {})
     lines.extend(
         f"- {key}: {'present' if value else 'missing'}"
