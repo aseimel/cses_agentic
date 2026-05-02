@@ -138,7 +138,7 @@ class DistrictDataWorkflowTests(unittest.TestCase):
             text = syntax_path.read_text(encoding="utf-8")
             self.assertIn("merge m:1 F2019 using", text)
             self.assertIn("gen F2019 = D18", text)
-            self.assertIn("capture confirm variable F4001", text)
+        self.assertIn("capture gen F4001 = 999", text)
 
     def test_district_merge_block_generates_missing_higher_party_slots(self):
         plan = {
@@ -151,7 +151,7 @@ class DistrictDataWorkflowTests(unittest.TestCase):
 
         text = "\n".join(DistrictStataSyntaxBuilder().merge_lines(plan))
 
-        self.assertIn("if _rc gen F4004_I = 999", text)
+        self.assertIn("capture gen F4004_I = 999", text)
         self.assertIn("capture replace F4004_I = 999 if F4004_I == .", text)
 
     def test_step_9_approves_standardized_district_file_when_processor_confirms(self):

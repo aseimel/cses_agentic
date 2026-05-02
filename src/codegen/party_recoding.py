@@ -217,6 +217,10 @@ class PartyRecodingPlanBuilder:
                 for rule in recode_rules
                 if str(rule.from_value).strip() and str(rule.to_value).strip()
             }, []
+        if target == "F3023_3":
+            questionnaire_map = self._party_identification_map_from_questionnaire(observed_values)
+            if questionnaire_map:
+                return questionnaire_map, []
         values = [value for value in observed_values if _is_simple_numeric(value)]
         party_count = len(self.parties)
         eligible = [value for value in values if 1 <= int(float(value)) <= party_count]
@@ -234,6 +238,70 @@ class PartyRecodingPlanBuilder:
         if target == "F3023_3" and not issues:
             issues.append("Party-identification source order must be confirmed against questionnaire/codebook labels before approval.")
         return value_map, issues
+
+    def _party_identification_map_from_questionnaire(self, observed_values: list[str]) -> dict[str, str]:
+        block = self._party_identification_text_block()
+        if not block:
+            return {}
+        normalized_block = _normalize_text(block)
+        located: list[tuple[int, str, str]] = []
+        for letter, party in self.parties.items():
+            code = str(party.get("numeric_code") or "")
+            if not code:
+                continue
+            positions = [
+                normalized_block.find(alias)
+                for alias in _party_name_aliases(str(party.get("party_name") or ""))
+                if alias and normalized_block.find(alias) >= 0
+            ]
+            if positions:
+                located.append((min(positions), letter, code))
+        if len(located) < min(len(self.parties), 2):
+            return {}
+        value_map = {
+            str(index): code
+            for index, (_position, _letter, code) in enumerate(sorted(located), start=1)
+        }
+        observed = {_clean_value(value) for value in observed_values}
+        other_index = str(len(value_map) + 1)
+        if other_index in observed and "other" in normalized_block:
+            value_map[other_index] = "999992"
+        return value_map
+
+    def _party_identification_text_block(self) -> str:
+        try:
+            from src.ingest.doc_parser import DocumentParser
+
+            parser = DocumentParser()
+            texts = []
+            for path in sorted(self.working_dir.rglob("*")):
+                if not path.is_file() or "questionnaire" not in path.name.lower():
+                    continue
+                if path.suffix.lower() not in {".pdf", ".docx", ".txt", ".md"}:
+                    continue
+                parsed = parser.parse(path)
+                if parsed and parsed.full_text:
+                    texts.append(parsed.full_text)
+            text = "\n".join(texts)
+        except Exception:
+            return ""
+        normalized = _normalize_text(text)
+        anchors = [
+            "which party do you feel closest to",
+            "party do you feel closest to",
+            "feel closest to",
+        ]
+        starts = [normalized.find(anchor) for anchor in anchors if normalized.find(anchor) >= 0]
+        if not starts:
+            return ""
+        start = min(starts)
+        end_candidates = [
+            normalized.find(anchor, start + 20)
+            for anchor in ["and how close", "degree of closeness", "are you a member", "next question"]
+            if normalized.find(anchor, start + 20) >= 0
+        ]
+        end = min(end_candidates) if end_candidates else start + 1500
+        return normalized[start:end]
 
     def _source_values(self, data_file: str) -> dict[str, list[str]]:
         if not data_file:
@@ -322,6 +390,36 @@ def _clean_value(value: Any) -> str:
         return str(number)
     except (TypeError, ValueError):
         return str(value).strip()
+
+
+def _normalize_text(text: str) -> str:
+    return re.sub(r"\s+", " ", str(text).casefold()).strip()
+
+
+def _party_name_aliases(name: str) -> set[str]:
+    normalized = _normalize_text(re.sub(r"[\(\[].*?[\)\]]", " ", name))
+    aliases = {normalized}
+    aliases.add(normalized.replace(" party", "").strip())
+    aliases.add(normalized.replace("centre", "center"))
+    aliases.add(normalized.replace("center", "centre"))
+    if normalized.endswith("s"):
+        aliases.add(normalized[:-1])
+        aliases.add(f"{normalized[:-1]} party")
+    if "moderate" in normalized:
+        aliases.add("moderate party")
+    if "green" in normalized:
+        aliases.add("green party")
+    if "centre" in normalized or "center" in normalized:
+        aliases.add("centre party")
+        aliases.add("center party")
+    if "social democratic" in normalized:
+        aliases.add("social democratic party")
+        aliases.add("social democrats")
+    if "sweden democrat" in normalized:
+        aliases.add("sweden democrats")
+    if "christian democrat" in normalized:
+        aliases.add("christian democrats")
+    return {alias for alias in aliases if alias}
 
 
 def _party_code_missing_map(target: str) -> dict[str, str]:

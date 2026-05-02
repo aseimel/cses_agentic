@@ -131,6 +131,11 @@ WORKFLOW_STEPS = {
     }
 }
 
+# Execution order for the processor-facing workflow. Step numbers remain the
+# canonical CSES identifiers, but district review must happen before final
+# Stata execution because district merge decisions affect generated syntax.
+WORKFLOW_SEQUENCE = [0, 1, 2, 3, 4, 5, 6, 7, 9, 8, 10, 11, 12, 13, 14, 15, 16]
+
 
 # REMOVED: Old STEP_PREREQUISITES dict allowed skipping steps.
 # New rule: Step N can ONLY start if Step N-1 is COMPLETED. No exceptions.
@@ -439,7 +444,7 @@ class WorkflowState:
 
     def get_next_step(self) -> Optional[int]:
         """Get the next step that should be worked on."""
-        for step_num in sorted(WORKFLOW_STEPS.keys()):
+        for step_num in WORKFLOW_SEQUENCE:
             step = self.get_step(step_num)
             if step.status in [StepStatus.NOT_STARTED.value, StepStatus.IN_PROGRESS.value]:
                 return step_num
@@ -455,8 +460,14 @@ class WorkflowState:
         if step_num == 0:
             return True, "OK"
 
-        # Simple rule: previous step must be done
-        prev_step = step_num - 1
+        try:
+            position = WORKFLOW_SEQUENCE.index(step_num)
+        except ValueError:
+            return False, f"Unknown workflow step: {step_num}"
+        if position == 0:
+            return True, "OK"
+
+        prev_step = WORKFLOW_SEQUENCE[position - 1]
         prev_status = self.get_step(prev_step).status
 
         if prev_status != "completed":

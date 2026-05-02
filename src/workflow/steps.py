@@ -993,7 +993,16 @@ class StepExecutor:
 
     def _step_7(self, **kwargs) -> StepResult:
         """Step 7: Process Variables - Variable Matching"""
-        return self._step_7a(**kwargs)
+        result = self._step_7a(**kwargs)
+        if result.success and not PartyOrderingRulesEngine().is_approved(self.working_dir):
+            result.success = False
+            if "Party Order Agreement requires micro processor and macro coder approval." not in result.issues:
+                result.issues.append("Party Order Agreement requires micro processor and macro coder approval.")
+            result.next_action = (
+                "Review the proposed party order with the macro coder, record approval, "
+                "then proceed to rerun party-aware matching."
+            )
+        return result
 
     def _step_7_legacy(self, **kwargs) -> StepResult:
         """Legacy variable matching path retained for reference."""
@@ -1874,10 +1883,21 @@ class StepExecutor:
             micro_dir = self.working_dir / "micro"
             do_files = list(micro_dir.glob("cses-m6_micro_*.do"))
             if not do_files:
+                generation = self._step_7c(**kwargs)
+                if not generation.success:
+                    return StepResult(
+                        success=False,
+                        message="Stata syntax is not ready for execution",
+                        artifacts=generation.artifacts,
+                        issues=generation.issues,
+                        next_action=generation.next_action or "Resolve recoding plan issues, then rerun Stata execution"
+                    )
+                do_files = list(micro_dir.glob("cses-m6_micro_*.do"))
+            if not do_files:
                 return StepResult(
                     success=False,
                     message="No .do file found in micro/ folder",
-                    issues=["Run step 7 first to generate .do file"]
+                    issues=["Generate final CSES Stata syntax before running Stata"]
                 )
             do_path = max(do_files, key=lambda p: p.stat().st_mtime)
 

@@ -336,6 +336,7 @@ class DistrictStataSyntaxBuilder:
         ]
         if source != DISTRICT_KEY:
             lines.extend([
+                f"capture drop {DISTRICT_KEY}",
                 f"gen {DISTRICT_KEY} = {source}",
                 f"recode {DISTRICT_KEY} (. = 99999)",
             ])
@@ -350,8 +351,7 @@ class DistrictStataSyntaxBuilder:
         ])
         for var in sorted(generated_slots, key=_district_variable_sort_key):
             lines.extend([
-                f"capture confirm variable {var}",
-                f"if _rc gen {var} = {_district_missing_value(var)}",
+                f"capture gen {var} = {_district_missing_value(var)}",
             ])
         for var in sorted(set(variables), key=_district_variable_sort_key):
             lines.append(f"capture replace {var} = {_district_missing_value(var)} if {var} == .")

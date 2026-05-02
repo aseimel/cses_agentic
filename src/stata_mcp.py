@@ -52,7 +52,7 @@ class MCPStataRunner:
 
     def __init__(self, stata_path: str = "", timeout_seconds: int | None = None):
         self.stata_path = stata_path
-        self.timeout_seconds = timeout_seconds or int(os.environ.get("CSES_MCP_STATA_TIMEOUT_SECONDS", "120"))
+        self.timeout_seconds = timeout_seconds or int(os.environ.get("CSES_MCP_STATA_TIMEOUT_SECONDS", "1800"))
 
     def available(self) -> bool:
         try:

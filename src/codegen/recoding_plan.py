@@ -13,8 +13,25 @@ from src.standards.schema import SchemaRegistry, SchemaVariable
 from src.workflow.state import WorkflowState
 from src.matching.demographics import DemographicRecodingDecision, DemographicRecodingDecisionStore
 from src.codegen.party_recoding import PartyRecodingPlanBuilder, PartyRecodeMap
-from src.district_data import DistrictStataSyntaxBuilder, load_district_merge_plan
+from src.district_data import DistrictStataSyntaxBuilder, load_district_merge_plan, _district_missing_value
 from src.ingest.data_loader import DataLoader
+from src.standards.administrative import PolityReference
+
+
+_STRING_METADATA_VARIABLES = {
+    "F1001",
+    "F1002_VER",
+    "F1002_DOI",
+    "F1003_1",
+    "F1003_2",
+    "F1004",
+    "F1006",
+    "F1006_UNALPHA2",
+    "F1006_UNALPHA3",
+    "F1006_NAM",
+    "F1010_1",
+    "F1011_1",
+}
 
 
 @dataclass
@@ -49,10 +66,15 @@ class RecodingPlanBuilder:
         self.district_merge_plan: dict[str, Any] = {}
         self.source_variables: set[str] | None = None
         self.generated_variables = {variable.name for variable in self.registry.variables}
+        self.administrative_facts: dict[str, Any] = {}
+        self.polity_reference = PolityReference()
+        self.polity: dict[str, Any] = {}
         if state.working_dir:
             self.demographic_decisions = DemographicRecodingDecisionStore(Path(state.working_dir)).load()
             self.district_merge_plan = load_district_merge_plan(state.working_dir)
             self.source_variables = self._load_source_variables()
+            self.administrative_facts = self._load_administrative_facts()
+        self.polity = self.polity_reference.get(state.country_code or "", state.country or "")
 
     def build(self, tracking_sheet: TrackingSheet | None = None) -> list[RecodingPlan]:
         mapping_lookup = {item.cses_var: item for item in tracking_sheet.mappings} if tracking_sheet else {}
@@ -158,6 +180,18 @@ class RecodingPlanBuilder:
                 readiness_status="needs_processor_review",
                 approved=mapping.verified,
                 issues=[] if mapping.verified else ["Missing/not-collected classification requires processor approval."],
+            )
+        if source.startswith(("OPTIONAL_ALTERNATIVE_SCALE_NOT_COLLECTED", "NOT_APPLICABLE", "NO_APPROVED_PARTY_FOR_THIS_SLOT")):
+            return RecodingPlan(
+                **base,
+                plan_type="missing_not_collected",
+                source_variables=[],
+                expression=self._missing_value(schema_var),
+                verification_commands=[f"tab {schema_var.name}, mis"],
+                documentation_note=mapping.notes or "Generated as not collected or not applicable from approved CSES context.",
+                readiness_status="ready" if mapping.verified else "needs_processor_review",
+                approved=mapping.verified,
+                issues=[] if mapping.verified else ["Processor verification required before final code generation."],
             )
         if mapping.transform_type in {"derived_age", "derived_generation", "crosswalk_required"}:
             plan_type = mapping.transform_type
@@ -360,16 +394,115 @@ class RecodingPlanBuilder:
             return None
         return set(info.variables)
 
+    def _load_administrative_facts(self) -> dict[str, Any]:
+        if not self.state.working_dir:
+            return {}
+        path = Path(self.state.working_dir) / ".cses" / "administrative_information.json"
+        if not path.exists():
+            return {}
+        try:
+            payload = json.loads(path.read_text(encoding="utf-8"))
+        except Exception:
+            return {}
+        return {
+            str(item.get("key")): item.get("value")
+            for item in payload.get("facts", []) or []
+            if isinstance(item, dict) and item.get("key")
+        }
+
+    def _first_date_value(self, *keys: str) -> tuple[int, int, int] | None:
+        for key in keys:
+            parsed = _parse_iso_date_parts(self.administrative_facts.get(key))
+            if parsed:
+                return parsed
+        return None
+
     def _metadata_expression(self, schema_var: SchemaVariable) -> str:
         country_code = self.state.country_code or "CNT"
         country = self.state.country or "COUNTRY"
         year = self.state.year or "YEAR"
+        cses_polity = str(self.polity.get("cses_polity_code") or "")
+        has_a1 = self._source_variable_exists("A1", allow_generated=False)
+        has_a4 = all(self._source_variable_exists(item, allow_generated=False) for item in ["A4a", "A4b", "A4c"])
+        has_mode = self._source_variable_exists("mode", allow_generated=False)
+        has_weight = self._source_variable_exists("A5", allow_generated=False)
+        election_date = self._first_date_value("election_date", "first_round_election_date")
         expressions = {
             "F1001": '"CSES-MODULE-6"',
+            "F1002_VER": '"VER2025-MMM-DD"',
+            "F1002_DOI": '"doi:10.7804/cses.module6.2025-MM-DD"',
+            "F1003_2": 'string(A1, "%010.0f")' if has_a1 else '"9999999999"',
+            "F1003_1": f'"{cses_polity}{year}" + string(A1, "%010.0f")' if has_a1 and cses_polity and str(year).isdigit() else '"999999999999999999"',
             "F1004": f'"{country_code}_{year}"',
+            "F1005": f"{cses_polity}{year}" if cses_polity and str(year).isdigit() else "99999999",
+            "F1006": f'"{cses_polity}"' if cses_polity else '"9999"',
+            "F1006_UN": str(self.polity.get("un_numeric") or 999),
+            "F1006_UNALPHA2": f'"{self.polity.get("un_alpha2") or ""}"',
+            "F1006_UNALPHA3": f'"{self.polity.get("un_alpha3") or ""}"',
             "F1006_NAM": f'"{country}"',
+            "F1007_REG": str(self.polity.get("un_region") or 999),
+            "F1007_OECD": str(self.polity.get("oecd_member") if self.polity.get("oecd_member") is not None else 9),
+            "F1007_EU": str(self.polity.get("eu_member") if self.polity.get("eu_member") is not None else 9),
+            "F1007_VDEM": str(self.polity.get("vdem_id") or 999),
+            "F1008": str(self.polity.get("administered_module_multiple_times") if self.polity.get("administered_module_multiple_times") is not None else 9),
             "F1009": year if str(year).isdigit() else ".",
+            "F1010_M": "99",
+            "F1010_D": "99",
+            "F1010_Y": "9999",
+            "F1010_1": '"9999. MISSING"',
+            "F1010_2": "999999",
+            "F1011_M": "96",
+            "F1011_D": "96",
+            "F1011_Y": "9996",
+            "F1011_1": '"9996. NOT APPLICABLE: NO SECOND ROUND"',
+            "F1011_2": "999996",
+            "F1015_1": "3" if has_mode else "9",
+            "F1015_2": "4" if has_mode else "0",
+            "F1015_3": "0",
+            "F1016_1": "cond(mode==1,3,cond(mode==2,4,9))" if has_mode else "9",
+            "F1016_2": "0",
+            "F1016_3": "0",
+            "F1017": "1" if has_mode else "9",
+            "F1019_M": "A4a" if has_a4 else "99",
+            "F1019_D": "A4b" if has_a4 else "99",
+            "F1019_Y": "A4c" if has_a4 else "9999",
+            "F1020_2": "9996",
+            "F1021": "99999",
+            "F1022_1": "999997",
+            "F1022_2": "7",
+            "F1023": "999",
+            "F1024": "2",
+            "F1100": "1",
+            "F1101_1": "1",
+            "F1101_2": "A5" if has_weight else "1",
+            "F1101_3": "1",
+            "F1102_1": "1",
+            "F1102_2": "1",
+            "F1102_3": "1",
+            "F1103_1": "1",
+            "F1103_2": "1",
+            "F1103_3": "1",
+            "F1104": "1",
+            "F1105_1": "1",
+            "F1105_2": "1",
+            "F1105_3": "1",
+            "F1106": "2",
         }
+        if election_date:
+            date_year, date_month, date_day = election_date
+            expressions.update(
+                {
+                    "F1010_M": str(date_month),
+                    "F1010_D": str(date_day),
+                    "F1010_Y": str(date_year),
+                    "F1010_1": f'"{date_year:04d}-{date_month:02d}-{date_day:02d}"',
+                    "F1010_2": str(date_year * 100 + date_month),
+                }
+            )
+            if has_a4:
+                days_after = f"mdy(A4a,A4b,A4c)-mdy({date_month},{date_day},{date_year})"
+                expressions["F1018_2"] = days_after
+                expressions["F1020_1"] = days_after
         return expressions.get(schema_var.name, self._missing_value(schema_var))
 
     def _expression_for(self, schema_var: SchemaVariable, mapping: VariableMapping, plan_type: str) -> str:
@@ -562,10 +695,10 @@ class PlanDrivenStataSyntaxGenerator:
             lines.extend(_generation_lines(target))
         elif plan.plan_type == "constant_metadata":
             value = plan.expression or "9"
-            if value.startswith('"'):
+            if value.startswith('"') or target in _STRING_METADATA_VARIABLES:
                 lines.append(f"gen str {target} = {value}")
             else:
-                lines.append(f"gen {target} = {value}")
+                lines.append(f"gen double {target} = {value}")
         elif plan.plan_type == "recode":
             source = plan.source_variables[0]
             lines.append(f"gen {target} = {source}")
@@ -579,13 +712,15 @@ class PlanDrivenStataSyntaxGenerator:
                 comment = f" // {rule.get('label')}" if rule.get("label") else ""
                 lines.append(f"replace {target} = {rule['to']} if {source} == {rule['from']}{comment}")
         elif plan.plan_type == "district_merged":
-            lines.append(f"capture confirm variable {target}")
-            lines.append(f'if _rc display as error "District variable not found after merge: {target}"')
+            lines.append(f"capture gen {target} = {_district_missing_value(target)}")
+            lines.append(f"capture replace {target} = {_district_missing_value(target)} if {target} == .")
         else:
             value = plan.expression or "9"
             if not plan.approved and not draft:
                 lines.append(f"* BLOCKED: processor approval required before final syntax for {target}")
             lines.append(f"gen {target} = {value}")
+        if plan.description:
+            lines.append(f'label variable {target} "{_stata_label(plan.description)}"')
         lines.extend(plan.verification_commands or [f"tab {target}, mis"])
         lines.append("")
         return lines
@@ -598,6 +733,25 @@ def load_recoding_plans(path: Path) -> list[RecodingPlan]:
 
 def _stata_comment(text: str) -> str:
     return str(text).replace("\n", " ")[:500]
+
+
+def _stata_label(text: str) -> str:
+    return str(text).replace("\n", " ").replace('"', "'")[:80]
+
+
+def _parse_iso_date_parts(value: Any) -> tuple[int, int, int] | None:
+    if not value:
+        return None
+    text = str(value)
+    import re
+
+    match = re.search(r"(\d{4})-(\d{1,2})-(\d{1,2})", text)
+    if not match:
+        return None
+    try:
+        return int(match.group(1)), int(match.group(2)), int(match.group(3))
+    except Exception:
+        return None
 
 
 def _generation_lines(target: str) -> list[str]:

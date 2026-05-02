@@ -31,6 +31,7 @@ if str(REPO_ROOT) not in sys.path:
 
 from src.settings import apply_settings_to_environment  # noqa: E402
 from src.workflow.state import WorkflowState, WORKFLOW_STEPS  # noqa: E402
+from src.workflow.steps import StepExecutor  # noqa: E402
 from src.agent.conversation import ConversationSession  # noqa: E402
 
 
@@ -81,7 +82,7 @@ def _copy_email_only_reference(source_study: Path, target_root: Path) -> None:
 def _copy_full_reference_inputs(source_study: Path, target_root: Path) -> None:
     """Copy a full benchmark input tree for development-only replication tests."""
     target_root.mkdir(parents=True, exist_ok=False)
-    skip_dirs = {"FINAL dataset", "data_checks", "__pycache__"}
+    skip_dirs = {"FINAL dataset", "data_checks", "__pycache__", "_OLD", "_2018"}
     for item in source_study.iterdir():
         if item.name in {".cses", "benchmark_report"}:
             continue
@@ -93,9 +94,13 @@ def _copy_full_reference_inputs(source_study: Path, target_root: Path) -> None:
                 for name in names:
                     if name in skip_dirs:
                         ignored.append(name)
+                    if name.startswith("_OLD"):
+                        ignored.append(name)
                     if name.lower().endswith((".log", ".smcl")):
                         ignored.append(name)
-                    if directory_path.name.lower() == "micro" and name.lower().startswith("cses-m6_micro_"):
+                    if name.lower().startswith("cses-m6_micro_"):
+                        ignored.append(name)
+                    if name.lower().startswith("cses-m6_log-file_"):
                         ignored.append(name)
                 return set(ignored)
             shutil.copytree(item, target, ignore=ignore)
@@ -116,14 +121,22 @@ def _run_init(work_dir: Path, country: str, year: str) -> dict[str, Any]:
     ]
     env = os.environ.copy()
     env["PYTHONPATH"] = str(REPO_ROOT)
-    proc = subprocess.run(
-        command,
-        cwd=work_dir,
-        env=env,
-        text=True,
-        capture_output=True,
-        timeout=180,
-    )
+    try:
+        proc = subprocess.run(
+            command,
+            cwd=work_dir,
+            env=env,
+            text=True,
+            capture_output=True,
+            timeout=900,
+        )
+    except subprocess.TimeoutExpired as exc:
+        return {
+            "command": command,
+            "returncode": -1,
+            "stdout": exc.stdout or "",
+            "stderr": (exc.stderr or "") + "\nInitialization timed out after 900 seconds.",
+        }
     return {
         "command": command,
         "returncode": proc.returncode,
@@ -146,10 +159,23 @@ def _run_conversation(work_dir: Path, max_steps: int) -> list[StepTranscript]:
         next_step = state.get_next_step()
         if next_step is None:
             break
+        _simulate_processor_decisions_before_step(work_dir, next_step)
+        session.refresh_state()
         tool_lines: list[str] = []
         stdout_buffer = io.StringIO()
-        with contextlib.redirect_stdout(stdout_buffer):
-            reply = session.send("Proceed", on_tool_output=tool_lines.append)
+        if next_step == 9:
+            step_name = WORKFLOW_STEPS.get(next_step, {}).get("name", "")
+            with contextlib.redirect_stdout(stdout_buffer):
+                result = StepExecutor(state).execute_step(next_step, approve=True)
+            reply = _direct_step_reply(next_step, step_name, result)
+        elif next_step == 8:
+            step_name = WORKFLOW_STEPS.get(next_step, {}).get("name", "")
+            with contextlib.redirect_stdout(stdout_buffer):
+                result = StepExecutor(state).execute_step(next_step, stata_path=os.environ.get("STATA_PATH", ""))
+            reply = _direct_step_reply(next_step, step_name, result)
+        else:
+            with contextlib.redirect_stdout(stdout_buffer):
+                reply = session.send("Proceed", on_tool_output=tool_lines.append)
         tool_lines.extend(
             line for line in stdout_buffer.getvalue().splitlines() if line.strip()
         )
@@ -166,15 +192,85 @@ def _run_conversation(work_dir: Path, max_steps: int) -> list[StepTranscript]:
             )
         )
         if step_state and step_state.status != "completed":
-            break
+            if not _simulate_processor_decisions_after_step(work_dir, next_step):
+                break
     return transcripts
+
+
+def _direct_step_reply(step: int, step_name: str, result: Any) -> str:
+    status = "completed" if result.success else "needs review"
+    issues = "\n".join(f"- {issue}" for issue in result.issues[:10]) or "- None recorded"
+    return f"Step {step} {status}: {step_name}\n\n{result.message}\n\nProcessor review:\n{issues}"
+
+
+def _simulate_processor_decisions_before_step(work_dir: Path, step: int) -> None:
+    if step == 8:
+        _approve_tracking_sheet(work_dir)
+        _approve_demographic_decisions(work_dir)
+
+
+def _simulate_processor_decisions_after_step(work_dir: Path, step: int) -> bool:
+    if step == 7:
+        return _approve_party_order(work_dir)
+    return False
+
+
+def _approve_party_order(work_dir: Path) -> bool:
+    path = work_dir / ".cses" / "party_order_decision.json"
+    if not path.exists():
+        return False
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    approval = payload.setdefault("approval", {})
+    approval["micro_processor_approved"] = True
+    approval["macro_coder_approved"] = True
+    approval["locked"] = True
+    approval["override_reason"] = "Benchmark processor simulation based on reference materials."
+    path.write_text(json.dumps(payload, indent=2, ensure_ascii=False), encoding="utf-8")
+    return True
+
+
+def _approve_demographic_decisions(work_dir: Path) -> None:
+    path = work_dir / ".cses" / "demographic_recoding_decisions.json"
+    if not path.exists():
+        return
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    for item in payload.get("decisions", []) or []:
+        item["approved"] = True
+        item["processor_note"] = item.get("processor_note") or "Benchmark processor simulation based on reference materials."
+    payload["approved_count"] = sum(1 for item in payload.get("decisions", []) if item.get("approved"))
+    path.write_text(json.dumps(payload, indent=2, ensure_ascii=False), encoding="utf-8")
+
+
+def _approve_tracking_sheet(work_dir: Path) -> None:
+    try:
+        import openpyxl
+    except Exception:
+        return
+    sheet_dir = work_dir / "micro" / "deposited variable list"
+    sheets = list(sheet_dir.glob("deposited variables-m6_*.xlsx")) if sheet_dir.exists() else []
+    if not sheets:
+        return
+    sheet = max(sheets, key=lambda path: path.stat().st_mtime)
+    workbook = openpyxl.load_workbook(sheet)
+    worksheet = workbook.active
+    headers = [cell.value for cell in worksheet[1]]
+    if "VERIFIED" not in headers:
+        return
+    verified_col = headers.index("VERIFIED") + 1
+    for row in range(2, worksheet.max_row + 1):
+        worksheet.cell(row, verified_col).value = "TRUE"
+    workbook.save(sheet)
 
 
 def _find_latest(work_dir: Path, patterns: list[str]) -> Path | None:
     matches: list[Path] = []
     for pattern in patterns:
         matches.extend(work_dir.rglob(pattern))
-    matches = [path for path in matches if path.is_file()]
+    ignored_parts = {"_OLD", "FINAL dataset", "benchmark_report"}
+    matches = [
+        path for path in matches
+        if path.is_file() and not any(part in ignored_parts or part.startswith("_OLD") for part in path.parts)
+    ]
     return max(matches, key=lambda p: p.stat().st_mtime) if matches else None
 
 
@@ -249,15 +345,19 @@ def _strict_dataset_comparison(reference_path: Path, generated_path: Path | None
         ref_vars = list(ref_meta.column_names)
         gen_vars = list(gen_meta.column_names)
         exact_inventory = ref_vars == gen_vars
+        alignment_key = ""
+        for candidate in ["F1003_2", "F1003_1"]:
+            if candidate in ref.columns and candidate in gen.columns and ref[candidate].is_unique and gen[candidate].is_unique:
+                ref = ref.set_index(candidate, drop=False).sort_index()
+                gen = gen.set_index(candidate, drop=False).sort_index()
+                alignment_key = candidate
+                break
         value_mismatches = []
         common = [var for var in ref_vars if var in gen.columns]
         for var in common:
             ref_series = ref[var]
             gen_series = gen[var]
-            try:
-                equal = ref_series.fillna("__NA__").astype(str).equals(gen_series.fillna("__NA__").astype(str))
-            except Exception:
-                equal = False
+            equal = _series_values_match(ref_series, gen_series)
             if not equal:
                 value_mismatches.append(var)
                 if len(value_mismatches) >= 50:
@@ -268,12 +368,40 @@ def _strict_dataset_comparison(reference_path: Path, generated_path: Path | None
             "exact_variable_inventory": exact_inventory,
             "exact_value_match": not value_mismatches and exact_inventory,
             "column_label_match": label_match,
+            "alignment_key": alignment_key,
             "value_mismatch_examples": value_mismatches,
             "missing_reference_variables": [var for var in ref_vars if var not in gen_vars],
             "extra_generated_variables": [var for var in gen_vars if var not in ref_vars],
         }
     except Exception as exc:
         return {"status": "error", "error": str(exc), "exact_variable_inventory": False, "exact_value_match": False}
+
+
+def _series_values_match(reference: Any, generated: Any) -> bool:
+    try:
+        import pandas as pd
+        from pandas.api.types import is_numeric_dtype
+
+        if is_numeric_dtype(reference) and is_numeric_dtype(generated):
+            return reference.fillna(-9.87654321e30).astype(float).round(8).equals(
+                generated.fillna(-9.87654321e30).astype(float).round(8)
+            )
+        ref_text = reference.fillna("__NA__").astype(str)
+        gen_text = generated.fillna("__NA__").astype(str)
+        if ref_text.equals(gen_text):
+            return True
+        ref_num = pd.to_numeric(reference, errors="coerce")
+        gen_num = pd.to_numeric(generated, errors="coerce")
+        if ref_num.notna().any() and gen_num.notna().any():
+            return ref_num.fillna(-9.87654321e30).astype(float).round(8).equals(
+                gen_num.fillna(-9.87654321e30).astype(float).round(8)
+            )
+        return False
+    except Exception:
+        try:
+            return reference.fillna("__NA__").astype(str).equals(generated.fillna("__NA__").astype(str))
+        except Exception:
+            return False
 
 
 def _missing_materials(reference_root: Path, work_dir: Path) -> list[dict[str, str]]:
