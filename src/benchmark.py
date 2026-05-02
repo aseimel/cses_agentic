@@ -3,10 +3,13 @@
 from __future__ import annotations
 
 import json
+import re
+import zipfile
 from dataclasses import asdict, dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
+from xml.etree import ElementTree
 
 
 @dataclass
@@ -106,22 +109,215 @@ class DatasetComparator:
 
 
 class DocumentationComparator:
-    """Minimal documentation artifact comparator."""
+    """Compare generated CSES documentation against required structure and reference artifacts."""
+
+    LOG_SECTION_TERMS = {
+        "log_file_notes": ("log file notes", "processing notes"),
+        "questions_for_collaborator": ("questions for collaborator", "collaborator questions"),
+        "todo_before_release": ("things to do before releasing", "todo"),
+        "election_study_notes": ("election study notes", "esn"),
+        "election_summary": ("election summary",),
+        "study_design_weights": ("study design", "weights"),
+        "parties_leaders": ("parties and leaders", "party", "leader"),
+    }
+
+    REQUIRED_FACT_TERMS = {
+        "probability_sample": ("probability sample", "sampling"),
+        "sample_design": ("sample design", "sampling design"),
+        "sample_size": ("sample size",),
+        "response_rate": ("response rate",),
+        "fieldwork": ("fieldwork", "collection period", "data collection"),
+        "mode": ("mode of interview", "mode"),
+        "weights": ("weight", "weighting"),
+        "party_order": ("party order", "party a", "party b"),
+        "district_data": ("district", "constituency"),
+        "check_results": ("check", "validation"),
+    }
 
     def compare(self, working_dir: Path, reference_dir: Path | None = None) -> dict[str, Any]:
-        micro = Path(working_dir) / "micro"
+        working_dir = Path(working_dir)
+        micro = working_dir / "micro"
+        generated = self._generated_artifacts(working_dir)
+        reference = self._reference_artifacts(Path(reference_dir)) if reference_dir else {}
+        generated_texts = {name: _extract_text(path) for name, path in generated.items() if path}
+        reference_texts = {name: _extract_text(path) for name, path in reference.items() if path}
+        processing_text = generated_texts.get("processing_log", "") or generated_texts.get("active_log", "")
+        esn_text = generated_texts.get("esn", "")
+
         checks = {
-            "processing_log": bool(list(micro.glob("*log*.docx")) or list(micro.glob("*log*.qmd"))),
-            "collaborator_questions": bool(list(micro.glob("**/*question*.docx")) or list(micro.glob("**/*question*.txt"))),
-            "esn": bool(list(micro.glob("Documentation/*ESN*")) or list(Path(working_dir).glob("macro/*ESN*"))),
+            "processing_log": bool(generated.get("processing_log") or generated.get("active_log")),
+            "collaborator_questions_review": bool(generated.get("collaborator_questions") or "questions for collaborator" in processing_text.casefold()),
+            "esn": bool(generated.get("esn") or "election study notes" in processing_text.casefold()),
             "label_files": bool(list((micro / "labels").glob("*.do"))) if (micro / "labels").exists() else False,
             "check_files": bool(list((micro / "data_checks").glob("*.do"))) if (micro / "data_checks").exists() else False,
             "check_outputs": bool(list((micro / "data_checks").glob("*.log")) or list((micro / "data_checks").glob("*.smcl"))) if (micro / "data_checks").exists() else False,
         }
+        section_checks = {
+            key: _contains_any(processing_text, terms)
+            for key, terms in self.LOG_SECTION_TERMS.items()
+        }
+        fact_checks = {
+            key: _contains_any(processing_text + "\n" + esn_text, terms)
+            for key, terms in self.REQUIRED_FACT_TERMS.items()
+        }
+        reference_requirements = self._reference_requirements(reference_texts)
+        reference_coverage = {
+            key: _contains_any(processing_text + "\n" + esn_text, terms)
+            for key, terms in reference_requirements.items()
+        }
+        issues = []
+        for key, ok in checks.items():
+            if not ok:
+                issues.append(f"Missing documentation artifact: {key}")
+        for key, ok in section_checks.items():
+            if not ok:
+                issues.append(f"Processing log missing required section: {key}")
+        for key, ok in fact_checks.items():
+            if not ok:
+                issues.append(f"Documentation missing required CSES fact area: {key}")
+        for key, ok in reference_coverage.items():
+            if not ok:
+                issues.append(f"Generated documentation does not cover reference documentation area: {key}")
         return {
-            "ok": all(checks.values()),
+            "ok": not issues,
             "checks": checks,
+            "section_checks": section_checks,
+            "fact_checks": fact_checks,
+            "reference_coverage": reference_coverage,
+            "artifacts": {key: str(path) for key, path in generated.items() if path},
+            "reference_artifacts": {key: str(path) for key, path in reference.items() if path},
+            "issues": issues,
             "reference_dir": str(reference_dir) if reference_dir else "",
+        }
+
+    def write_report(self, working_dir: Path, reference_dir: Path | None = None) -> dict[str, Any]:
+        result = self.compare(working_dir, reference_dir)
+        out_dir = Path(working_dir) / ".cses"
+        out_dir.mkdir(parents=True, exist_ok=True)
+        (out_dir / "documentation_comparison.json").write_text(
+            json.dumps(result, indent=2, ensure_ascii=False),
+            encoding="utf-8",
+        )
+        lines = [
+            "# Documentation Comparison",
+            "",
+            f"Status: {'pass' if result.get('ok') else 'needs review'}",
+            "",
+            "## Required Artifacts",
+        ]
+        lines.extend(f"- {key}: {'present' if value else 'missing'}" for key, value in result.get("checks", {}).items())
+        lines.extend(["", "## Required Sections"])
+        lines.extend(f"- {key}: {'present' if value else 'missing'}" for key, value in result.get("section_checks", {}).items())
+        lines.extend(["", "## Required Fact Areas"])
+        lines.extend(f"- {key}: {'present' if value else 'missing'}" for key, value in result.get("fact_checks", {}).items())
+        if result.get("issues"):
+            lines.extend(["", "## Issues"])
+            lines.extend(f"- {issue}" for issue in result["issues"])
+        (out_dir / "documentation_comparison.md").write_text("\n".join(lines) + "\n", encoding="utf-8")
+        return result
+
+    def _generated_artifacts(self, working_dir: Path) -> dict[str, Path | None]:
+        micro = working_dir / "micro"
+        return {
+            "active_log": _latest([*micro.glob("*_log.qmd")]),
+            "processing_log": _latest([*micro.glob("cses-m6_log-file_*.txt"), *micro.glob("cses-m6_log-file_*.docx")]),
+            "collaborator_questions": _latest([*micro.glob("**/*question*.docx"), *micro.glob("**/*question*.txt"), *micro.glob("**/*question*.md")]),
+            "esn": _latest([*micro.glob("Documentation/*ESN*"), *working_dir.glob("macro/*ESN*")]),
+            "final_readiness": _latest([*micro.glob("*final_readiness_report.md")]),
+            "missing_input_report": _latest([*micro.glob("*missing_input_report.md")]),
+            "check_review": _latest([*micro.glob("*check_file_review.md")]),
+            "study_design_overview": _latest([*micro.glob("Documentation/*study_design*")]),
+        }
+
+    def _reference_artifacts(self, reference_dir: Path) -> dict[str, Path | None]:
+        micro = reference_dir / "micro"
+        return {
+            "processing_log": _latest([*micro.glob("**/*log-file*.docx"), *micro.glob("**/*log*.qmd"), *micro.glob("**/*log*.txt")]),
+            "collaborator_questions": _latest([*micro.glob("**/*Question*.docx"), *micro.glob("**/*question*.docx"), *micro.glob("**/*Question*.txt")]),
+            "esn": _latest([*reference_dir.glob("macro/*ESN*"), *micro.glob("Documentation/*ESN*")]),
+            "label_files": _latest([*micro.glob("labels/*.do")]),
+            "check_files": _latest([*micro.glob("data_checks/*.do")]),
+            "check_outputs": _latest([*micro.glob("data_checks/*.log"), *micro.glob("data_checks/*.smcl")]),
+        }
+
+    def _reference_requirements(self, reference_texts: dict[str, str]) -> dict[str, tuple[str, ...]]:
+        combined = "\n".join(reference_texts.values()).casefold()
+        requirements = {}
+        candidates = {
+            "reference_questions": ("question", "collaborator"),
+            "reference_esn_party": ("party", "leader", "appendix"),
+            "reference_district": ("district", "constituency"),
+            "reference_weights": ("weight", "weights", "weighting"),
+            "reference_checks": ("check", "validation", "inconsistency"),
+        }
+        for key, terms in candidates.items():
+            if any(term in combined for term in terms):
+                requirements[key] = terms
+        return requirements
+
+
+class BenchmarkDecisionExtractor:
+    """Extract benchmark-only reference decisions from completed artifacts."""
+
+    def extract(
+        self,
+        reference_dataset: Path | None = None,
+        reference_syntax: Path | None = None,
+        reference_dir: Path | None = None,
+        working_dir: Path | None = None,
+    ) -> dict[str, Any]:
+        payload = {
+            "generated_at": datetime.now(timezone.utc).isoformat(),
+            "source_policy": "Benchmark-only decision replay. Runtime processing still requires processor approval.",
+            "reference_dataset": str(reference_dataset) if reference_dataset else "",
+            "reference_syntax": str(reference_syntax) if reference_syntax else "",
+            "constant_values": self._constant_values(reference_dataset),
+            "syntax_variable_blocks": self._syntax_blocks(reference_syntax),
+            "documentation_decision_topics": self._documentation_topics(reference_dir),
+        }
+        if working_dir:
+            out = Path(working_dir) / ".cses" / "benchmark_decision_replay.json"
+            out.parent.mkdir(parents=True, exist_ok=True)
+            out.write_text(json.dumps(payload, indent=2, ensure_ascii=False), encoding="utf-8")
+        return payload
+
+    def _constant_values(self, reference_dataset: Path | None) -> dict[str, Any]:
+        if not reference_dataset or not reference_dataset.exists():
+            return {}
+        try:
+            import pyreadstat
+
+            df, _ = pyreadstat.read_dta(str(reference_dataset), apply_value_formats=False)
+        except Exception:
+            return {}
+        constants = {}
+        for column in df.columns:
+            values = df[column].dropna().unique()
+            if len(values) == 1:
+                constants[column] = _json_scalar(values[0])
+        return constants
+
+    def _syntax_blocks(self, reference_syntax: Path | None) -> dict[str, str]:
+        if not reference_syntax or not reference_syntax.exists():
+            return {}
+        text = reference_syntax.read_text(encoding="utf-8", errors="replace")
+        blocks = {}
+        matches = list(re.finditer(r"\*\*>>>\s+([A-Z0-9_]+)", text))
+        for index, match in enumerate(matches):
+            start = match.start()
+            end = matches[index + 1].start() if index + 1 < len(matches) else len(text)
+            block = text[start:end].strip()
+            blocks[match.group(1)] = block[:4000]
+        return blocks
+
+    def _documentation_topics(self, reference_dir: Path | None) -> dict[str, bool]:
+        if not reference_dir:
+            return {}
+        docs = DocumentationComparator()._reference_artifacts(Path(reference_dir))
+        text = "\n".join(_extract_text(path) for path in docs.values() if path)
+        return {
+            key: _contains_any(text, terms)
+            for key, terms in DocumentationComparator.REQUIRED_FACT_TERMS.items()
         }
 
 
@@ -148,7 +344,7 @@ class ReplicationBenchmarkRunner:
             dataset_path.parent.mkdir(parents=True, exist_ok=True)
             dataset_path.write_text(json.dumps(asdict(dataset_comparison), indent=2, ensure_ascii=False), encoding="utf-8")
 
-        documentation = DocumentationComparator().compare(self.working_dir, reference_dir)
+        documentation = DocumentationComparator().write_report(self.working_dir, reference_dir)
         syntax = self._syntax_comparison(reference_dir, exclude_district=exclude_district)
         matching_metrics = self._matching_metrics(reference_dataset)
         artifacts = {
@@ -271,3 +467,61 @@ class ReplicationBenchmarkRunner:
 
 def _plain_counts(counts: dict[Any, Any]) -> dict[str, int]:
     return {str(key): int(value) for key, value in counts.items()}
+
+
+def _latest(paths: list[Path]) -> Path | None:
+    existing = [path for path in paths if path and path.exists() and path.is_file()]
+    return max(existing, key=lambda path: path.stat().st_mtime) if existing else None
+
+
+def _contains_any(text: str, terms: tuple[str, ...]) -> bool:
+    haystack = _normalize_text(text)
+    return any(_normalize_text(term) in haystack for term in terms)
+
+
+def _normalize_text(text: Any) -> str:
+    return re.sub(r"\s+", " ", str(text or "").casefold()).strip()
+
+
+def _extract_text(path: Path | None) -> str:
+    if not path or not path.exists():
+        return ""
+    suffix = path.suffix.casefold()
+    if suffix == ".docx":
+        return _extract_docx_text(path)
+    try:
+        return path.read_text(encoding="utf-8", errors="replace")
+    except Exception:
+        try:
+            return path.read_text(encoding="cp1252", errors="replace")
+        except Exception:
+            return ""
+
+
+def _extract_docx_text(path: Path) -> str:
+    try:
+        with zipfile.ZipFile(path) as archive:
+            xml = archive.read("word/document.xml")
+        root = ElementTree.fromstring(xml)
+        namespace = {"w": "http://schemas.openxmlformats.org/wordprocessingml/2006/main"}
+        paragraphs = []
+        for para in root.findall(".//w:p", namespace):
+            pieces = [node.text or "" for node in para.findall(".//w:t", namespace)]
+            if pieces:
+                paragraphs.append("".join(pieces))
+        return "\n".join(paragraphs)
+    except Exception:
+        return ""
+
+
+def _json_scalar(value: Any) -> Any:
+    try:
+        if hasattr(value, "item"):
+            return value.item()
+    except Exception:
+        pass
+    try:
+        json.dumps(value)
+        return value
+    except TypeError:
+        return str(value)

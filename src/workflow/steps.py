@@ -672,8 +672,20 @@ class StepExecutor:
             if key != "consent_data_deposit"
             if not value or str(value).strip().lower() in {"tbd", "not specified in report", "not specified"}
         ]
+        resolved_aliases = {
+            "fieldwork": "collection_period",
+            "fieldwork_dates": "collection_period",
+            "weights": "weighting",
+            "weight": "weighting",
+            "response": "response_rate",
+        }
         for missing in study_kb.missing_fields():
-            if missing not in missing_fields and any(token in missing.lower() for token in ["sample", "response", "fieldwork", "mode", "weight"]):
+            missing_key = str(missing).lower()
+            resolved_key = next((field for token, field in resolved_aliases.items() if token in missing_key), missing)
+            resolved_value = extracted_info.get(resolved_key)
+            if resolved_value and str(resolved_value).strip().lower() not in {"tbd", "not specified in report", "not specified"}:
+                continue
+            if missing not in missing_fields and any(token in missing_key for token in ["sample", "response", "fieldwork", "mode", "weight"]):
                 missing_fields.append(missing)
         missing_issues = self._record_missing_items_for_processor_review(
             2,

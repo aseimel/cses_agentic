@@ -33,6 +33,7 @@ from src.settings import apply_settings_to_environment  # noqa: E402
 from src.workflow.state import WorkflowState, WORKFLOW_STEPS  # noqa: E402
 from src.workflow.steps import StepExecutor  # noqa: E402
 from src.agent.conversation import ConversationSession  # noqa: E402
+from src.benchmark import BenchmarkDecisionExtractor, DocumentationComparator  # noqa: E402
 
 
 REFERENCE_ARTIFACTS = {
@@ -472,6 +473,13 @@ def _build_report(
         strict_dataset=_strict_dataset_comparison(reference_dataset, generated_dataset),
         candidate_question_count=len(state.candidate_collaborator_questions) if state else 0,
     )
+    documentation_comparison = DocumentationComparator().write_report(work_dir, reference_root)
+    benchmark_decisions = BenchmarkDecisionExtractor().extract(
+        reference_dataset=reference_dataset,
+        reference_syntax=reference_do,
+        reference_dir=reference_root,
+        working_dir=work_dir,
+    )
     return {
         "generated_at": datetime.now().isoformat(),
         "benchmark_mode": mode,
@@ -485,6 +493,13 @@ def _build_report(
         "candidate_collaborator_questions": state.candidate_collaborator_questions if state else [],
         "transcripts": [asdict(item) for item in transcripts],
         "acceptance": acceptance,
+        "documentation_comparison": documentation_comparison,
+        "benchmark_decision_replay": {
+            "path": str(work_dir / ".cses" / "benchmark_decision_replay.json"),
+            "constant_values": len(benchmark_decisions.get("constant_values", {})),
+            "syntax_variable_blocks": len(benchmark_decisions.get("syntax_variable_blocks", {})),
+            "documentation_decision_topics": benchmark_decisions.get("documentation_decision_topics", {}),
+        },
         "syntax_comparison": {
             "reference": acceptance["syntax_reference"],
             "generated": acceptance["syntax_generated"],
@@ -562,6 +577,9 @@ def _write_markdown_report(report: dict[str, Any], path: Path) -> None:
         f"- Exact variable inventory: {report['acceptance'].get('strict_dataset_comparison', {}).get('exact_variable_inventory')}",
         f"- Exact value match: {report['acceptance'].get('strict_dataset_comparison', {}).get('exact_value_match')}",
         f"- Column label match: {report['acceptance'].get('strict_dataset_comparison', {}).get('column_label_match')}",
+        f"- Documentation comparison: {'pass' if report.get('documentation_comparison', {}).get('ok') else 'needs review'}",
+        f"- Benchmark reference decisions extracted: {report.get('benchmark_decision_replay', {}).get('constant_values', 0)} constants, "
+        f"{report.get('benchmark_decision_replay', {}).get('syntax_variable_blocks', 0)} syntax blocks",
         "",
         "## Syntax Comparison",
         f"- Reference variable blocks: {syntax['reference'].get('variable_blocks')}",
@@ -576,8 +594,27 @@ def _write_markdown_report(report: dict[str, Any], path: Path) -> None:
         f"- Overlap: {dataset.get('overlap_count')}",
         f"- Row count match: {dataset.get('row_count_match')}",
         "",
-        "## Missing Materials Assessment",
+        "## Documentation Comparison",
     ]
+    documentation = report.get("documentation_comparison", {})
+    lines.extend(
+        f"- {key}: {'present' if value else 'missing'}"
+        for key, value in documentation.get("checks", {}).items()
+    )
+    if documentation.get("issues"):
+        lines.append("")
+        lines.append("Documentation issues:")
+        lines.extend(f"- {issue}" for issue in documentation.get("issues", [])[:30])
+    decision_replay = report.get("benchmark_decision_replay", {})
+    lines.extend([
+        "",
+        "## Benchmark Decision Replay",
+        f"- Reference constants extracted: {decision_replay.get('constant_values', 0)}",
+        f"- Reference syntax blocks extracted: {decision_replay.get('syntax_variable_blocks', 0)}",
+        f"- Replay file: {decision_replay.get('path', '')}",
+        "",
+        "## Missing Materials Assessment",
+    ])
     for item in report["missing_materials"]:
         lines.append(
             f"- {item['label']}: {item['email_only_status']} ({item['classification']})"
