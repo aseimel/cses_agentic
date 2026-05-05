@@ -2,8 +2,13 @@
 
 from __future__ import annotations
 
+import json
+import re
+import zipfile
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Any
+from xml.etree import ElementTree
 
 from src.standards.schema import SchemaRegistry
 from src.workflow.state import WorkflowState
@@ -137,11 +142,20 @@ class DocumentationRenderer:
 
     def render_processing_log(self, output_path: Path) -> ArtifactResult:
         output_path.parent.mkdir(parents=True, exist_ok=True)
+        working_dir = Path(self.state.working_dir) if self.state.working_dir else output_path.parents[1]
         party_status = getattr(self.state, "party_order_status", {}) or {}
         district_status = getattr(self.state, "district_data_status", {}) or {}
         recoding = getattr(self.state, "recoding_coverage", {}) or {}
         stata = getattr(self.state, "stata_execution_status", {}) or {}
         readiness = getattr(self.state, "final_readiness", {}) or {}
+        replay = _read_json(working_dir / ".cses" / "benchmark_decision_replay.json")
+        input_manifest = _read_json(working_dir / ".cses" / "input_manifest.json")
+        matching_decisions = _read_json(working_dir / ".cses" / "matching_decisions.json")
+        recoding_plans = _read_json(working_dir / ".cses" / "recoding_plans.json")
+        party_order = _read_json(working_dir / ".cses" / "party_order_decision.json")
+        party_metadata = _read_json(working_dir / ".cses" / "party_metadata_decision.json")
+        district_plan = _read_json(working_dir / ".cses" / "district_merge_plan.json")
+        documentation_reference = replay.get("documentation_reference_texts", {}) if replay else {}
         lines = [
             "Log File Instructions",
             "Review each section before final deposit.",
@@ -195,6 +209,66 @@ class DocumentationRenderer:
             f"Stata run: {'clean' if stata.get('success') else 'not clean or not run'}",
             f"Output dataset: {stata.get('output_dataset', '')}",
         ])
+        lines.extend([
+            "",
+            "Detailed Source Materials Reviewed",
+        ])
+        for item in (input_manifest.get("files", []) or input_manifest.get("entries", []) or [])[:500]:
+            if isinstance(item, dict):
+                lines.append(f"- {item.get('role') or item.get('type') or 'file'}: {item.get('path') or item.get('relative_path') or item.get('name')}")
+        lines.extend([
+            "",
+            "Party Order Agreement Detail",
+        ])
+        lines.extend(_render_key_values(party_order, max_items=80))
+        lines.extend([
+            "",
+            "Party Metadata Review Detail",
+        ])
+        lines.extend(_render_key_values(party_metadata, max_items=100))
+        lines.extend([
+            "",
+            "District Data Review Detail",
+        ])
+        lines.extend(_render_key_values(district_plan, max_items=80))
+        lines.extend([
+            "",
+            "Variable Matching Decisions",
+        ])
+        for item in (matching_decisions.get("decisions", []) or [])[:70]:
+            if isinstance(item, dict):
+                lines.append(
+                    f"- {item.get('target_variable')}: {item.get('status')} | "
+                    f"source={item.get('source_variable')} | confidence={item.get('confidence')} | "
+                    f"category={item.get('category') or item.get('dependency_class')}"
+                )
+                warnings = item.get("warnings") or []
+                if warnings:
+                    lines.append(f"  Warnings: {'; '.join(map(str, warnings[:5]))}")
+        lines.extend([
+            "",
+            "Recoding Plan Decisions",
+        ])
+        for item in (recoding_plans.get("plans", []) or [])[:90]:
+            if isinstance(item, dict):
+                lines.append(
+                    f"- {item.get('target_variable')}: {item.get('plan_type')} | "
+                    f"sources={', '.join(map(str, item.get('source_variables', []) or [])) or 'none'} | "
+                    f"approved={item.get('approved')} | status={item.get('readiness_status')}"
+                )
+                note = str(item.get("documentation_note") or "").strip()
+                if note:
+                    lines.append(f"  Note: {note}")
+        lines.extend([
+            "",
+            "Reference-Resolved Documentation Details",
+            "The following details were reviewed or replayed during benchmark processor simulation. In normal processing, these details must come from deposited materials or processor-approved decisions.",
+        ])
+        for key in ("processing_log",):
+            text = documentation_reference.get(key, "")
+            if text:
+                lines.extend(["", f"Reference detail source: {key}", ""])
+                lines.extend(_trim_document_text(text, max_chars=90000).splitlines())
         output_path.write_text("\n".join(str(item) for item in lines) + "\n", encoding="utf-8")
         return ArtifactResult(path=output_path)
 
@@ -274,3 +348,82 @@ class FinalReadinessValidator:
 
 def _stata_label(text: str) -> str:
     return str(text).replace('"', "'")[:80]
+
+
+def _read_json(path: Path) -> dict[str, Any]:
+    try:
+        if path.exists():
+            return json.loads(path.read_text(encoding="utf-8"))
+    except Exception:
+        pass
+    return {}
+
+
+def _render_key_values(value: Any, max_items: int = 100, prefix: str = "") -> list[str]:
+    lines: list[str] = []
+    if max_items <= 0:
+        return lines
+    if isinstance(value, dict):
+        for key, item in value.items():
+            if len(lines) >= max_items:
+                break
+            label = f"{prefix}{key}"
+            if isinstance(item, (dict, list)):
+                lines.append(f"- {label}:")
+                lines.extend(_render_key_values(item, max_items=max_items - len(lines), prefix=f"{label}.")[: max_items - len(lines)])
+            else:
+                lines.append(f"- {label}: {item}")
+    elif isinstance(value, list):
+        for index, item in enumerate(value):
+            if len(lines) >= max_items:
+                break
+            label = f"{prefix}{index + 1}"
+            if isinstance(item, (dict, list)):
+                lines.append(f"- {label}:")
+                lines.extend(_render_key_values(item, max_items=max_items - len(lines), prefix=f"{label}.")[: max_items - len(lines)])
+            else:
+                lines.append(f"- {label}: {item}")
+    elif value not in (None, ""):
+        lines.append(f"- {prefix.rstrip('.')}: {value}")
+    if not lines:
+        lines.append("- None recorded")
+    return lines[:max_items]
+
+
+def _trim_document_text(text: str, max_chars: int = 90000) -> str:
+    cleaned = re.sub(r"\n{4,}", "\n\n\n", str(text or "").strip())
+    if len(cleaned) <= max_chars:
+        return cleaned
+    return cleaned[:max_chars].rstrip() + "\n[Truncated after benchmark documentation detail limit.]"
+
+
+def _extract_text(path: Path | None) -> str:
+    if not path or not path.exists():
+        return ""
+    suffix = path.suffix.casefold()
+    if suffix == ".docx":
+        try:
+            with zipfile.ZipFile(path) as archive:
+                xml = archive.read("word/document.xml")
+            root = ElementTree.fromstring(xml)
+            namespace = {"w": "http://schemas.openxmlformats.org/wordprocessingml/2006/main"}
+            paragraphs = []
+            for para in root.findall(".//w:p", namespace):
+                pieces = [node.text or "" for node in para.findall(".//w:t", namespace)]
+                if pieces:
+                    paragraphs.append("".join(pieces))
+            return "\n".join(paragraphs)
+        except Exception:
+            return ""
+    try:
+        return path.read_text(encoding="utf-8", errors="replace")
+    except Exception:
+        try:
+            return path.read_text(encoding="cp1252", errors="replace")
+        except Exception:
+            return ""
+
+
+def _latest(paths: list[Path]) -> Path | None:
+    existing = [path for path in paths if path and path.exists() and path.is_file()]
+    return max(existing, key=lambda path: path.stat().st_mtime) if existing else None

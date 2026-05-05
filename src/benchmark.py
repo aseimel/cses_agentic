@@ -133,6 +133,7 @@ class DocumentationComparator:
         "district_data": ("district", "constituency"),
         "check_results": ("check", "validation"),
     }
+    STRICT_ARTIFACTS = ("processing_log", "collaborator_questions", "esn")
 
     def compare(self, working_dir: Path, reference_dir: Path | None = None) -> dict[str, Any]:
         working_dir = Path(working_dir)
@@ -165,6 +166,12 @@ class DocumentationComparator:
             key: _contains_any(processing_text + "\n" + esn_text, terms)
             for key, terms in reference_requirements.items()
         }
+        equivalence = self._documentation_equivalence(
+            generated,
+            reference,
+            working_dir=working_dir,
+            reference_dir=Path(reference_dir) if reference_dir else None,
+        )
         issues = []
         for key, ok in checks.items():
             if not ok:
@@ -178,12 +185,16 @@ class DocumentationComparator:
         for key, ok in reference_coverage.items():
             if not ok:
                 issues.append(f"Generated documentation does not cover reference documentation area: {key}")
+        for key, result in equivalence.items():
+            if not result.get("ok", False):
+                issues.append(f"Documentation not comparable to reference for {key}: {', '.join(result.get('issues', []))}")
         return {
             "ok": not issues,
             "checks": checks,
             "section_checks": section_checks,
             "fact_checks": fact_checks,
             "reference_coverage": reference_coverage,
+            "equivalence": equivalence,
             "artifacts": {key: str(path) for key, path in generated.items() if path},
             "reference_artifacts": {key: str(path) for key, path in reference.items() if path},
             "issues": issues,
@@ -210,6 +221,14 @@ class DocumentationComparator:
         lines.extend(f"- {key}: {'present' if value else 'missing'}" for key, value in result.get("section_checks", {}).items())
         lines.extend(["", "## Required Fact Areas"])
         lines.extend(f"- {key}: {'present' if value else 'missing'}" for key, value in result.get("fact_checks", {}).items())
+        if result.get("equivalence"):
+            lines.extend(["", "## Reference Documentation Equivalence"])
+            for key, value in result["equivalence"].items():
+                lines.append(
+                    f"- {key}: {'pass' if value.get('ok') else 'needs review'} "
+                    f"(extent {value.get('extent_ratio')}, detail {value.get('detail_coverage')}, "
+                    f"format {value.get('format_ratio')})"
+                )
         if result.get("issues"):
             lines.extend(["", "## Issues"])
             lines.extend(f"- {issue}" for issue in result["issues"])
@@ -255,6 +274,89 @@ class DocumentationComparator:
                 requirements[key] = terms
         return requirements
 
+    def _documentation_equivalence(
+        self,
+        generated: dict[str, Path | None],
+        reference: dict[str, Path | None],
+        working_dir: Path,
+        reference_dir: Path | None,
+    ) -> dict[str, dict[str, Any]]:
+        if not reference:
+            return {}
+        results = {}
+        for key in self.STRICT_ARTIFACTS:
+            generated_path = generated.get(key)
+            reference_path = reference.get(key)
+            if not reference_path:
+                continue
+            generated_paths = self._artifact_equivalence_paths(key, working_dir, generated_path, generated=True)
+            reference_paths = self._artifact_equivalence_paths(key, reference_dir, reference_path, generated=False)
+            generated_text = "\n".join(_extract_text(path) for path in generated_paths)
+            reference_text = "\n".join(_extract_text(path) for path in reference_paths)
+            generated_profile = _combined_document_profile(generated_paths, generated_text)
+            reference_profile = _combined_document_profile(reference_paths, reference_text)
+            anchors = _reference_detail_anchors(reference_text)
+            found = [anchor for anchor in anchors if _anchor_present(anchor, generated_text)]
+            extent_ratio = _ratio(generated_profile["char_count"], reference_profile["char_count"])
+            format_ratio = min(
+                _ratio(generated_profile["paragraph_count"], reference_profile["paragraph_count"]),
+                _ratio(generated_profile["heading_count"] or 1, reference_profile["heading_count"] or 1),
+            )
+            detail_coverage = round(len(found) / len(anchors), 4) if anchors else 1.0
+            issues = []
+            if extent_ratio < 0.55:
+                issues.append("generated text is much shorter than the reference")
+            if extent_ratio > 2.25:
+                issues.append("generated text is much longer than the reference")
+            if format_ratio < 0.45:
+                issues.append("paragraph/heading structure is not comparable")
+            if detail_coverage < 0.70:
+                issues.append("reference details are missing from generated documentation")
+            if not generated_text.strip():
+                issues.append("generated documentation artifact is empty or missing")
+            results[key] = {
+                "ok": not issues,
+                "generated_path": str(generated_path) if generated_path else "",
+                "reference_path": str(reference_path),
+                "generated_paths": [str(path) for path in generated_paths],
+                "reference_paths": [str(path) for path in reference_paths],
+                "generated_profile": generated_profile,
+                "reference_profile": reference_profile,
+                "extent_ratio": extent_ratio,
+                "format_ratio": format_ratio,
+                "detail_coverage": detail_coverage,
+                "reference_detail_count": len(anchors),
+                "matched_detail_count": len(found),
+                "missing_detail_examples": [anchor for anchor in anchors if anchor not in found][:50],
+                "issues": issues,
+            }
+        return results
+
+    def _artifact_equivalence_paths(
+        self,
+        key: str,
+        root: Path | None,
+        fallback: Path | None,
+        generated: bool,
+    ) -> list[Path]:
+        if not root:
+            return [fallback] if fallback else []
+        micro = root / "micro"
+        if key == "collaborator_questions":
+            paths = [*micro.glob("**/*question*.docx"), *micro.glob("**/*Question*.docx"), *micro.glob("**/*question*.txt"), *micro.glob("**/*question*.md")]
+            return sorted({
+                path for path in paths
+                if path.exists()
+                and path.is_file()
+                and _is_current_collaborator_question_doc(path)
+            })
+        if key == "esn":
+            if generated:
+                return [fallback] if fallback else []
+            paths = [*root.glob("macro/*ESN*")]
+            return sorted({path for path in paths if path.exists() and path.is_file()})
+        return [fallback] if fallback else []
+
 
 class BenchmarkDecisionExtractor:
     """Extract benchmark-only reference decisions from completed artifacts."""
@@ -275,6 +377,7 @@ class BenchmarkDecisionExtractor:
             "syntax_variable_blocks": self._syntax_blocks(reference_syntax),
             "reference_recoding_plans": self._reference_recoding_plans(reference_syntax),
             "documentation_decision_topics": self._documentation_topics(reference_dir),
+            "documentation_reference_texts": self._documentation_reference_texts(reference_dir),
         }
         if working_dir:
             out = Path(working_dir) / ".cses" / "benchmark_decision_replay.json"
@@ -349,6 +452,16 @@ class BenchmarkDecisionExtractor:
         return {
             key: _contains_any(text, terms)
             for key, terms in DocumentationComparator.REQUIRED_FACT_TERMS.items()
+        }
+
+    def _documentation_reference_texts(self, reference_dir: Path | None) -> dict[str, str]:
+        if not reference_dir:
+            return {}
+        docs = DocumentationComparator()._reference_artifacts(Path(reference_dir))
+        return {
+            key: _extract_text(path)[:120000]
+            for key, path in docs.items()
+            if key in {"processing_log", "collaborator_questions", "esn"} and path
         }
 
 
@@ -508,6 +621,136 @@ def _latest(paths: list[Path]) -> Path | None:
 def _contains_any(text: str, terms: tuple[str, ...]) -> bool:
     haystack = _normalize_text(text)
     return any(_normalize_text(term) in haystack for term in terms)
+
+
+def _ratio(value: int | float, reference: int | float) -> float:
+    if not reference:
+        return 1.0 if value else 0.0
+    return round(float(value) / float(reference), 4)
+
+
+def _document_profile(path: Path | None, text: str) -> dict[str, Any]:
+    lines = [line.strip() for line in text.splitlines() if line.strip()]
+    heading_count = sum(1 for line in lines if _looks_like_heading(line))
+    table_count = 0
+    list_count = sum(1 for line in lines if line.startswith(("-", "*", "•")) or re.match(r"^\d+[\.)]\s+", line))
+    if path and path.exists() and path.suffix.casefold() == ".docx":
+        docx_profile = _docx_format_profile(path)
+        heading_count = max(heading_count, docx_profile.get("heading_count", 0))
+        table_count = docx_profile.get("table_count", 0)
+        list_count = max(list_count, docx_profile.get("list_count", 0))
+    else:
+        table_count = sum(1 for line in lines if line.count("|") >= 2)
+    return {
+        "char_count": len(text),
+        "paragraph_count": len(lines),
+        "heading_count": heading_count,
+        "table_count": table_count,
+        "list_count": list_count,
+    }
+
+
+def _combined_document_profile(paths: list[Path], text: str) -> dict[str, Any]:
+    profile = _document_profile(paths[0] if paths else None, text)
+    if len(paths) <= 1:
+        return profile
+    table_count = 0
+    heading_count = 0
+    list_count = 0
+    for path in paths:
+        if path.suffix.casefold() == ".docx":
+            docx_profile = _docx_format_profile(path)
+            table_count += docx_profile.get("table_count", 0)
+            heading_count += docx_profile.get("heading_count", 0)
+            list_count += docx_profile.get("list_count", 0)
+    if heading_count:
+        profile["heading_count"] = max(profile["heading_count"], heading_count)
+    if table_count:
+        profile["table_count"] = table_count
+    if list_count:
+        profile["list_count"] = max(profile["list_count"], list_count)
+    return profile
+
+
+def _looks_like_heading(line: str) -> bool:
+    stripped = line.strip()
+    if stripped.startswith("#"):
+        return True
+    if len(stripped) <= 120 and stripped.upper() == stripped and re.search(r"[A-Z]", stripped):
+        return True
+    if stripped.endswith(":") and len(stripped) <= 100:
+        return True
+    return bool(re.match(r"^(?:Log File|Questions|Things To Do|Election|Overview|Parties|District|Variable|Stata|Check)", stripped, re.I))
+
+
+def _docx_format_profile(path: Path) -> dict[str, int]:
+    try:
+        with zipfile.ZipFile(path) as archive:
+            xml = archive.read("word/document.xml")
+        root = ElementTree.fromstring(xml)
+        namespace = {"w": "http://schemas.openxmlformats.org/wordprocessingml/2006/main"}
+        heading_count = 0
+        list_count = 0
+        for para in root.findall(".//w:p", namespace):
+            style = para.find(".//w:pStyle", namespace)
+            style_value = style.attrib.get(f"{{{namespace['w']}}}val", "") if style is not None else ""
+            if "heading" in style_value.casefold() or "title" in style_value.casefold():
+                heading_count += 1
+            if para.find(".//w:numPr", namespace) is not None:
+                list_count += 1
+        return {
+            "heading_count": heading_count,
+            "table_count": len(root.findall(".//w:tbl", namespace)),
+            "list_count": list_count,
+        }
+    except Exception:
+        return {"heading_count": 0, "table_count": 0, "list_count": 0}
+
+
+def _reference_detail_anchors(text: str) -> list[str]:
+    anchors: set[str] = set()
+    patterns = [
+        r"\bF\d{4}(?:_[A-Z0-9]+)*\b",
+        r"\b(?:AA|A|Q|D)\d{1,3}[A-Za-z0-9_-]*\b",
+        r"\b(?:Party|Leader)\s+[A-I]\b",
+        r"\b\d{1,2}[./-]\d{1,2}[./-]\d{2,4}\b",
+        r"\b\d{4}-\d{1,2}-\d{1,2}\b",
+        r"\b\d+(?:\.\d+)?\s*%\b",
+        r"\b(?:January|February|March|April|May|June|July|August|September|October|November|December)\s+\d{1,2},?\s+\d{4}\b",
+    ]
+    for pattern in patterns:
+        anchors.update(match.group(0).strip() for match in re.finditer(pattern, text, flags=re.IGNORECASE))
+    for line in text.splitlines():
+        stripped = re.sub(r"\s+", " ", line).strip()
+        if 18 <= len(stripped) <= 140 and (
+            re.match(r"^[A-Z0-9_ -]{8,}$", stripped)
+            or re.match(r"^[A-Z]{1,4}\d+[A-Za-z0-9)\- ]+", stripped)
+            or "follow-up" in stripped.casefold()
+            or "election study notes" in stripped.casefold()
+        ):
+            anchors.add(stripped)
+    return sorted({anchor for anchor in anchors if len(anchor) >= 2})[:400]
+
+
+def _anchor_present(anchor: str, text: str) -> bool:
+    normalized_anchor = _normalize_text(anchor)
+    normalized_text = _normalize_text(text)
+    if normalized_anchor in normalized_text:
+        return True
+    compact_anchor = re.sub(r"[^a-z0-9]", "", normalized_anchor)
+    compact_text = re.sub(r"[^a-z0-9]", "", normalized_text)
+    return bool(compact_anchor and compact_anchor in compact_text)
+
+
+def _is_current_collaborator_question_doc(path: Path) -> bool:
+    parts = {part.casefold() for part in path.parts}
+    if any(part.startswith("_old") or part == "_2018" for part in parts):
+        return False
+    if "questionnaires" in parts:
+        return False
+    if "collaborator questions" not in parts and "collaborator question" not in " ".join(parts):
+        return False
+    return True
 
 
 def _split_stata_blocks(text: str) -> list[str]:

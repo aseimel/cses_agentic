@@ -2402,11 +2402,19 @@ class StepExecutor:
 
     def _step_14(self, **kwargs) -> StepResult:
         """Step 14: Follow Up on Collaborator Questions."""
+        from src.standards.artifacts import _extract_text
+
         pending = self.state.get_pending_questions()
         candidates = self.state.candidate_collaborator_questions
         followup_dir = self.working_dir / "micro" / "collaborator questions"
         followup_dir.mkdir(parents=True, exist_ok=True)
         followup_path = followup_dir / f"{self.state.country_code or 'CNT'}_{self.state.year or 'YEAR'}_question_followup.md"
+        existing_question_docs = [
+            path for path in sorted((self.working_dir / "micro" / "Collaborator Questions").glob("**/*"))
+            if path.is_file()
+            and path.resolve() != followup_path.resolve()
+            and path.suffix.casefold() in {".docx", ".txt", ".md"}
+        ]
         lines = [
             f"# Collaborator Question Follow-Up: {self.state.country} {self.state.year}",
             "",
@@ -2434,6 +2442,23 @@ class StepExecutor:
                     lines.extend(f"- {item}" for item in missing)
                 lines.append(q.get("question", ""))
                 lines.append("")
+        if existing_question_docs:
+            lines.extend([
+                "## Existing Collaborator Correspondence Reviewed",
+                "",
+                "The following supplied correspondence was retained in the processing record so the processor can verify that resolved collaborator decisions are reflected in syntax and documentation.",
+                "",
+            ])
+            for path in existing_question_docs:
+                text = _extract_text(path).strip()
+                if not text:
+                    continue
+                lines.extend([
+                    f"### {path.name}",
+                    "",
+                    text,
+                    "",
+                ])
         followup_path.write_text("\n".join(lines), encoding="utf-8")
         issues = []
         if pending:
@@ -2452,7 +2477,7 @@ class StepExecutor:
 
     def _step_15(self, **kwargs) -> StepResult:
         """Step 15: Transfer ESNs to Codebook."""
-        from src.standards.artifacts import DocumentationRenderer
+        from src.standards.artifacts import DocumentationRenderer, _extract_text
 
         doc_dir = self.working_dir / "micro" / "Documentation"
         doc_dir.mkdir(parents=True, exist_ok=True)
@@ -2480,6 +2505,22 @@ class StepExecutor:
         for key, value in sd.items():
             lines.append(f"{key}: {value or 'TBD'}")
         lines.extend(["", "Parties and Leaders", self.active_logger.log_data.parties_leaders if self.active_logger.log_data else "TBD"])
+        source_esns = [
+            path for path in sorted([*self.working_dir.glob("macro/*ESN*"), *doc_dir.glob("*ESN*")])
+            if path.is_file() and path.resolve() != esn_path.resolve()
+        ]
+        if source_esns:
+            lines.extend([
+                "",
+                "Existing Election Study Notes Reviewed",
+                "",
+                "The following supplied ESN material was retained so the processor can verify that all source documentation details are transferred to the codebook.",
+                "",
+            ])
+            for path in source_esns:
+                text = _extract_text(path).strip()
+                if text:
+                    lines.extend([f"Source ESN: {path.name}", "", text, ""])
         esn_path.write_text("\n".join(lines), encoding="utf-8")
 
         from src.standards.validators import validate_documentation_text

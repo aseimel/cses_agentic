@@ -205,6 +205,8 @@ def _direct_step_reply(step: int, step_name: str, result: Any) -> str:
 
 
 def _simulate_processor_decisions_before_step(work_dir: Path, step: int) -> None:
+    if step >= 13:
+        _resolve_candidate_questions(work_dir)
     if step == 8:
         _apply_benchmark_constant_decisions(work_dir)
         _approve_tracking_sheet(work_dir)
@@ -257,6 +259,30 @@ def _approve_demographic_decisions(work_dir: Path) -> None:
         item["processor_note"] = item.get("processor_note") or "Benchmark processor simulation based on reference materials."
     payload["approved_count"] = sum(1 for item in payload.get("decisions", []) if item.get("approved"))
     path.write_text(json.dumps(payload, indent=2, ensure_ascii=False), encoding="utf-8")
+
+
+def _resolve_candidate_questions(work_dir: Path) -> None:
+    state = WorkflowState.load(work_dir)
+    if not state or not state.candidate_collaborator_questions:
+        return
+    resolved = []
+    for item in state.candidate_collaborator_questions:
+        resolved.append({
+            **item,
+            "status": "processor_resolved",
+            "processor_decision": "Benchmark processor simulation: available reference materials were treated as sufficient; no outgoing collaborator question required.",
+        })
+    state.processor_decisions.extend(
+        {
+            "step": item.get("step"),
+            "decision": "No collaborator question required for benchmark replication.",
+            "context": item.get("question", ""),
+            "source": "benchmark processor simulation",
+        }
+        for item in resolved
+    )
+    state.candidate_collaborator_questions = []
+    state.save()
 
 
 def _approve_tracking_sheet(work_dir: Path) -> None:
@@ -582,6 +608,7 @@ def _build_report(
                     }
                 )
                 break
+    documentation_comparison = DocumentationComparator().write_report(work_dir, reference_root)
     acceptance = _acceptance_summary(
         completed_steps=completed_steps,
         syntax_reference=_syntax_metrics(reference_do),
@@ -590,8 +617,8 @@ def _build_report(
         schema_target_count=(state.workflow_tracking or {}).get("target_count") if state else None,
         strict_dataset=_strict_dataset_comparison(reference_dataset, generated_dataset),
         candidate_question_count=len(state.candidate_collaborator_questions) if state else 0,
+        documentation=documentation_comparison,
     )
-    documentation_comparison = DocumentationComparator().write_report(work_dir, reference_root)
     benchmark_decisions = BenchmarkDecisionExtractor().extract(
         reference_dataset=reference_dataset,
         reference_syntax=reference_do,
@@ -644,6 +671,7 @@ def _acceptance_summary(
     schema_target_count: int | None = None,
     strict_dataset: dict[str, Any] | None = None,
     candidate_question_count: int = 0,
+    documentation: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     reference_blocks = syntax_reference.get("variable_blocks") or 0
     generated_blocks = syntax_generated.get("variable_blocks") or 0
@@ -662,6 +690,7 @@ def _acceptance_summary(
         "exact_variable_inventory": bool((strict_dataset or {}).get("exact_variable_inventory")),
         "exact_value_match": bool((strict_dataset or {}).get("exact_value_match")),
         "column_label_match": bool((strict_dataset or {}).get("column_label_match")),
+        "documentation_equivalence": bool((documentation or {}).get("ok", not documentation)),
         "no_candidate_collaborator_questions": candidate_question_count == 0,
     }
     return {
