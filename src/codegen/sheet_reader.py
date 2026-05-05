@@ -329,6 +329,7 @@ class TrackingSheetReader:
             "missing_not_collected",
             "party_order_agreement_required",
             "party_order_information",
+            "party_context_derivative",
             "party_vote_choice",
             "party_scale_direct",
             "not_applicable",

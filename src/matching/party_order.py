@@ -468,7 +468,9 @@ def is_party_order_dependent_variable(name: str, description: str = "", dependen
         return True
     if item_type == "party_vote_item":
         return True
-    if re.match(r"^F30(11|16|18|19|20|21|23)", name):
+    if re.match(r"^F30(10|11|16|18|19|20|21|23)", name):
+        return True
+    if name.startswith("F3100_"):
         return True
     return any(token in description.upper() for token in ("PARTY A", "PARTY B", "LEADER A", "VOTE CHOICE", "PARTY ID"))
 

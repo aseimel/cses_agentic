@@ -344,6 +344,7 @@ class DistrictStataSyntaxBuilder:
             lines.append(f"recode {DISTRICT_KEY} (. = 99999)")
         lines.extend([
             f"format {DISTRICT_KEY} %005.0f",
+            f'label variable {DISTRICT_KEY} "PRIMARY ELECTORAL DISTRICT"',
             f'merge m:1 {DISTRICT_KEY} using "{using_path}"',
             "tab _merge, mis",
             f"count if _merge == 1 & {DISTRICT_KEY} != 99999",

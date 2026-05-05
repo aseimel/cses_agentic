@@ -25,6 +25,10 @@ from src.matching.party_order import (
     party_order_message,
     write_election_results_intake,
 )
+from src.matching.party_metadata import (
+    PartyMetadataReviewBuilder,
+    party_metadata_message,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -1252,6 +1256,13 @@ class StepExecutor:
                 "micro_variables_affected": party_summary.get("micro_variables_affected", 0),
                 "macro_variables_affected": party_summary.get("macro_variables_affected", 0),
             }
+            print("Reviewing macro party metadata...")
+            party_metadata_builder = PartyMetadataReviewBuilder(self.working_dir)
+            party_metadata_review = party_metadata_builder.build()
+            party_metadata_review_path, party_metadata_decision_path = party_metadata_builder.write_review(
+                party_metadata_review
+            )
+            party_metadata_approved = party_metadata_builder.is_approved()
 
             # Load documents
             print("Loading documentation...")
@@ -1390,6 +1401,12 @@ class StepExecutor:
                 "party_order_status": self.state.party_order_status,
                 "administrative_summary": administrative_summary,
                 "demographic_summary": demographic_summary,
+                "party_metadata_status": {
+                    "status": "approved" if party_metadata_approved else party_metadata_review.status,
+                    "values_found": len(party_metadata_review.values),
+                    "missing": len(party_metadata_review.missing_variables),
+                    "warnings": len(party_metadata_review.warnings),
+                },
             }
             self.state.save()
 
@@ -1481,6 +1498,8 @@ class StepExecutor:
                     transform_type = "party_order_agreement_required"
                 elif decision.status == "generated_from_party_order":
                     transform_type = "party_order_information"
+                elif decision.status == "generated_from_party_context":
+                    transform_type = "party_context_derivative"
                 elif decision.status in {"derived_metadata", "external_input_required", "blocked_for_processor_review"}:
                     transform_type = "not_found" if not source or source in {"DERIVED_METADATA", "EXTERNAL_INPUT_REQUIRED"} else transform_type
 
@@ -1635,6 +1654,8 @@ class StepExecutor:
                         str(demographic_decisions_path),
                         str(party_review_path),
                         str(party_decision_path),
+                        str(party_metadata_review_path),
+                        str(party_metadata_decision_path),
                     ],
                     issues=[
                         f"Matching errors: {error_count}",
@@ -1655,6 +1676,8 @@ class StepExecutor:
                     f"Proposed source matches for {valid_matched}/{total} CSES variables; "
                     f"{unresolved_count} remain unresolved.\n\n"
                     + party_order_message(party_order_proposal)
+                    + "\n\n"
+                    + party_metadata_message(party_metadata_review)
                 ),
                 artifacts=[
                     str(tracking_path),
@@ -1666,6 +1689,8 @@ class StepExecutor:
                     str(demographic_decisions_path),
                     str(party_review_path),
                     str(party_decision_path),
+                    str(party_metadata_review_path),
+                    str(party_metadata_decision_path),
                 ],
                 next_action=(
                     "Review non-party matches and the Party Order Agreement. "

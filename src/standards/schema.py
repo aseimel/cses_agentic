@@ -185,6 +185,18 @@ def infer_dependency_class(name: str) -> str:
         return "district_input"
     if name.startswith("F5") or name.startswith("F6"):
         return "macro_or_party_input"
+    if name in {
+        "F3010",
+        "F3010_TS",
+        "F3011_VS_1",
+        "F3011_LR_CSES",
+        "F3011_LR_MARPOR",
+        "F3011_IF_CSES",
+        "F3100_LR_CSES",
+        "F3100_LR_MARPOR",
+        "F3100_IF_CSES",
+    }:
+        return "macro_or_party_input"
     if name.startswith("F10") or name.startswith("F11"):
         return "derived_metadata"
     if name.startswith("F2") or name.startswith("F3"):

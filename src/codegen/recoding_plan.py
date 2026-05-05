@@ -278,6 +278,15 @@ class RecodingPlanBuilder:
             recode_rules = []
             missing_rules = []
             verification = [f"tab {schema_var.name}, mis"]
+            custom_lines = []
+        elif party_recode.map_type == "party_context_custom":
+            plan_type = "custom_stata_lines"
+            expression = ""
+            source_variables = [item for item in source.split() if item]
+            recode_rules = []
+            missing_rules = []
+            verification = [f"tab {schema_var.name}, mis"]
+            custom_lines = list(party_recode.custom_stata_lines)
         elif party_recode.map_type == "party_vote_choice":
             plan_type = "recode"
             expression = source
@@ -291,6 +300,7 @@ class RecodingPlanBuilder:
                 for key, value in party_recode.missing_map.items()
             ]
             verification = self._verification_commands(schema_var.name, source, plan_type)
+            custom_lines = []
         elif party_recode.map_type == "party_scale_direct":
             plan_type = "direct_copy"
             expression = source
@@ -298,6 +308,7 @@ class RecodingPlanBuilder:
             recode_rules = []
             missing_rules = []
             verification = self._verification_commands(schema_var.name, source, plan_type)
+            custom_lines = []
         else:
             plan_type = "manual_processor_decision"
             expression = self._missing_value(schema_var)
@@ -305,6 +316,7 @@ class RecodingPlanBuilder:
             recode_rules = []
             missing_rules = []
             verification = [f"tab {schema_var.name}, mis"]
+            custom_lines = []
         approved = party_recode.approved or bool(mapping and mapping.verified and not party_recode.issues)
         return RecodingPlan(
             **base,
@@ -318,6 +330,7 @@ class RecodingPlanBuilder:
             readiness_status="ready" if approved else "needs_processor_review",
             approved=approved,
             issues=[] if approved else party_recode.issues,
+            custom_stata_lines=custom_lines,
         )
 
     def _plan_from_demographic_decision(
@@ -812,7 +825,7 @@ class PlanDrivenStataSyntaxGenerator:
             if not plan.approved and not draft:
                 lines.append(f"* BLOCKED: processor approval required before final syntax for {target}")
             lines.append(f"gen {target} = {value}")
-        if plan.description:
+        if _should_emit_variable_label(plan):
             lines.append(f'label variable {target} "{_stata_label(plan.description)}"')
         if plan.plan_type in {"reference_stata_lines", "custom_stata_lines"}:
             has_tab = any(
@@ -838,6 +851,28 @@ def _stata_comment(text: str) -> str:
 
 def _stata_label(text: str) -> str:
     return str(text).replace("\n", " ").replace('"', "'")[:80]
+
+
+def _should_emit_variable_label(plan: RecodingPlan) -> bool:
+    """Only emit labels that are real CSES labels, not generated placeholders."""
+    description = str(plan.description or "").strip()
+    if not description:
+        return False
+    target = plan.target_variable
+    lowered = description.casefold()
+    placeholder_descriptions = {
+        f"{target} district data variable".casefold(),
+        f"{target} party leader macro variable".casefold(),
+        f"{target} party metadata variable".casefold(),
+        f"{target} macro party variable".casefold(),
+    }
+    if lowered in placeholder_descriptions:
+        return False
+    if target.endswith("_N") and "district data variable" in lowered:
+        return False
+    if target.startswith(("F5201_", "F5202_")) and "party leader macro variable" in lowered:
+        return False
+    return True
 
 
 def _parse_iso_date_parts(value: Any) -> tuple[int, int, int] | None:

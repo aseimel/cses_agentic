@@ -3114,23 +3114,23 @@
       "description": "TURNOUT: MAIN ELECTION",
       "order": 123,
       "section": "survey_questions",
-      "dependency_class": "direct_survey_item",
+      "dependency_class": "macro_or_party_input",
       "required_evidence": [
-        "questionnaire",
-        "data_variable",
-        "source_frequency"
+        "party_ordering",
+        "main_election_context",
+        "approved_party_metadata_or_derivation_source"
       ],
-      "recode_strategy": "direct_or_recode",
-      "syntax_pattern_id": "standard_variable_block",
+      "recode_strategy": "party_context_derivative",
+      "syntax_pattern_id": "party_context_derivative_block",
       "validation_checks": [
         "variable_exists",
         "tab_missing",
-        "missing_codes",
-        "source_target_verification"
+        "missing_codes"
       ],
       "documentation_requirements": [
         "tracking_sheet_row",
-        "processing_log_entry"
+        "processing_log_entry",
+        "party_metadata_review"
       ],
       "missing_value_policy": "standard_cses_missing_codes",
       "value_label_required": true
@@ -3270,23 +3270,23 @@
       "description": "TURNOUT SWITCHER BETWEEN CURRENT ELECTION AND PREVIOUS ELECTION",
       "order": 129,
       "section": "survey_questions",
-      "dependency_class": "direct_survey_item",
+      "dependency_class": "macro_or_party_input",
       "required_evidence": [
-        "questionnaire",
-        "data_variable",
-        "source_frequency"
+        "party_ordering",
+        "main_election_context",
+        "approved_party_metadata_or_derivation_source"
       ],
-      "recode_strategy": "direct_or_recode",
-      "syntax_pattern_id": "standard_variable_block",
+      "recode_strategy": "party_context_derivative",
+      "syntax_pattern_id": "party_context_derivative_block",
       "validation_checks": [
         "variable_exists",
         "tab_missing",
-        "missing_codes",
-        "source_target_verification"
+        "missing_codes"
       ],
       "documentation_requirements": [
         "tracking_sheet_row",
-        "processing_log_entry"
+        "processing_log_entry",
+        "party_metadata_review"
       ],
       "missing_value_policy": "standard_cses_missing_codes",
       "value_label_required": true
@@ -3582,23 +3582,25 @@
       "description": "VOTE SWITCHER BETWEEN CURRENT ELECTION AND PREVIOUS ELECTION",
       "order": 141,
       "section": "survey_questions",
-      "dependency_class": "direct_survey_item",
+      "dependency_class": "macro_or_party_input",
       "required_evidence": [
-        "questionnaire",
-        "data_variable",
-        "source_frequency"
+        "party_ordering",
+        "main_election_context",
+        "approved_party_metadata_or_derivation_source"
       ],
-      "recode_strategy": "direct_or_recode",
-      "syntax_pattern_id": "standard_variable_block",
+      "recode_strategy": "party_context_derivative",
+      "syntax_pattern_id": "party_context_derivative_block",
       "validation_checks": [
         "variable_exists",
         "tab_missing",
         "missing_codes",
-        "source_target_verification"
+        "party_code_check"
       ],
       "documentation_requirements": [
         "tracking_sheet_row",
-        "processing_log_entry"
+        "processing_log_entry",
+        "party_metadata_review",
+        "party_leader_appendix"
       ],
       "missing_value_policy": "standard_cses_missing_codes",
       "value_label_required": true
@@ -3608,23 +3610,25 @@
       "description": "CURRENT MAIN ELECTION - VOTE FOR LEFTIST/CENTER/RIGHTIST - CSES",
       "order": 142,
       "section": "survey_questions",
-      "dependency_class": "direct_survey_item",
+      "dependency_class": "macro_or_party_input",
       "required_evidence": [
-        "questionnaire",
-        "data_variable",
-        "source_frequency"
+        "party_ordering",
+        "main_election_context",
+        "approved_party_metadata_or_derivation_source"
       ],
-      "recode_strategy": "direct_or_recode",
-      "syntax_pattern_id": "standard_variable_block",
+      "recode_strategy": "party_context_derivative",
+      "syntax_pattern_id": "party_context_derivative_block",
       "validation_checks": [
         "variable_exists",
         "tab_missing",
         "missing_codes",
-        "source_target_verification"
+        "party_code_check"
       ],
       "documentation_requirements": [
         "tracking_sheet_row",
-        "processing_log_entry"
+        "processing_log_entry",
+        "party_metadata_review",
+        "party_leader_appendix"
       ],
       "missing_value_policy": "standard_cses_missing_codes",
       "value_label_required": true
@@ -3634,23 +3638,25 @@
       "description": "CURRENT MAIN ELECTION - VOTE FOR LEFT/RIGHT (RILE) - MARPOR/CMP",
       "order": 143,
       "section": "survey_questions",
-      "dependency_class": "direct_survey_item",
+      "dependency_class": "macro_or_party_input",
       "required_evidence": [
-        "questionnaire",
-        "data_variable",
-        "source_frequency"
+        "party_ordering",
+        "main_election_context",
+        "approved_party_metadata_or_derivation_source"
       ],
-      "recode_strategy": "direct_or_recode",
-      "syntax_pattern_id": "standard_variable_block",
+      "recode_strategy": "party_context_derivative",
+      "syntax_pattern_id": "party_context_derivative_block",
       "validation_checks": [
         "variable_exists",
         "tab_missing",
         "missing_codes",
-        "source_target_verification"
+        "party_code_check"
       ],
       "documentation_requirements": [
         "tracking_sheet_row",
-        "processing_log_entry"
+        "processing_log_entry",
+        "party_metadata_review",
+        "party_leader_appendix"
       ],
       "missing_value_policy": "standard_cses_missing_codes",
       "value_label_required": true
@@ -3660,23 +3666,25 @@
       "description": "CURRENT MAIN ELECTION - VOTE CHOICE BY IDEOLOGICAL FAMILY CLASSIFICATION - CSES",
       "order": 144,
       "section": "survey_questions",
-      "dependency_class": "direct_survey_item",
+      "dependency_class": "macro_or_party_input",
       "required_evidence": [
-        "questionnaire",
-        "data_variable",
-        "source_frequency"
+        "party_ordering",
+        "main_election_context",
+        "approved_party_metadata_or_derivation_source"
       ],
-      "recode_strategy": "direct_or_recode",
-      "syntax_pattern_id": "standard_variable_block",
+      "recode_strategy": "party_context_derivative",
+      "syntax_pattern_id": "party_context_derivative_block",
       "validation_checks": [
         "variable_exists",
         "tab_missing",
         "missing_codes",
-        "source_target_verification"
+        "party_code_check"
       ],
       "documentation_requirements": [
         "tracking_sheet_row",
-        "processing_log_entry"
+        "processing_log_entry",
+        "party_metadata_review",
+        "party_leader_appendix"
       ],
       "missing_value_policy": "standard_cses_missing_codes",
       "value_label_required": true
@@ -5506,23 +5514,25 @@
       "description": "CURRENT MAIN ELECTION - VOTE CHOICE LINKED W/CSES COLLAB. EXPERT JUD L-R",
       "order": 215,
       "section": "survey_questions",
-      "dependency_class": "direct_survey_item",
+      "dependency_class": "macro_or_party_input",
       "required_evidence": [
-        "questionnaire",
-        "data_variable",
-        "source_frequency"
+        "party_ordering",
+        "main_election_context",
+        "approved_party_metadata_or_derivation_source"
       ],
-      "recode_strategy": "direct_or_recode",
-      "syntax_pattern_id": "standard_variable_block",
+      "recode_strategy": "party_context_derivative",
+      "syntax_pattern_id": "party_context_derivative_block",
       "validation_checks": [
         "variable_exists",
         "tab_missing",
         "missing_codes",
-        "source_target_verification"
+        "party_code_check"
       ],
       "documentation_requirements": [
         "tracking_sheet_row",
-        "processing_log_entry"
+        "processing_log_entry",
+        "party_metadata_review",
+        "party_leader_appendix"
       ],
       "missing_value_policy": "standard_cses_missing_codes",
       "value_label_required": true
@@ -5532,23 +5542,25 @@
       "description": "CURRENT MAIN ELECTION - VOTE CHOICE LINKED W/MARPOR/CMP RILE",
       "order": 216,
       "section": "survey_questions",
-      "dependency_class": "direct_survey_item",
+      "dependency_class": "macro_or_party_input",
       "required_evidence": [
-        "questionnaire",
-        "data_variable",
-        "source_frequency"
+        "party_ordering",
+        "main_election_context",
+        "approved_party_metadata_or_derivation_source"
       ],
-      "recode_strategy": "direct_or_recode",
-      "syntax_pattern_id": "standard_variable_block",
+      "recode_strategy": "party_context_derivative",
+      "syntax_pattern_id": "party_context_derivative_block",
       "validation_checks": [
         "variable_exists",
         "tab_missing",
         "missing_codes",
-        "source_target_verification"
+        "party_code_check"
       ],
       "documentation_requirements": [
         "tracking_sheet_row",
-        "processing_log_entry"
+        "processing_log_entry",
+        "party_metadata_review",
+        "party_leader_appendix"
       ],
       "missing_value_policy": "standard_cses_missing_codes",
       "value_label_required": true
@@ -5584,23 +5596,25 @@
       "description": "CURRENT MAIN ELECTION - VOTE CHOICE LINKED W/CSES COLLAB. EXPERT JUD IDE. FAM.",
       "order": 218,
       "section": "survey_questions",
-      "dependency_class": "direct_survey_item",
+      "dependency_class": "macro_or_party_input",
       "required_evidence": [
-        "questionnaire",
-        "data_variable",
-        "source_frequency"
+        "party_ordering",
+        "main_election_context",
+        "approved_party_metadata_or_derivation_source"
       ],
-      "recode_strategy": "direct_or_recode",
-      "syntax_pattern_id": "standard_variable_block",
+      "recode_strategy": "party_context_derivative",
+      "syntax_pattern_id": "party_context_derivative_block",
       "validation_checks": [
         "variable_exists",
         "tab_missing",
         "missing_codes",
-        "source_target_verification"
+        "party_code_check"
       ],
       "documentation_requirements": [
         "tracking_sheet_row",
-        "processing_log_entry"
+        "processing_log_entry",
+        "party_metadata_review",
+        "party_leader_appendix"
       ],
       "missing_value_policy": "standard_cses_missing_codes",
       "value_label_required": true

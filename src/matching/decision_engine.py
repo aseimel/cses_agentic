@@ -204,12 +204,12 @@ class MatchingDecisionEngine:
                 if not party_order_approved:
                     decisions.append(self._awaiting_party_order_decision(schema_var, party_order_summary or {}))
                     continue
-                if schema_var.dependency_class == "macro_or_party_input":
-                    decisions.append(self._party_order_generated_decision(schema_var, party_order_summary or {}))
-                    continue
                 context_decision = self._party_context_decision(schema_var, party_order_summary or {})
                 if context_decision:
                     decisions.append(context_decision)
+                    continue
+                if schema_var.dependency_class == "macro_or_party_input":
+                    decisions.append(self._party_order_generated_decision(schema_var, party_order_summary or {}))
                     continue
             if schema_var.dependency_class == "derived_metadata":
                 decisions.append(self._derived_decision(schema_var, administrative_lookup.get(schema_var.name)))
