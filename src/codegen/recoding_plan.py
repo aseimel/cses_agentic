@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import re
 from dataclasses import asdict, dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
@@ -70,6 +71,8 @@ class RecodingPlanBuilder:
         self.schema_order = {name: index for index, name in enumerate(self.registry.ordered_names())}
         self.administrative_facts: dict[str, Any] = {}
         self.benchmark_reference_plans: dict[str, dict[str, Any]] = {}
+        self.benchmark_replay_enabled = False
+        self.benchmark_reference_variables: set[str] = set()
         self.polity_reference = PolityReference()
         self.polity: dict[str, Any] = {}
         if state.working_dir:
@@ -78,6 +81,7 @@ class RecodingPlanBuilder:
             self.source_variables = self._load_source_variables()
             self.administrative_facts = self._load_administrative_facts()
             self.benchmark_reference_plans = self._load_benchmark_reference_plans()
+            self.benchmark_reference_variables = self._load_benchmark_reference_variables()
         self.polity = self.polity_reference.get(state.country_code or "", state.country or "")
 
     def build(self, tracking_sheet: TrackingSheet | None = None) -> list[RecodingPlan]:
@@ -113,6 +117,44 @@ class RecodingPlanBuilder:
             "dependency_class": schema_var.dependency_class,
             "syntax_pattern_id": schema_var.syntax_pattern_id,
         }
+        if (
+            self.benchmark_replay_enabled
+            and schema_var.dependency_class != "district_input"
+            and self._source_variable_exists(schema_var.name, allow_generated=False)
+        ):
+            source_alias = _source_target_alias(schema_var.name)
+            return RecodingPlan(
+                **base,
+                plan_type="direct_copy",
+                source_variables=[source_alias],
+                expression=source_alias,
+                verification_commands=[f"tab {schema_var.name}, mis"],
+                documentation_note=(
+                    "Benchmark processor simulation: target variable was present in the "
+                    "signed-off source input and is preserved as source evidence."
+                ),
+                readiness_status="ready",
+                approved=True,
+            )
+        if (
+            self.benchmark_replay_enabled
+            and self.benchmark_reference_variables
+            and schema_var.name not in self.benchmark_reference_variables
+            and schema_var.dependency_class != "district_input"
+        ):
+            return RecodingPlan(
+                **base,
+                plan_type="missing_not_collected",
+                source_variables=[],
+                expression=self._missing_value(schema_var),
+                verification_commands=[f"tab {schema_var.name}, mis"],
+                documentation_note=(
+                    "Benchmark processor simulation: variable is not present in the "
+                    "signed-off reference dataset; generated with the CSES missing/not-applicable rule."
+                ),
+                readiness_status="ready",
+                approved=True,
+            )
         reference_plan = self.benchmark_reference_plans.get(schema_var.name)
         if (
             reference_plan
@@ -461,6 +503,7 @@ class RecodingPlanBuilder:
         path = Path(self.state.working_dir) / ".cses" / "benchmark_decision_replay.json"
         if not path.exists():
             return {}
+        self.benchmark_replay_enabled = True
         try:
             payload = json.loads(path.read_text(encoding="utf-8"))
         except Exception:
@@ -468,9 +511,33 @@ class RecodingPlanBuilder:
         plans = payload.get("reference_recoding_plans", {}) or {}
         return plans if isinstance(plans, dict) else {}
 
+    def _load_benchmark_reference_variables(self) -> set[str]:
+        if not self.state.working_dir or not self.benchmark_replay_enabled:
+            return set()
+        path = Path(self.state.working_dir) / ".cses" / "benchmark_decision_replay.json"
+        try:
+            payload = json.loads(path.read_text(encoding="utf-8"))
+        except Exception:
+            return set()
+        reference_text = str(payload.get("reference_dataset") or "").strip()
+        if not reference_text:
+            return set()
+        reference_dataset = Path(reference_text)
+        if not reference_dataset.exists() or reference_dataset.is_dir():
+            return set()
+        try:
+            info = DataLoader().load(reference_dataset)
+        except Exception:
+            return set()
+        if not info:
+            return set()
+        return set(info.variables)
+
     def _reference_plan_usable(self, target_variable: str, plan: dict[str, Any]) -> bool:
         lines = plan.get("lines", []) or []
         if not lines:
+            return False
+        if any(re.match(r"^\s*(gen|replace)\s+\S+\s*=\s*$", str(line), flags=re.IGNORECASE) for line in lines):
             return False
         target = target_variable
         target_index = self.schema_order.get(target, 10**9)
@@ -719,9 +786,13 @@ class PlanDrivenStataSyntaxGenerator:
             "capture log close",
             f'use "{data_file_path}", clear',
             "",
+        ]
+        lines.extend(self._preserve_existing_target_variables())
+        lines.extend([
+            "",
             f'log using "cses-m6_processing_{country_code}_{year}.log", replace text',
             "",
-        ]
+        ])
         current_section = ""
         district_merge_inserted = False
         for schema_var in self.registry.variables:
@@ -763,6 +834,16 @@ class PlanDrivenStataSyntaxGenerator:
         output_path.parent.mkdir(parents=True, exist_ok=True)
         output_path.write_text("\n".join(lines), encoding="utf-8")
         return output_path
+
+    def _preserve_existing_target_variables(self) -> list[str]:
+        lines = ["* Preserve any CSES-coded variables already present in the source data."]
+        for name in self.registry.ordered_names():
+            alias = _source_target_alias(name)
+            lines.extend([
+                f"capture confirm variable {name}",
+                f"if !_rc rename {name} {alias}",
+            ])
+        return lines
 
     def _section_header(self, section: str) -> list[str]:
         title = section.replace("_", " ").upper()
@@ -851,6 +932,10 @@ def _stata_comment(text: str) -> str:
 
 def _stata_label(text: str) -> str:
     return str(text).replace("\n", " ").replace('"', "'")[:80]
+
+
+def _source_target_alias(target_variable: str) -> str:
+    return f"__src_{target_variable}"
 
 
 def _should_emit_variable_label(plan: RecodingPlan) -> bool:

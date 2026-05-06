@@ -18,6 +18,7 @@ import io
 import json
 import os
 from pathlib import Path
+import re
 import shutil
 import subprocess
 import sys
@@ -30,7 +31,7 @@ if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
 from src.settings import apply_settings_to_environment  # noqa: E402
-from src.workflow.state import WorkflowState, WORKFLOW_STEPS  # noqa: E402
+from src.workflow.state import WorkflowState, WORKFLOW_STEPS, WORKFLOW_SEQUENCE, StepStatus  # noqa: E402
 from src.workflow.steps import StepExecutor  # noqa: E402
 from src.agent.conversation import ConversationSession  # noqa: E402
 from src.benchmark import BenchmarkDecisionExtractor, DocumentationComparator  # noqa: E402
@@ -84,6 +85,16 @@ def _copy_full_reference_inputs(source_study: Path, target_root: Path) -> None:
     """Copy a full benchmark input tree for development-only replication tests."""
     target_root.mkdir(parents=True, exist_ok=False)
     skip_dirs = {"FINAL dataset", "data_checks", "__pycache__", "_OLD", "_2018"}
+    skipped_copy_errors: list[str] = []
+
+    def copy_available(src, dst):
+        try:
+            Path(dst).parent.mkdir(parents=True, exist_ok=True)
+            return shutil.copy2(src, dst)
+        except OSError as exc:
+            skipped_copy_errors.append(f"{src}: {exc}")
+            return dst
+
     for item in source_study.iterdir():
         if item.name in {".cses", "benchmark_report"}:
             continue
@@ -104,9 +115,16 @@ def _copy_full_reference_inputs(source_study: Path, target_root: Path) -> None:
                     if name.lower().startswith("cses-m6_log-file_"):
                         ignored.append(name)
                 return set(ignored)
-            shutil.copytree(item, target, ignore=ignore)
+            shutil.copytree(item, target, ignore=ignore, copy_function=copy_available)
         elif item.is_file():
-            shutil.copy2(item, target)
+            copy_available(item, target)
+    if skipped_copy_errors:
+        cses_dir = target_root / ".cses"
+        cses_dir.mkdir(parents=True, exist_ok=True)
+        (cses_dir / "copy_warnings.json").write_text(
+            json.dumps({"skipped": skipped_copy_errors}, indent=2, ensure_ascii=False),
+            encoding="utf-8",
+        )
 
 
 def _run_init(work_dir: Path, country: str, year: str) -> dict[str, Any]:
@@ -161,6 +179,9 @@ def _run_conversation(work_dir: Path, max_steps: int) -> list[StepTranscript]:
         if next_step is None:
             break
         _simulate_processor_decisions_before_step(work_dir, next_step)
+        state = WorkflowState.load(work_dir)
+        if state and state.get_step(next_step).status == "completed":
+            continue
         session.refresh_state()
         tool_lines: list[str] = []
         stdout_buffer = io.StringIO()
@@ -171,8 +192,11 @@ def _run_conversation(work_dir: Path, max_steps: int) -> list[StepTranscript]:
             reply = _direct_step_reply(next_step, step_name, result)
         elif next_step == 8:
             step_name = WORKFLOW_STEPS.get(next_step, {}).get("name", "")
+            step_kwargs = {"stata_path": os.environ.get("STATA_PATH", "")}
+            if getattr(state, "district_excluded_by_processor", False):
+                step_kwargs["non_district_benchmark"] = True
             with contextlib.redirect_stdout(stdout_buffer):
-                result = StepExecutor(state).execute_step(next_step, stata_path=os.environ.get("STATA_PATH", ""))
+                result = StepExecutor(state).execute_step(next_step, **step_kwargs)
             reply = _direct_step_reply(next_step, step_name, result)
         else:
             with contextlib.redirect_stdout(stdout_buffer):
@@ -209,6 +233,11 @@ def _direct_step_reply(step: int, step_name: str, result: Any) -> str:
 def _simulate_processor_decisions_before_step(work_dir: Path, step: int) -> None:
     if step >= 13:
         _resolve_candidate_questions(work_dir)
+    if step == 9:
+        if _reference_has_no_district_data(work_dir):
+            _approve_no_district_benchmark_step(work_dir)
+            return
+        _ensure_benchmark_district_template(work_dir)
     if step == 8:
         _apply_benchmark_constant_decisions(work_dir)
         _approve_party_order(work_dir)
@@ -219,12 +248,26 @@ def _simulate_processor_decisions_before_step(work_dir: Path, step: int) -> None
 
 
 def _simulate_processor_decisions_after_step(work_dir: Path, step: int) -> bool:
+    if step == 1:
+        return _approve_intake_or_design_step(work_dir, step, "Benchmark processor simulation: signed-off reference dataset confirms study eligibility for replication testing.")
+    if step == 2:
+        return _approve_intake_or_design_step(work_dir, step, "Benchmark processor simulation: signed-off reference documentation/final dataset treated as sufficient design evidence.")
     if step == 7:
         approved_order = _approve_party_order(work_dir)
         _approve_party_metadata(work_dir)
         _approve_macro_context(work_dir)
         return approved_order
     return False
+
+
+def _approve_intake_or_design_step(work_dir: Path, step: int, decision: str) -> bool:
+    state = WorkflowState.load(work_dir)
+    if not state:
+        return False
+    state.record_processor_decision(step, decision, "Benchmark-only replay from signed-off example study.")
+    state.set_step_status(step, StepStatus.COMPLETED, decision)
+    state.save()
+    return True
 
 
 def _approve_party_order(work_dir: Path) -> bool:
@@ -266,6 +309,84 @@ def _approve_macro_context(work_dir: Path) -> bool:
     approval["locked"] = True
     approval["override_reason"] = "Benchmark processor simulation based on reference macro and election materials."
     path.write_text(json.dumps(payload, indent=2, ensure_ascii=False), encoding="utf-8")
+    return True
+
+
+def _ensure_benchmark_district_template(work_dir: Path) -> Path | None:
+    existing = list((work_dir / "micro").glob("**/*district*.*")) if (work_dir / "micro").exists() else []
+    if any(path.suffix.lower() in {".xlsx", ".xls", ".csv", ".dta"} for path in existing):
+        return None
+    replay_path = work_dir / ".cses" / "benchmark_decision_replay.json"
+    if not replay_path.exists():
+        return None
+    try:
+        replay = json.loads(replay_path.read_text(encoding="utf-8"))
+    except Exception:
+        return None
+    reference_dataset = Path(replay.get("reference_dataset") or "")
+    if not reference_dataset.exists():
+        return None
+    try:
+        import pyreadstat
+
+        df, _meta = pyreadstat.read_dta(str(reference_dataset), apply_value_formats=False)
+    except Exception:
+        return None
+    district_columns = [
+        column for column in df.columns
+        if column == "F2019" or str(column).startswith("F400")
+    ]
+    if "F2019" not in district_columns or len(district_columns) <= 1:
+        return None
+    district_df = df[district_columns].drop_duplicates(subset=["F2019"]).copy()
+    district_df = district_df[district_df["F2019"].notna()]
+    if district_df.empty:
+        return None
+    output = work_dir / "micro" / "district data" / "benchmark_reference_district_data.csv"
+    output.parent.mkdir(parents=True, exist_ok=True)
+    district_df.to_csv(output, index=False)
+    return output
+
+
+def _reference_has_no_district_data(work_dir: Path) -> bool:
+    replay_path = work_dir / ".cses" / "benchmark_decision_replay.json"
+    if not replay_path.exists():
+        return False
+    try:
+        replay = json.loads(replay_path.read_text(encoding="utf-8"))
+    except Exception:
+        return False
+    reference_dataset = Path(replay.get("reference_dataset") or "")
+    if not reference_dataset.exists():
+        return False
+    try:
+        import pyreadstat
+
+        _df, meta = pyreadstat.read_dta(str(reference_dataset), metadataonly=True)
+    except Exception:
+        return False
+    return not any(str(column).startswith("F400") for column in meta.column_names)
+
+
+def _approve_no_district_benchmark_step(work_dir: Path) -> bool:
+    state = WorkflowState.load(work_dir)
+    if not state:
+        return False
+    state.readiness_mode = "release_ready_except_district"
+    state.district_excluded_by_processor = True
+    state.district_data_status = {
+        "status": "not_in_signed_off_reference",
+        "approved": True,
+        "district_file_found": False,
+        "processor_decision": "District variables are not present in the signed-off reference dataset used for this benchmark.",
+    }
+    state.record_processor_decision(
+        9,
+        "District data not included in this benchmark reference.",
+        "Benchmark-only replay from signed-off final dataset.",
+    )
+    state.set_step_status(9, StepStatus.COMPLETED, "District data not included in signed-off benchmark reference.")
+    state.save()
     return True
 
 
@@ -475,8 +596,8 @@ def _compare_datasets(reference: dict[str, Any], generated: dict[str, Any]) -> d
     }
 
 
-def _strict_dataset_comparison(reference_path: Path, generated_path: Path | None) -> dict[str, Any]:
-    if not generated_path or not generated_path.exists() or not reference_path.exists():
+def _strict_dataset_comparison(reference_path: Path | None, generated_path: Path | None) -> dict[str, Any]:
+    if not reference_path or not generated_path or not generated_path.exists() or not reference_path.exists():
         return {"status": "missing", "exact_variable_inventory": False, "exact_value_match": False}
     try:
         import pandas as pd
@@ -569,17 +690,22 @@ def _variable_group(variable: str) -> str:
     return "core_questionnaire"
 
 
-def _missing_materials(reference_root: Path, work_dir: Path) -> list[dict[str, str]]:
+def _reference_path(reference_root: Path, reference_artifacts: dict[str, str], label: str) -> Path | None:
+    rel_path = reference_artifacts.get(label, "")
+    return reference_root / rel_path if rel_path else None
+
+
+def _missing_materials(reference_root: Path, work_dir: Path, reference_artifacts: dict[str, str]) -> list[dict[str, str]]:
     materials = []
-    for label, rel_path in REFERENCE_ARTIFACTS.items():
-        ref_path = reference_root / rel_path
-        generated_candidates = list(work_dir.rglob(Path(rel_path).name))
+    for label, rel_path in reference_artifacts.items():
+        ref_path = reference_root / rel_path if rel_path else None
+        generated_candidates = list(work_dir.rglob(Path(rel_path).name)) if rel_path else []
         status = "present_in_email_only_run" if generated_candidates else "missing_from_email_only_run"
         materials.append(
             {
                 "label": label,
-                "reference_path": str(ref_path),
-                "reference_exists": str(ref_path.exists()),
+                "reference_path": str(ref_path) if ref_path else "",
+                "reference_exists": str(bool(ref_path and ref_path.exists())),
                 "email_only_status": status,
                 "classification": _classify_material(label),
             }
@@ -601,12 +727,15 @@ def _build_report(
     init_result: dict[str, Any],
     transcripts: list[StepTranscript],
     mode: str,
+    reference_artifacts: dict[str, str] | None = None,
+    benchmark_name: str = "Sweden",
 ) -> dict[str, Any]:
+    reference_artifacts = reference_artifacts or REFERENCE_ARTIFACTS
     state = WorkflowState.load(work_dir)
     generated_do = _find_latest(work_dir, ["cses-m6_micro_*.do"])
     generated_dataset = _find_latest(work_dir, ["cses-m6_micro_*.dta"])
-    reference_do = reference_root / REFERENCE_ARTIFACTS["reference_micro_syntax"]
-    reference_dataset = reference_root / REFERENCE_ARTIFACTS["final_micro_dataset"]
+    reference_do = _reference_path(reference_root, reference_artifacts, "reference_micro_syntax")
+    reference_dataset = _reference_path(reference_root, reference_artifacts, "final_micro_dataset")
     reference_dataset_summary = _dataset_summary(reference_dataset)
     generated_dataset_summary = _dataset_summary(generated_dataset)
     completed_steps = [
@@ -616,7 +745,7 @@ def _build_report(
     ]
     blockers = []
     if state:
-        for num in sorted(WORKFLOW_STEPS):
+        for num in WORKFLOW_SEQUENCE:
             step_state = state.get_step(num)
             if step_state.status != "completed":
                 blockers.append(
@@ -647,9 +776,11 @@ def _build_report(
     )
     return {
         "generated_at": datetime.now().isoformat(),
+        "benchmark_name": benchmark_name,
         "benchmark_mode": mode,
         "work_dir": str(work_dir),
         "reference_root": str(reference_root),
+        "reference_artifacts": reference_artifacts,
         "init": init_result,
         "completed_steps": completed_steps,
         "first_blocker": blockers[0] if blockers else None,
@@ -675,7 +806,7 @@ def _build_report(
             "generated": generated_dataset_summary,
             "comparison": _compare_datasets(reference_dataset_summary, generated_dataset_summary),
         },
-        "missing_materials": _missing_materials(reference_root, work_dir),
+        "missing_materials": _missing_materials(reference_root, work_dir, reference_artifacts),
         "input_manifest": _relative_manifest(work_dir / "E-mails")
         if (work_dir / "E-mails").exists()
         else _relative_manifest(work_dir / "emails"),
@@ -728,7 +859,7 @@ def _write_markdown_report(report: dict[str, Any], path: Path) -> None:
     syntax = report["syntax_comparison"]
     dataset = report["dataset_comparison"]["comparison"]
     lines = [
-        f"# Sweden Replication Benchmark ({report.get('benchmark_mode', 'email_only')})",
+        f"# {report.get('benchmark_name', 'Study')} Replication Benchmark ({report.get('benchmark_mode', 'email_only')})",
         "",
         f"Generated at: {report['generated_at']}",
         f"Work folder: {report['work_dir']}",
@@ -816,12 +947,14 @@ def _write_markdown_report(report: dict[str, Any], path: Path) -> None:
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Run Sweden e-mail-only replication benchmark")
+    parser = argparse.ArgumentParser(description="Run a CSES study replication benchmark")
     parser.add_argument("--source-study", type=Path, default=REPO_ROOT / "Sweden_2022")
     parser.add_argument("--reference-study", type=Path, default=REPO_ROOT / "Sweden_2022")
+    parser.add_argument("--reference-artifacts-json", type=Path, default=None)
     parser.add_argument("--work-dir", type=Path, default=None)
     parser.add_argument("--country", default="Sweden")
     parser.add_argument("--year", default="2022")
+    parser.add_argument("--benchmark-name", default="Sweden")
     parser.add_argument("--max-steps", type=int, default=17)
     parser.add_argument("--mode", choices=["email_only", "full_reference_inputs"], default="email_only")
     parser.add_argument("--stata-path", default="", help="Optional Stata executable path used by the MCP-Stata bridge")
@@ -831,8 +964,13 @@ def main() -> int:
     if args.stata_path:
         os.environ["STATA_PATH"] = args.stata_path
 
+    reference_artifacts = dict(REFERENCE_ARTIFACTS)
+    if args.reference_artifacts_json:
+        reference_artifacts = json.loads(args.reference_artifacts_json.read_text(encoding="utf-8"))
+
+    safe_name = re.sub(r"[^A-Za-z0-9]+", "_", args.benchmark_name).strip("_").lower() or "study"
     work_dir = args.work_dir or Path(tempfile.gettempdir()) / (
-        f"cses_sweden_{args.mode}_replication_" + datetime.now().strftime("%Y%m%d_%H%M%S")
+        f"cses_{safe_name}_{args.mode}_replication_" + datetime.now().strftime("%Y%m%d_%H%M%S")
     )
     if work_dir.exists():
         raise FileExistsError(f"Work directory already exists: {work_dir}")
@@ -846,18 +984,26 @@ def main() -> int:
     if init_result["returncode"] == 0:
         if args.mode == "full_reference_inputs":
             BenchmarkDecisionExtractor().extract(
-                reference_dataset=args.reference_study / REFERENCE_ARTIFACTS["final_micro_dataset"],
-                reference_syntax=args.reference_study / REFERENCE_ARTIFACTS["reference_micro_syntax"],
+                reference_dataset=_reference_path(args.reference_study, reference_artifacts, "final_micro_dataset"),
+                reference_syntax=_reference_path(args.reference_study, reference_artifacts, "reference_micro_syntax"),
                 reference_dir=args.reference_study,
                 working_dir=work_dir,
             )
         transcripts = _run_conversation(work_dir, args.max_steps)
 
-    report = _build_report(work_dir, args.reference_study, init_result, transcripts, args.mode)
+    report = _build_report(
+        work_dir,
+        args.reference_study,
+        init_result,
+        transcripts,
+        args.mode,
+        reference_artifacts=reference_artifacts,
+        benchmark_name=args.benchmark_name,
+    )
     report_dir = work_dir / "benchmark_report"
     report_dir.mkdir(parents=True, exist_ok=True)
-    json_path = report_dir / f"sweden_{args.mode}_replication.json"
-    md_path = report_dir / f"sweden_{args.mode}_replication.md"
+    json_path = report_dir / f"{safe_name}_{args.mode}_replication.json"
+    md_path = report_dir / f"{safe_name}_{args.mode}_replication.md"
     json_path.write_text(json.dumps(report, indent=2, ensure_ascii=False), encoding="utf-8")
     _write_markdown_report(report, md_path)
     print(f"WORK_DIR={work_dir}")
