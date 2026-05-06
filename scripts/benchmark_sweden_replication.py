@@ -192,6 +192,8 @@ def _run_conversation(work_dir: Path, max_steps: int) -> list[StepTranscript]:
                 issues_after=list(step_state.issues) if step_state else [],
             )
         )
+        if next_step == 7:
+            _simulate_processor_decisions_after_step(work_dir, next_step)
         if step_state and step_state.status != "completed":
             if not _simulate_processor_decisions_after_step(work_dir, next_step):
                 break
@@ -209,6 +211,9 @@ def _simulate_processor_decisions_before_step(work_dir: Path, step: int) -> None
         _resolve_candidate_questions(work_dir)
     if step == 8:
         _apply_benchmark_constant_decisions(work_dir)
+        _approve_party_order(work_dir)
+        _approve_party_metadata(work_dir)
+        _approve_macro_context(work_dir)
         _approve_tracking_sheet(work_dir)
         _approve_demographic_decisions(work_dir)
 
@@ -217,6 +222,7 @@ def _simulate_processor_decisions_after_step(work_dir: Path, step: int) -> bool:
     if step == 7:
         approved_order = _approve_party_order(work_dir)
         _approve_party_metadata(work_dir)
+        _approve_macro_context(work_dir)
         return approved_order
     return False
 
@@ -245,6 +251,20 @@ def _approve_party_metadata(work_dir: Path) -> bool:
     approval["macro_coder_approved"] = True
     approval["locked"] = True
     approval["override_reason"] = "Benchmark processor simulation based on reference macro materials."
+    path.write_text(json.dumps(payload, indent=2, ensure_ascii=False), encoding="utf-8")
+    return True
+
+
+def _approve_macro_context(work_dir: Path) -> bool:
+    path = work_dir / ".cses" / "macro_context_decision.json"
+    if not path.exists():
+        return False
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    approval = payload.setdefault("approval", {})
+    approval["micro_processor_approved"] = True
+    approval["macro_coder_approved"] = True
+    approval["locked"] = True
+    approval["override_reason"] = "Benchmark processor simulation based on reference macro and election materials."
     path.write_text(json.dumps(payload, indent=2, ensure_ascii=False), encoding="utf-8")
     return True
 

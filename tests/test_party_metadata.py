@@ -4,8 +4,11 @@ import unittest
 from pathlib import Path
 
 from src.codegen.party_recoding import PartyRecodingPlanBuilder
+from src.matching.macro_context import MacroContextBuilder
 from src.matching.party_metadata import PartyMetadataReviewBuilder, approved_party_metadata_values
+from src.matching.party_order import ElectionResultParty, PartyOrderProposal
 from src.standards.schema import SchemaRegistry
+from src.workflow.state import WorkflowState
 
 
 class PartyMetadataTests(unittest.TestCase):
@@ -47,6 +50,36 @@ class PartyMetadataTests(unittest.TestCase):
         for row in rows:
             sheet.append(row)
         workbook.save(macro_dir / "Macro Data.xlsx")
+
+    def _approve_macro_context(self, study_dir: Path, review) -> None:
+        proposal = PartyOrderProposal(
+            status="agreement_needed",
+            selected_context="lower_house",
+            ordering_rule="lower_house_vote_share",
+            ordering_basis="Lower-house vote share",
+            source_file=str(study_dir / "Election Results.xlsx"),
+            proposed_parties=[
+                ElectionResultParty(code_letter="A", numeric_code="999001", party_name="First Party", vote_share=40),
+                ElectionResultParty(code_letter="B", numeric_code="999002", party_name="Second Party", vote_share=30),
+            ],
+        )
+        state = WorkflowState(country_code="TST", year="2024", working_dir=str(study_dir))
+        builder = MacroContextBuilder(study_dir, state)
+        context = builder.build(
+            party_order_proposal=proposal,
+            party_order_approved=True,
+            party_metadata_review=review,
+            party_metadata_approved=True,
+        )
+        _review_path, decision_path = builder.write_review(context)
+        payload = json.loads(decision_path.read_text(encoding="utf-8"))
+        payload["approval"] = {
+            "micro_processor_approved": True,
+            "macro_coder_approved": True,
+            "locked": True,
+            "override_reason": "Test approval.",
+        }
+        decision_path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
 
     def test_party_metadata_parser_reads_standardized_macro_workbook(self):
         with tempfile.TemporaryDirectory() as folder:
@@ -101,6 +134,7 @@ class PartyMetadataTests(unittest.TestCase):
                 "locked": True,
             }
             decision_path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+            self._approve_macro_context(study_dir, review)
 
             recoder = PartyRecodingPlanBuilder(study_dir)
             linked = recoder._party_context_map("F3100_LR_CSES")

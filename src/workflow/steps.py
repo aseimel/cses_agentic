@@ -29,6 +29,10 @@ from src.matching.party_metadata import (
     PartyMetadataReviewBuilder,
     party_metadata_message,
 )
+from src.matching.macro_context import (
+    MacroContextBuilder,
+    macro_context_message,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -1263,6 +1267,26 @@ class StepExecutor:
                 party_metadata_review
             )
             party_metadata_approved = party_metadata_builder.is_approved()
+            print("Preparing macro context review...")
+            macro_context_builder = MacroContextBuilder(self.working_dir, self.state)
+            macro_context_review = macro_context_builder.build(
+                party_order_proposal=party_order_proposal,
+                party_order_approved=party_order_approved,
+                party_metadata_review=party_metadata_review,
+                party_metadata_approved=party_metadata_approved,
+            )
+            macro_context_review_path, macro_context_decision_path = macro_context_builder.write_review(
+                macro_context_review
+            )
+            macro_context_approved = macro_context_builder.is_approved()
+            self.state.macro_context_review_path = str(macro_context_review_path)
+            self.state.macro_context_decision_path = str(macro_context_decision_path)
+            self.state.macro_context_status = {
+                "status": "approved" if macro_context_approved else macro_context_review.status,
+                "missing": len(macro_context_review.missing_items),
+                "conflicts": len(macro_context_review.conflicts),
+                "external_provider": macro_context_review.external_provider.get("status", ""),
+            }
 
             # Load documents
             print("Loading documentation...")
@@ -1407,6 +1431,7 @@ class StepExecutor:
                     "missing": len(party_metadata_review.missing_variables),
                     "warnings": len(party_metadata_review.warnings),
                 },
+                "macro_context_status": self.state.macro_context_status,
             }
             self.state.save()
 
@@ -1656,6 +1681,8 @@ class StepExecutor:
                         str(party_decision_path),
                         str(party_metadata_review_path),
                         str(party_metadata_decision_path),
+                        str(macro_context_review_path),
+                        str(macro_context_decision_path),
                     ],
                     issues=[
                         f"Matching errors: {error_count}",
@@ -1678,6 +1705,8 @@ class StepExecutor:
                     + party_order_message(party_order_proposal)
                     + "\n\n"
                     + party_metadata_message(party_metadata_review)
+                    + "\n\n"
+                    + macro_context_message(macro_context_review)
                 ),
                 artifacts=[
                     str(tracking_path),
@@ -1691,10 +1720,12 @@ class StepExecutor:
                     str(party_decision_path),
                     str(party_metadata_review_path),
                     str(party_metadata_decision_path),
+                    str(macro_context_review_path),
+                    str(macro_context_decision_path),
                 ],
                 next_action=(
-                    "Review non-party matches and the Party Order Agreement. "
-                    "Party, vote-choice, leader, and macro-party coding stays paused until micro and macro approve the same party order."
+                    "Review non-party matches, the Party Order Agreement, and the Macro Context Review. "
+                    "Party-context coding stays paused until the micro processor and macro coder approve the shared context."
                 )
             )
 

@@ -13,6 +13,7 @@ import pandas as pd
 
 from src.matching.party_order import PARTY_LETTERS
 from src.matching.party_metadata import approved_party_metadata_values
+from src.matching.macro_context import approved_macro_context_values, is_macro_context_approved
 
 
 @dataclass
@@ -51,6 +52,8 @@ class PartyRecodingPlanBuilder:
         self.decision = self._load_decision()
         self.parties = self._approved_parties()
         self.party_metadata = approved_party_metadata_values(self.working_dir)
+        self.macro_context = approved_macro_context_values(self.working_dir)
+        self.macro_context_approved = is_macro_context_approved(self.working_dir)
         self.mapping_lookup: dict[str, Any] = {}
         self.source_values: dict[str, list[str]] = {}
 
@@ -222,6 +225,9 @@ class PartyRecodingPlanBuilder:
         context = str((self.decision.get("proposal", {}) or {}).get("selected_context") or "")
         turnout_current, turnout_previous = _turnout_variables(context)
         vote_current, vote_previous = _vote_variables(context)
+        context_gate = self._macro_context_gate(target)
+        if context_gate:
+            return context_gate
         if target == "F3010" and turnout_current:
             current_source = self._source_for_target(turnout_current)
             lines = []
@@ -308,15 +314,7 @@ class PartyRecodingPlanBuilder:
                 vote_variable=vote_current,
             )
         if target == "F3100_LR_MARPOR":
-            return PartyRecodeMap(
-                target_variable=target,
-                source_variable="MARPOR_CMP_RILE_VALUES",
-                map_type="party_context_custom",
-                approved=False,
-                issues=["MARPOR/CMP RILE values must be supplied or downloaded before this derivative can be generated."],
-                evidence=["MARPOR/CMP RILE is a bridging/public-source derivative, not a CSES collaborator expert judgment."],
-                custom_stata_lines=["gen F3100_LR_MARPOR = 999"],
-            )
+            return self._marpor_lr_map(target)
         if target == "F3011_LR_CSES":
             lines, complete = self._lr_cses_derivative_lines()
             approved = complete or bool(self._benchmark_plan_available("F3100_LR_CSES"))
@@ -390,6 +388,68 @@ class PartyRecodingPlanBuilder:
             issues=[] if not missing else [f"Approved party metadata missing: {', '.join(missing[:9])}"],
             evidence=[evidence],
             custom_stata_lines=lines,
+        )
+
+    def _macro_context_gate(self, target: str) -> PartyRecodeMap | None:
+        required = {
+            "F3010": ("election_context",),
+            "F3010_TS": ("election_context",),
+            "F3011_VS_1": ("election_context",),
+            "F3100_LR_CSES": ("cses_left_right",),
+            "F3011_LR_CSES": ("cses_left_right",),
+            "F3100_IF_CSES": ("cses_ideological_family",),
+            "F3011_IF_CSES": ("cses_ideological_family",),
+            "F3100_LR_MARPOR": ("marpor_rile",),
+            "F3011_LR_MARPOR": ("marpor_rile",),
+        }.get(target)
+        if not required:
+            return None
+        missing = [
+            item for item in required
+            if not self.macro_context_approved or item not in self.macro_context
+        ]
+        if not missing:
+            return None
+        return PartyRecodeMap(
+            target_variable=target,
+            source_variable="MACRO_CONTEXT_REVIEW",
+            map_type="approval_required",
+            approved=False,
+            issues=[
+                "Macro Context Review must be approved by the micro processor and macro coder before this derivative is finalized.",
+                "Missing approved context item(s): " + ", ".join(missing),
+            ],
+            evidence=["Party-context derivatives use approved election context and macro party metadata."],
+        )
+
+    def _marpor_lr_map(self, target: str) -> PartyRecodeMap:
+        rile_context = self.macro_context.get("marpor_rile") if self.macro_context_approved else {}
+        if isinstance(rile_context, dict):
+            value = rile_context.get(target)
+            if value not in {None, ""}:
+                text = str(value).strip()
+                if "\n" in text and re.search(rf"\b(?:gen|replace)\s+{re.escape(target)}\b", text, re.IGNORECASE):
+                    lines = [line.strip() for line in text.splitlines() if line.strip()]
+                elif _numeric(text) is not None:
+                    lines = [f"gen {target} = {text}"]
+                else:
+                    lines = [f"gen {target} = 999"]
+                return PartyRecodeMap(
+                    target_variable=target,
+                    source_variable="APPROVED_MACRO_CONTEXT",
+                    map_type="party_context_custom",
+                    approved=True,
+                    evidence=["MARPOR/CMP RILE value approved in Macro Context Review."],
+                    custom_stata_lines=lines,
+                )
+        return PartyRecodeMap(
+            target_variable=target,
+            source_variable="MARPOR_CMP_RILE_VALUES",
+            map_type="party_context_custom",
+            approved=False,
+            issues=["MARPOR/CMP RILE values must be supplied, downloaded, or marked unavailable before this derivative can be generated."],
+            evidence=["MARPOR/CMP RILE is a bridging/public-source derivative, not a CSES collaborator expert judgment."],
+            custom_stata_lines=[f"gen {target} = 999"],
         )
 
     def _has_complete_metadata_prefix(self, prefix: str) -> bool:
