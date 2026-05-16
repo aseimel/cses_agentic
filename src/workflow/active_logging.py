@@ -410,9 +410,17 @@ class ActiveLogger:
             lines.append("### Processor Decisions")
             lines.append("")
             for decision in d.processor_decisions:
-                lines.append(f"- Step {decision.get('step')}: {decision.get('decision')}")
+                prefix = f"Step {decision.get('step')}" if decision.get("step") else "Study"
+                status = decision.get("status")
+                status_text = f" ({status.replace('_', ' ')})" if status else ""
+                lines.append(f"- {prefix}: {decision.get('decision')}{status_text}")
+                if decision.get("target") and decision.get("value"):
+                    lines.append(f"  Decision: {decision.get('target')} = {decision.get('value')}")
                 if decision.get("context"):
                     lines.append(f"  Context: {decision.get('context')}")
+                if decision.get("affected_outputs"):
+                    outputs = ", ".join(decision.get("affected_outputs", [])[:8])
+                    lines.append(f"  Affected outputs: {outputs}")
             lines.append("")
 
         if d.final_readiness:
@@ -790,6 +798,31 @@ class ActiveLogger:
             "decision": decision,
             "context": context,
             "timestamp": datetime.now().isoformat()
+        })
+        self._save_and_render()
+
+    def record_structured_processor_decision(self, decision: dict, impact: dict | None = None):
+        """Record a typed processor correction or approval."""
+        if not self.log_data:
+            return
+        display = str(decision.get("decision_type") or "processor decision").replace("_", " ")
+        target = str(decision.get("target") or "").strip()
+        value = str(decision.get("value") or "").strip()
+        if target and value:
+            display = f"{display}: {target} = {value}"
+        elif target:
+            display = f"{display}: {target}"
+        self.log_data.processor_decisions.append({
+            "step": decision.get("step", 0),
+            "decision": display,
+            "context": decision.get("reason", ""),
+            "timestamp": decision.get("updated_at") or datetime.now().isoformat(),
+            "decision_id": decision.get("decision_id", ""),
+            "area": decision.get("area", ""),
+            "target": target,
+            "value": value,
+            "status": decision.get("status", ""),
+            "affected_outputs": (impact or {}).get("affected_outputs", decision.get("affected_outputs", [])),
         })
         self._save_and_render()
 

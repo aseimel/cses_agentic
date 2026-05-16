@@ -27,6 +27,7 @@ from src.auth_profiles import CodexOAuthAuthSource
 from src.model_catalog import build_model_catalog, litellm_model_for_completion, model_supports_tools
 from src.model_profiles import DEFAULT_PROFILE_ID, MODEL_PROFILES
 from src.project_context import create_starter_project_context, describe_project_context
+from src.processor_decisions import DependencyInvalidator, ProcessorDecisionLedger
 from src.settings import (
     DEFAULT_AGENTIC_MODEL,
     DEFAULT_CODEX_AGENTIC_MODEL,
@@ -128,13 +129,16 @@ class CSESGui(tk.Tk):
         notebook.pack(fill="both", expand=True)
 
         self.chat_tab = ttk.Frame(notebook, padding=12)
+        self.corrections_tab = ttk.Frame(notebook, padding=12)
         self.settings_tab = ttk.Frame(notebook, padding=12)
         self.about_tab = ttk.Frame(notebook, padding=12)
         notebook.add(self.chat_tab, text="Chat")
+        notebook.add(self.corrections_tab, text="Corrections")
         notebook.add(self.settings_tab, text="Settings")
         notebook.add(self.about_tab, text="Stata")
 
         self._build_chat_tab()
+        self._build_corrections_tab()
         self._build_settings_tab()
         self._build_about_tab()
 
@@ -304,6 +308,51 @@ class CSESGui(tk.Tk):
             self.context_text,
             "Load a study in the Chat tab, then use this tab to inspect or create project context files.",
         )
+
+    def _build_corrections_tab(self) -> None:
+        ttk.Label(self.corrections_tab, text="Processor corrections", style="Section.TLabel").pack(anchor="w")
+        ttk.Label(
+            self.corrections_tab,
+            text="Review corrections and approvals that should drive later coding, checks, and documentation.",
+        ).pack(anchor="w", pady=(3, 10))
+
+        self.corrections_tree = ttk.Treeview(
+            self.corrections_tab,
+            columns=("id", "area", "target", "value", "status", "affected"),
+            show="headings",
+            height=14,
+        )
+        for column, label, width in [
+            ("id", "ID", 82),
+            ("area", "Area", 140),
+            ("target", "Item", 150),
+            ("value", "Decision", 220),
+            ("status", "Status", 130),
+            ("affected", "Affected work", 260),
+        ]:
+            self.corrections_tree.heading(column, text=label)
+            self.corrections_tree.column(column, width=width, anchor="w")
+        self.corrections_tree.pack(fill="both", expand=True)
+
+        edit = ttk.Frame(self.corrections_tab)
+        edit.pack(fill="x", pady=(10, 0))
+        edit.columnconfigure(1, weight=1)
+        ttk.Label(edit, text="Decision").grid(row=0, column=0, sticky="w")
+        self.correction_value_var = tk.StringVar()
+        ttk.Entry(edit, textvariable=self.correction_value_var).grid(row=0, column=1, sticky="ew", padx=(8, 8))
+        ttk.Label(edit, text="Note").grid(row=1, column=0, sticky="w", pady=(6, 0))
+        self.correction_note_var = tk.StringVar()
+        ttk.Entry(edit, textvariable=self.correction_note_var).grid(row=1, column=1, sticky="ew", padx=(8, 8), pady=(6, 0))
+
+        buttons = ttk.Frame(self.corrections_tab)
+        buttons.pack(fill="x", pady=(10, 0))
+        ttk.Button(buttons, text="Refresh", command=self._refresh_corrections_panel).pack(side="left")
+        ttk.Button(buttons, text="Approve", command=lambda: self._set_selected_correction_status("approved")).pack(side="left", padx=(8, 0))
+        ttk.Button(buttons, text="Needs Review", command=lambda: self._set_selected_correction_status("needs_review")).pack(side="left", padx=(8, 0))
+        ttk.Button(buttons, text="Reject", command=lambda: self._set_selected_correction_status("rejected")).pack(side="left", padx=(8, 0))
+        ttk.Button(buttons, text="Save Edit", command=self._save_selected_correction_edit).pack(side="left", padx=(8, 0))
+        self.corrections_status_var = tk.StringVar(value="Load a study to review corrections.")
+        ttk.Label(self.corrections_tab, textvariable=self.corrections_status_var, style="Status.TLabel").pack(anchor="w", pady=(8, 0))
 
     def _build_settings_tab(self) -> None:
         self.model_profile_var = tk.StringVar(value=self.profile_id_to_label[DEFAULT_PROFILE_ID])
@@ -521,6 +570,7 @@ class CSESGui(tk.Tk):
         self.conversation = ConversationSession(state)
         self.status_var.set(f"Study loaded: {state.country} {state.year}")
         self._refresh_sidebar(state)
+        self._refresh_corrections_panel()
         self._refresh_context_panel()
         self._append_chat("system", self._format_loaded_summary(state))
         self._refresh_active_model_display()
@@ -1166,6 +1216,7 @@ class CSESGui(tk.Tk):
             if self.conversation:
                 self.conversation.state = state
             self._refresh_sidebar(state)
+            self._refresh_corrections_panel()
 
     def _refresh_sidebar(self, state: WorkflowState | None) -> None:
         if not state:
@@ -1249,6 +1300,11 @@ class CSESGui(tk.Tk):
             lines.append(f"Study fields needing review: {len(state.study_kb_missing_fields)}")
         if getattr(state, "study_kb_contradictions", []):
             lines.append(f"Study facts needing review: {len(state.study_kb_contradictions)}")
+        corrections = getattr(state, "correction_summary", {}) or {}
+        if corrections.get("pending_count"):
+            lines.append(f"Corrections needing approval: {corrections.get('pending_count')}")
+        if corrections.get("invalidated_count"):
+            lines.append(f"Work to revisit after corrections: {corrections.get('invalidated_count')}")
         manifest = getattr(state, "primary_input_selection", {}) or {}
         if manifest.get("primary_data_file"):
             lines.append(f"Primary data: {Path(manifest.get('primary_data_file')).name}")
@@ -1294,6 +1350,102 @@ class CSESGui(tk.Tk):
         if state.variable_tracking_file:
             lines.append(f"Tracking: {Path(state.variable_tracking_file).name}")
         return "\n".join(lines)
+
+    def _refresh_corrections_panel(self) -> None:
+        if not hasattr(self, "corrections_tree"):
+            return
+        self.corrections_tree.delete(*self.corrections_tree.get_children())
+        state = self.loaded_state
+        if not state:
+            self.corrections_status_var.set("Load a study to review corrections.")
+            return
+        ledger = ProcessorDecisionLedger(state.working_dir)
+        decisions = ledger.load()
+        for decision in decisions:
+            affected = ", ".join(decision.affected_outputs[:4])
+            self.corrections_tree.insert(
+                "",
+                "end",
+                iid=decision.decision_id,
+                values=(
+                    decision.decision_id,
+                    decision.area.replace("_", " ").title(),
+                    decision.target,
+                    decision.value,
+                    decision.status.replace("_", " ").title(),
+                    affected,
+                ),
+            )
+        pending = len([item for item in decisions if item.status in {"pending_confirmation", "needs_review"}])
+        approved = len([item for item in decisions if item.status == "approved"])
+        self.corrections_status_var.set(f"{approved} approved correction(s), {pending} needing review.")
+
+    def _selected_correction_id(self) -> str:
+        if not hasattr(self, "corrections_tree"):
+            return ""
+        selection = self.corrections_tree.selection()
+        return selection[0] if selection else ""
+
+    def _set_selected_correction_status(self, status: str) -> None:
+        state = self.loaded_state
+        decision_id = self._selected_correction_id()
+        if not state or not decision_id:
+            messagebox.showinfo("Processor corrections", "Select a correction first.")
+            return
+        ledger = ProcessorDecisionLedger(state.working_dir)
+        try:
+            decision = ledger.update_status(decision_id, status, self.correction_note_var.get().strip())
+        except Exception as exc:
+            messagebox.showerror("Processor corrections", f"Could not update correction:\n{exc}")
+            return
+        if decision and status == "approved":
+            impact = DependencyInvalidator().impact_for(decision)
+            decision.affected_variables = list(dict.fromkeys([*decision.affected_variables, *impact.affected_variables]))
+            decision.affected_outputs = list(dict.fromkeys([*decision.affected_outputs, *impact.affected_outputs]))
+            decisions = [item if item.decision_id != decision.decision_id else decision for item in ledger.load()]
+            ledger.save(decisions)
+            state.update_structured_decision_status(decision.to_dict(), impact.to_dict())
+        elif decision:
+            state.update_structured_decision_status(decision.to_dict())
+        state.save()
+        self._refresh_sidebar(state)
+        self._refresh_corrections_panel()
+
+    def _save_selected_correction_edit(self) -> None:
+        state = self.loaded_state
+        decision_id = self._selected_correction_id()
+        if not state or not decision_id:
+            messagebox.showinfo("Processor corrections", "Select a correction first.")
+            return
+        ledger = ProcessorDecisionLedger(state.working_dir)
+        decisions = ledger.load()
+        updated = None
+        for decision in decisions:
+            if decision.decision_id == decision_id:
+                value = self.correction_value_var.get().strip()
+                note = self.correction_note_var.get().strip()
+                if value:
+                    decision.value = value
+                if note:
+                    decision.reason = note
+                decision.status = "needs_review" if decision.status == "rejected" else decision.status
+                updated = decision
+                break
+        if not updated:
+            messagebox.showerror("Processor corrections", "Selected correction could not be found.")
+            return
+        ledger.save(decisions)
+        if updated.status == "approved":
+            impact = DependencyInvalidator().impact_for(updated)
+            updated.affected_variables = list(dict.fromkeys([*updated.affected_variables, *impact.affected_variables]))
+            updated.affected_outputs = list(dict.fromkeys([*updated.affected_outputs, *impact.affected_outputs]))
+            ledger.save([item if item.decision_id != updated.decision_id else updated for item in decisions])
+            state.update_structured_decision_status(updated.to_dict(), impact.to_dict())
+        else:
+            state.update_structured_decision_status(updated.to_dict())
+        state.save()
+        self._refresh_sidebar(state)
+        self._refresh_corrections_panel()
 
     def _format_loaded_summary(self, state: WorkflowState) -> str:
         progress = state.get_progress_summary()

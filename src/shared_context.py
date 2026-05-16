@@ -125,6 +125,9 @@ class SharedWorkflowContext:
                 "current_step": state_payload.get("current_step"),
                 "standards_checks": standards,
                 "processor_decisions": state_payload.get("processor_decisions", [])[-12:],
+                "pending_corrections": state_payload.get("pending_corrections", [])[-20:],
+                "work_needing_rerun": state_payload.get("invalidated_outputs", [])[-20:],
+                "targeted_reruns": state_payload.get("targeted_rerun_queue", [])[-10:],
                 "candidate_questions": state_payload.get("candidate_collaborator_questions", [])[-20:],
                 "pending_questions": state_payload.get("collaborator_questions", [])[-20:],
                 "final_readiness": state_payload.get("final_readiness", {}),
@@ -190,6 +193,13 @@ class SharedWorkflowContext:
             lines.append(f"contradiction|{_safe_text(item, 240)}")
         for decision in payload.get("workflow", {}).get("processor_decisions", []):
             lines.append(f"decision|step={decision.get('step')}|{_safe_text(decision.get('decision'), 260)}")
+        for correction in payload.get("workflow", {}).get("pending_corrections", []):
+            lines.append(
+                f"pending_correction|id={correction.get('decision_id')}|area={correction.get('area')}|target={correction.get('target')}|value={_safe_text(correction.get('value'), 180)}"
+            )
+        for item in payload.get("workflow", {}).get("work_needing_rerun", []):
+            outputs = ",".join(item.get("affected_outputs", [])[:5])
+            lines.append(f"needs_rerun|decision={item.get('decision_id')}|target={item.get('target')}|outputs={_safe_text(outputs, 220)}")
         for handoff in payload.get("recent_handoffs", [])[:6]:
             lines.append(f"handoff|role={handoff.get('role')}|{_safe_text(handoff.get('summary'), 300)}")
         return "\n".join(lines) + "\n"

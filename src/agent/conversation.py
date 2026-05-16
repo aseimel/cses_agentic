@@ -24,6 +24,14 @@ from src.codex_oauth_client import is_codex_oauth_model
 from src.settings import apply_settings_to_environment
 from src.model_profiles import DEFAULT_PROFILE_ID, get_profile
 from src.project_context import load_project_context
+from src.processor_decisions import (
+    CorrectionInterpreter,
+    DependencyInvalidator,
+    ProcessorDecision,
+    ProcessorDecisionLedger,
+    TargetedRerunInterpreter,
+    diagnose_failure_text,
+)
 from src.study_kb import StudyKnowledgeBase, StudyKnowledgeBaseBuilder
 from src.ui_text import sanitize_processor_text
 from src.workflow.active_logging import ActiveLogger
@@ -301,6 +309,96 @@ LOG_TOOLS = [
     {
         "type": "function",
         "function": {
+            "name": "record_processor_correction",
+            "description": "Record a structured processor correction that may invalidate downstream Stata, checks, labels, or documentation.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "area": {
+                        "type": "string",
+                        "enum": [
+                            "eligibility_design",
+                            "matching",
+                            "demographic_coding",
+                            "party_order",
+                            "macro_context",
+                            "district_data",
+                            "recoding_plan",
+                            "documentation",
+                            "final_readiness",
+                            "general",
+                        ],
+                    },
+                    "decision_type": {"type": "string"},
+                    "target": {"type": "string"},
+                    "value": {"type": "string"},
+                    "reason": {"type": "string"},
+                    "step_num": {"type": "integer"},
+                    "affected_variables": {"type": "array", "items": {"type": "string"}},
+                    "status": {
+                        "type": "string",
+                        "enum": ["approved", "pending_confirmation", "needs_review"],
+                    },
+                },
+                "required": ["area", "decision_type", "reason"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "list_processor_corrections",
+            "description": "List pending and approved processor corrections and the downstream work that needs rerun.",
+            "parameters": {"type": "object", "properties": {}},
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "approve_processor_correction",
+            "description": "Approve a pending processor correction by decision ID, then mark affected downstream work for rerun.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "decision_id": {"type": "string"},
+                    "reason": {"type": "string"},
+                },
+                "required": ["decision_id"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "queue_targeted_rerun",
+            "description": "Queue a focused rerun such as rerun this variable, rebuild party recodes, regenerate documentation, rerun checks, or compare again.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "action": {"type": "string"},
+                    "label": {"type": "string"},
+                    "steps": {"type": "array", "items": {"type": "integer"}},
+                    "target": {"type": "string"},
+                },
+                "required": ["action", "label"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "diagnose_workflow_failure",
+            "description": "Classify a Stata, check, comparison, label, or documentation failure and suggest the smallest correction path.",
+            "parameters": {
+                "type": "object",
+                "properties": {"failure_text": {"type": "string"}},
+                "required": ["failure_text"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
             "name": "validate_current_documentation",
             "description": "Validate the current processing log/documentation against CSES wiki documentation standards.",
             "parameters": {"type": "object", "properties": {}},
@@ -397,6 +495,7 @@ Rules:
 10. If a soft gate fails, say clearly: "You can proceed, but this unresolved issue will be recorded."
 11. Ask as few collaborator questions as possible. Before suggesting a collaborator question, inspect available data, documentation, current log, and CSES wiki guidance. If information is still missing, use add_candidate_collaborator_question with a clear missing-items list and ask the processor whether it should become a collaborator question. Use add_collaborator_question only when the processor explicitly confirms.
 12. Before eligibility, design-report, matching, documentation, or collaborator-question decisions, use the study-specific knowledge base when available. If it is missing or stale, build_or_refresh_study_kb first.
+13. If the processor corrects a fact, source-variable match, recode, party order, macro context, district decision, or documentation note, record it as a structured processor correction. Explain what downstream work needs rerun. Do not silently overwrite an approved decision.
 
 {wiki_hint}
 {study_kb_hint}
@@ -470,6 +569,8 @@ class ConversationSession:
         self.history: list[dict] = []
         self.active_logger = ActiveLogger(state)
         self.runner = ModelTaskRunner(Path(state.working_dir), state)
+        self.correction_interpreter = CorrectionInterpreter()
+        self.rerun_interpreter = TargetedRerunInterpreter()
 
     def refresh_state(self) -> None:
         loaded = WorkflowState.load(Path(self.state.working_dir))
@@ -479,6 +580,13 @@ class ConversationSession:
 
     def send(self, message: str, on_tool_output: Callable[[str], None] | None = None) -> str:
         self.refresh_state()
+        correction_response = self._handle_correction_or_rerun_message(message, on_tool_output)
+        if correction_response:
+            response = sanitize_processor_text(correction_response)
+            self.history.append({"role": "user", "content": message})
+            self.history.append({"role": "assistant", "content": response})
+            self.state.save()
+            return response
         if self._is_proceed_request(message):
             response = self._proceed_one_step(on_tool_output)
             response = sanitize_processor_text(response)
@@ -501,6 +609,90 @@ class ConversationSession:
     def _is_proceed_request(self, message: str) -> bool:
         normalized = " ".join((message or "").strip().lower().split())
         return normalized in {"proceed", "go ahead", "continue", "ok", "okay"}
+
+    def _handle_correction_or_rerun_message(
+        self,
+        message: str,
+        on_tool_output: Callable[[str], None] | None = None,
+    ) -> str:
+        normalized = " ".join((message or "").strip().split())
+        lower = normalized.casefold()
+        if lower.startswith("approve correction"):
+            decision_id = normalized.split(maxsplit=2)[-1].strip()
+            if decision_id and decision_id.casefold() != "correction":
+                decision = self._approve_structured_decision(decision_id)
+                if decision:
+                    self._notify(on_tool_output, "Recorded processor approval")
+                    return self._format_decision_response(decision, approved_now=True)
+            return "I could not find that correction ID. Ask to show pending corrections, then approve the exact ID."
+
+        rerun = self.rerun_interpreter.parse(message)
+        if rerun:
+            self.state.queue_targeted_rerun(rerun)
+            self._notify(on_tool_output, "Queued focused rerun")
+            steps = ", ".join(str(step) for step in rerun.get("steps", [])) or "the affected step"
+            return (
+                f"Queued: {rerun.get('label')}.\n\n"
+                f"This will revisit Step {steps}. Approved work outside that affected area remains unchanged."
+            )
+
+        decision = self.correction_interpreter.parse(message, default_step=self.state.get_next_step() or 0)
+        if not decision:
+            return ""
+        recorded = self._record_structured_decision(decision)
+        self._notify(on_tool_output, "Recorded processor correction")
+        return self._format_decision_response(recorded)
+
+    def _record_structured_decision(self, decision: ProcessorDecision) -> ProcessorDecision:
+        ledger = ProcessorDecisionLedger(self.state.working_dir)
+        impact = DependencyInvalidator().impact_for(decision)
+        decision.affected_variables = list(dict.fromkeys([*decision.affected_variables, *impact.affected_variables]))
+        decision.affected_outputs = list(dict.fromkeys([*decision.affected_outputs, *impact.affected_outputs]))
+        recorded = ledger.append(decision)
+        self.state.processor_decision_ledger_path = str(ledger.path)
+        self.state.record_structured_processor_decision(
+            recorded.to_dict(),
+            impact.to_dict() if recorded.status == "approved" else None,
+        )
+        self.active_logger.record_structured_processor_decision(
+            recorded.to_dict(),
+            impact.to_dict() if recorded.status == "approved" else None,
+        )
+        return recorded
+
+    def _approve_structured_decision(self, decision_id: str) -> ProcessorDecision | None:
+        ledger = ProcessorDecisionLedger(self.state.working_dir)
+        decision = ledger.update_status(decision_id, "approved")
+        if not decision:
+            return None
+        impact = DependencyInvalidator().impact_for(decision)
+        decision.affected_variables = list(dict.fromkeys([*decision.affected_variables, *impact.affected_variables]))
+        decision.affected_outputs = list(dict.fromkeys([*decision.affected_outputs, *impact.affected_outputs]))
+        ledger.save([item if item.decision_id != decision.decision_id else decision for item in ledger.load()])
+        self.state.processor_decision_ledger_path = str(ledger.path)
+        self.state.update_structured_decision_status(decision.to_dict(), impact.to_dict())
+        self.active_logger.record_structured_processor_decision(decision.to_dict(), impact.to_dict())
+        return decision
+
+    def _format_decision_response(self, decision: ProcessorDecision, approved_now: bool = False) -> str:
+        if decision.status == "approved":
+            status_line = "Correction approved and recorded." if approved_now else "Correction recorded."
+        elif decision.status == "pending_confirmation":
+            status_line = (
+                "I recorded this as a proposed correction because it affects later coding. "
+                f"To approve it, reply: approve correction {decision.decision_id}"
+            )
+        else:
+            status_line = "I recorded this correction for review."
+        outputs = ", ".join(decision.affected_outputs[:6]) if decision.affected_outputs else "final readiness"
+        target = f"{decision.target}: " if decision.target else ""
+        value = decision.value or decision.reason
+        return (
+            f"{status_line}\n\n"
+            f"Decision: {target}{value}\n"
+            f"Affected work: {outputs}\n\n"
+            "Unaffected approved work remains unchanged."
+        )
 
     def _proceed_one_step(self, on_tool_output: Callable[[str], None] | None = None) -> str:
         next_step = self.state.get_next_step()
@@ -897,6 +1089,63 @@ class ConversationSession:
             self.active_logger.record_processor_decision(step_num, decision, context)
             self._notify(on_tool_output, f"Recorded processor decision for Step {step_num}")
             return "SUCCESS: processor decision recorded"
+
+        if name == "record_processor_correction":
+            decision = ProcessorDecision(
+                decision_id="",
+                step=int(args.get("step_num") or self.state.get_next_step() or 0),
+                area=str(args.get("area") or "general"),
+                decision_type=str(args.get("decision_type") or "correction"),
+                target=str(args.get("target") or ""),
+                value=str(args.get("value") or ""),
+                reason=str(args.get("reason") or ""),
+                affected_variables=[str(item) for item in args.get("affected_variables", []) or []],
+                status=str(args.get("status") or "approved"),
+            )
+            recorded = self._record_structured_decision(decision)
+            self._notify(on_tool_output, "Recorded processor correction")
+            return json.dumps(recorded.to_dict(), indent=2, ensure_ascii=False)
+
+        if name == "list_processor_corrections":
+            ledger = ProcessorDecisionLedger(self.state.working_dir)
+            decisions = ledger.load()
+            pending = [item.to_dict() for item in decisions if item.status in {"pending_confirmation", "needs_review"}]
+            approved = [item.to_dict() for item in decisions if item.status == "approved"]
+            self._notify(on_tool_output, "Loaded processor corrections")
+            return json.dumps(
+                {
+                    "pending": pending,
+                    "approved_recent": approved[-10:],
+                    "work_needing_rerun": self.state.invalidated_outputs[-20:],
+                    "queued_reruns": self.state.targeted_rerun_queue[-20:],
+                },
+                indent=2,
+                ensure_ascii=False,
+            )
+
+        if name == "approve_processor_correction":
+            decision_id = str(args.get("decision_id") or "")
+            decision = self._approve_structured_decision(decision_id)
+            if not decision:
+                return f"FAILED: Correction not found: {decision_id}"
+            self._notify(on_tool_output, "Recorded processor approval")
+            return json.dumps(decision.to_dict(), indent=2, ensure_ascii=False)
+
+        if name == "queue_targeted_rerun":
+            action = {
+                "action": args.get("action", "rerun"),
+                "label": args.get("label", "Rerun affected work"),
+                "steps": args.get("steps", []),
+                "target": args.get("target", ""),
+            }
+            self.state.queue_targeted_rerun(action)
+            self._notify(on_tool_output, "Queued focused rerun")
+            return json.dumps(action, indent=2, ensure_ascii=False)
+
+        if name == "diagnose_workflow_failure":
+            diagnosis = diagnose_failure_text(str(args.get("failure_text") or ""))
+            self._notify(on_tool_output, "Reviewed failure and suggested a correction path")
+            return json.dumps(diagnosis, indent=2, ensure_ascii=False)
 
         if name == "validate_current_documentation":
             from src.standards.validators import validate_documentation_text

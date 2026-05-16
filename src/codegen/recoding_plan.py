@@ -17,6 +17,7 @@ from src.codegen.party_recoding import PartyRecodingPlanBuilder, PartyRecodeMap
 from src.district_data import DistrictStataSyntaxBuilder, load_district_merge_plan, _district_missing_value
 from src.ingest.data_loader import DataLoader
 from src.standards.administrative import PolityReference
+from src.processor_decisions import ProcessorDecisionLedger
 
 
 _STRING_METADATA_VARIABLES = {
@@ -74,6 +75,7 @@ class RecodingPlanBuilder:
         self.benchmark_constant_values: dict[str, Any] = {}
         self.benchmark_replay_enabled = False
         self.benchmark_reference_variables: set[str] = set()
+        self.source_match_overrides = {}
         self.polity_reference = PolityReference()
         self.polity: dict[str, Any] = {}
         if state.working_dir:
@@ -84,6 +86,7 @@ class RecodingPlanBuilder:
             self.benchmark_reference_plans = self._load_benchmark_reference_plans()
             self.benchmark_constant_values = self._load_benchmark_constant_values()
             self.benchmark_reference_variables = self._load_benchmark_reference_variables()
+            self.source_match_overrides = ProcessorDecisionLedger(Path(state.working_dir)).source_match_overrides()
         self.polity = self.polity_reference.get(state.country_code or "", state.country or "")
 
     def build(self, tracking_sheet: TrackingSheet | None = None) -> list[RecodingPlan]:
@@ -119,6 +122,22 @@ class RecodingPlanBuilder:
             "dependency_class": schema_var.dependency_class,
             "syntax_pattern_id": schema_var.syntax_pattern_id,
         }
+        override = self.source_match_overrides.get(schema_var.name.upper())
+        if override and schema_var.dependency_class not in {"district_input", "macro_or_party_input"}:
+            source = override.value.strip()
+            return RecodingPlan(
+                **base,
+                plan_type="direct_copy",
+                source_variables=[source],
+                expression=source,
+                verification_commands=self._verification_commands(schema_var.name, source, "direct_copy"),
+                documentation_note=(
+                    "Processor-corrected source-variable match. "
+                    f"Reason: {override.reason}"
+                ).strip(),
+                readiness_status="ready",
+                approved=True,
+            )
         if (
             self.benchmark_replay_enabled
             and schema_var.dependency_class != "district_input"

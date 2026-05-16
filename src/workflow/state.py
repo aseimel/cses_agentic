@@ -16,6 +16,17 @@ from typing import Optional, Any
 logger = logging.getLogger(__name__)
 
 
+def _decision_display(decision: dict) -> str:
+    target = str(decision.get("target") or "").strip()
+    value = str(decision.get("value") or "").strip()
+    decision_type = str(decision.get("decision_type") or "processor decision").replace("_", " ")
+    if target and value:
+        return f"{decision_type}: {target} = {value}"
+    if target:
+        return f"{decision_type}: {target}"
+    return str(decision.get("reason") or decision_type)
+
+
 class StepStatus(Enum):
     """Status of a workflow step."""
     NOT_STARTED = "not_started"
@@ -210,6 +221,11 @@ class WorkflowState:
     wiki_sources: list[dict] = field(default_factory=list)
     processor_decisions: list[dict] = field(default_factory=list)
     final_readiness: dict = field(default_factory=dict)
+    processor_decision_ledger_path: str = ""
+    pending_corrections: list[dict] = field(default_factory=list)
+    invalidated_outputs: list[dict] = field(default_factory=list)
+    targeted_rerun_queue: list[dict] = field(default_factory=list)
+    correction_summary: dict = field(default_factory=dict)
     evidence_index: dict = field(default_factory=dict)
     evidence_packet_status: str = "missing"
     evidence_packet_path: str = ""
@@ -320,6 +336,94 @@ class WorkflowState:
         })
         self.updated_at = datetime.now(timezone.utc).isoformat()
 
+    def record_structured_processor_decision(self, decision: dict, impact: dict | None = None):
+        """Record a typed processor decision and any dependent work needing rerun."""
+        if decision.get("status") == "approved":
+            self.processor_decisions.append({
+                "step": decision.get("step", 0),
+                "decision": _decision_display(decision),
+                "context": decision.get("reason", ""),
+                "timestamp": decision.get("updated_at") or datetime.now(timezone.utc).isoformat(),
+                "decision_id": decision.get("decision_id", ""),
+                "area": decision.get("area", ""),
+                "target": decision.get("target", ""),
+            })
+        elif decision.get("status") in {"pending_confirmation", "needs_review"}:
+            self.pending_corrections = [
+                item for item in self.pending_corrections
+                if item.get("decision_id") != decision.get("decision_id")
+            ]
+            self.pending_corrections.append(decision)
+        if impact:
+            self._record_decision_impact(decision, impact)
+        self._refresh_correction_summary()
+        self.updated_at = datetime.now(timezone.utc).isoformat()
+
+    def update_structured_decision_status(self, decision: dict, impact: dict | None = None):
+        """Update state mirrors after a structured decision status change."""
+        decision_id = decision.get("decision_id")
+        self.pending_corrections = [
+            item for item in self.pending_corrections
+            if item.get("decision_id") != decision_id
+        ]
+        if decision.get("status") in {"pending_confirmation", "needs_review"}:
+            self.pending_corrections.append(decision)
+        if decision.get("status") == "approved":
+            self.processor_decisions.append({
+                "step": decision.get("step", 0),
+                "decision": _decision_display(decision),
+                "context": decision.get("reason", ""),
+                "timestamp": decision.get("updated_at") or datetime.now(timezone.utc).isoformat(),
+                "decision_id": decision_id,
+                "area": decision.get("area", ""),
+                "target": decision.get("target", ""),
+            })
+            if impact:
+                self._record_decision_impact(decision, impact)
+        self._refresh_correction_summary()
+        self.updated_at = datetime.now(timezone.utc).isoformat()
+
+    def queue_targeted_rerun(self, action: dict):
+        """Queue a focused rerun requested by the processor."""
+        entry = {
+            "action": action.get("action", "rerun"),
+            "label": action.get("label", "Rerun affected work"),
+            "steps": action.get("steps", []),
+            "target": action.get("target", ""),
+            "queued_at": datetime.now(timezone.utc).isoformat(),
+            "status": "queued",
+        }
+        self.targeted_rerun_queue.append(entry)
+        self.updated_at = datetime.now(timezone.utc).isoformat()
+
+    def _record_decision_impact(self, decision: dict, impact: dict):
+        entry = {
+            "decision_id": decision.get("decision_id", ""),
+            "area": decision.get("area", ""),
+            "target": decision.get("target", ""),
+            "affected_steps": impact.get("affected_steps", []),
+            "affected_outputs": impact.get("affected_outputs", []),
+            "affected_variables": impact.get("affected_variables", []),
+            "rerun_actions": impact.get("rerun_actions", []),
+            "recorded_at": datetime.now(timezone.utc).isoformat(),
+            "status": "needs_rerun",
+        }
+        self.invalidated_outputs = [
+            item for item in self.invalidated_outputs
+            if not (
+                item.get("decision_id") == entry["decision_id"]
+                and item.get("status") == "needs_rerun"
+            )
+        ]
+        self.invalidated_outputs.append(entry)
+
+    def _refresh_correction_summary(self):
+        self.correction_summary = {
+            "pending_count": len(self.pending_corrections),
+            "invalidated_count": len([item for item in self.invalidated_outputs if item.get("status") == "needs_rerun"]),
+            "queued_reruns": len([item for item in self.targeted_rerun_queue if item.get("status") == "queued"]),
+        }
+
     def rebase_paths(self, actual_working_dir: Path):
         """Rebase stored absolute paths when a study folder has moved."""
         actual_dir = str(actual_working_dir.resolve())
@@ -364,6 +468,7 @@ class WorkflowState:
         self.district_review_path = remap(self.district_review_path)
         self.district_merge_plan_path = remap(self.district_merge_plan_path)
         self.benchmark_scorecard_path = remap(self.benchmark_scorecard_path)
+        self.processor_decision_ledger_path = remap(self.processor_decision_ledger_path)
         self.questionnaire_files = [remap(path) for path in self.questionnaire_files or []]
 
         for step in self.steps.values():
@@ -536,6 +641,11 @@ class WorkflowState:
             "wiki_sources": self.wiki_sources,
             "processor_decisions": self.processor_decisions,
             "final_readiness": self.final_readiness,
+            "processor_decision_ledger_path": self.processor_decision_ledger_path,
+            "pending_corrections": self.pending_corrections,
+            "invalidated_outputs": self.invalidated_outputs,
+            "targeted_rerun_queue": self.targeted_rerun_queue,
+            "correction_summary": self.correction_summary,
             "evidence_index": self.evidence_index,
             "evidence_packet_status": self.evidence_packet_status,
             "evidence_packet_path": self.evidence_packet_path,
