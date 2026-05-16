@@ -425,6 +425,8 @@ def cmd_init(args) -> Path:
     print(f"  Codebooks: {len(detected.codebook_files)} file(s)")
     print(f"  Design reports: {len(detected.design_report_files)} file(s)")
     print(f"  Macro reports: {len(detected.macro_report_files)} file(s)")
+    print(f"  Election results: {len(detected.election_results_files)} file(s)")
+    print(f"  District data: {len(detected.district_data_files)} file(s)")
 
     # Create CSES structure at root level (alongside email folder)
     print("\nCreating folder structure...")

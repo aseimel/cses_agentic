@@ -631,6 +631,7 @@ class CSESGui(tk.Tk):
             ("Codebooks", len(detected.codebook_files)),
             ("Design reports", len(detected.design_report_files)),
             ("Macro reports", len(detected.macro_report_files)),
+            ("Election results", len(detected.election_results_files)),
             ("District data", len(detected.district_data_files)),
         ]
 

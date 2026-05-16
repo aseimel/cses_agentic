@@ -41,6 +41,11 @@ DISTRICT_DATA_KEYWORDS = [
     "district", "constituency", "riding", "wahlkreis", "circonscription"
 ]
 
+ELECTION_RESULTS_KEYWORDS = [
+    "election results", "election_result", "election-result",
+    "vote share", "seat share", "valid votes", "party results"
+]
+
 # Keywords to identify English translation questionnaires
 ENGLISH_KEYWORDS = [
     "english", "eng", "_en_", "_en.", "(en)", "[en]",
@@ -208,6 +213,7 @@ class DetectedFiles:
     """Results of file detection in a directory."""
     data_files: list[Path] = field(default_factory=list)  # Survey data (main)
     district_data_files: list[Path] = field(default_factory=list)  # District/constituency election results
+    election_results_files: list[Path] = field(default_factory=list)  # National election results / party order inputs
     questionnaire_files: list[Path] = field(default_factory=list)
     codebook_files: list[Path] = field(default_factory=list)
     design_report_files: list[Path] = field(default_factory=list)
@@ -243,6 +249,14 @@ class DetectedFiles:
                 f"### District Data ({len(self.district_data_files)})"
             ])
             for f in self.district_data_files:
+                lines.append(f"  - {f.name}")
+
+        if self.election_results_files:
+            lines.extend([
+                "",
+                f"### Election Results ({len(self.election_results_files)})"
+            ])
+            for f in self.election_results_files:
                 lines.append(f"  - {f.name}")
 
         lines.extend([
@@ -587,12 +601,16 @@ class FileOrganizer:
             # Check if it's district data (election results by constituency)
             if any(kw in name_lower for kw in DISTRICT_DATA_KEYWORDS):
                 result.district_data_files.append(file_path)
+            elif any(kw in name_lower for kw in ELECTION_RESULTS_KEYWORDS):
+                result.election_results_files.append(file_path)
             else:
                 result.data_files.append(file_path)
             return
 
         if ext in DOC_EXTENSIONS:
-            if any(kw in name_lower for kw in QUESTIONNAIRE_KEYWORDS):
+            if any(kw in name_lower for kw in ELECTION_RESULTS_KEYWORDS):
+                result.election_results_files.append(file_path)
+            elif any(kw in name_lower for kw in QUESTIONNAIRE_KEYWORDS):
                 result.questionnaire_files.append(file_path)
             elif any(kw in name_lower for kw in CODEBOOK_KEYWORDS):
                 result.codebook_files.append(file_path)
@@ -611,6 +629,7 @@ class FileOrganizer:
         all_files = (
             result.data_files +
             result.district_data_files +
+            result.election_results_files +
             result.questionnaire_files +
             result.codebook_files +
             result.design_report_files +
@@ -687,8 +706,10 @@ class FileOrganizer:
         - micro/data_checks/
         - micro/frequencies/
         - micro/Collaborator Questions/
+        - micro/district data/
         - macro/
         - Election Results/
+        - District Data/
         - .cses/
 
         Args:
@@ -716,12 +737,16 @@ class FileOrganizer:
         (study_dir / "micro" / "data_checks").mkdir(parents=True, exist_ok=True)
         (study_dir / "micro" / "frequencies").mkdir(parents=True, exist_ok=True)
         (study_dir / "micro" / "Collaborator Questions").mkdir(parents=True, exist_ok=True)
+        (study_dir / "micro" / "district data").mkdir(parents=True, exist_ok=True)
 
         # macro/
         (study_dir / "macro").mkdir(exist_ok=True)
 
         # Election Results/
         (study_dir / "Election Results").mkdir(exist_ok=True)
+
+        # District Data/
+        (study_dir / "District Data").mkdir(exist_ok=True)
 
         # .cses/ for agent state
         (study_dir / ".cses").mkdir(exist_ok=True)
@@ -741,8 +766,10 @@ class FileOrganizer:
         - micro/FINAL dataset/
         - micro/deposited variable list/
         - micro/Collaborator Questions/
+        - micro/district data/
         - macro/
         - Election Results/
+        - District Data/
         - .cses/
 
         Note: Does NOT create micro/original_deposit/ since the email folder
@@ -756,12 +783,19 @@ class FileOrganizer:
         (study_dir / "micro" / "FINAL dataset").mkdir(parents=True, exist_ok=True)
         (study_dir / "micro" / "deposited variable list").mkdir(parents=True, exist_ok=True)
         (study_dir / "micro" / "Collaborator Questions").mkdir(parents=True, exist_ok=True)
+        (study_dir / "micro" / "labels").mkdir(parents=True, exist_ok=True)
+        (study_dir / "micro" / "data_checks").mkdir(parents=True, exist_ok=True)
+        (study_dir / "micro" / "frequencies").mkdir(parents=True, exist_ok=True)
+        (study_dir / "micro" / "district data").mkdir(parents=True, exist_ok=True)
 
         # macro/
         (study_dir / "macro").mkdir(exist_ok=True)
 
         # Election Results/
         (study_dir / "Election Results").mkdir(exist_ok=True)
+
+        # District Data/
+        (study_dir / "District Data").mkdir(exist_ok=True)
 
         # .cses/ for agent state
         (study_dir / ".cses").mkdir(exist_ok=True)
@@ -1192,13 +1226,27 @@ Translate to English, keeping question numbers and response options intact."""
             self._copy_as_pdf(src, dst)
             mapping["macro_report"] = str(dst)
 
-        # Copy district data
-        if detected.district_data_files:
-            src = detected.district_data_files[0]
-            dst = micro_dir / f"{prefix}_district_data{src.suffix}"
-            print(f"  Copying district data: {src.name}")
+        # Copy election-results material to the dedicated processor-facing folder.
+        election_dir = study_dir / "Election Results"
+        election_dir.mkdir(parents=True, exist_ok=True)
+        for i, src in enumerate(detected.election_results_files, start=1):
+            suffix = "" if i == 1 else f"_{i}"
+            dst = election_dir / f"{prefix}_election_results{suffix}{src.suffix}"
+            print(f"  Copying election results: {src.name}")
             shutil.copy2(src, dst)
-            mapping["district_data"] = str(dst)
+            mapping["election_results" if i == 1 else f"election_results_{i}"] = str(dst)
+
+        # Copy district data to the dedicated processor-facing folder. The
+        # normalized Stata-ready file is generated later under micro/district data.
+        district_dir = study_dir / "District Data"
+        district_dir.mkdir(parents=True, exist_ok=True)
+        if detected.district_data_files:
+            for i, src in enumerate(detected.district_data_files, start=1):
+                suffix = "" if i == 1 else f"_{i}"
+                dst = district_dir / f"{prefix}_district_data{suffix}{src.suffix}"
+                print(f"  Copying district data: {src.name}")
+                shutil.copy2(src, dst)
+                mapping["district_data" if i == 1 else f"district_data_{i}"] = str(dst)
 
         return mapping
 
@@ -1233,6 +1281,7 @@ Translate to English, keeping question numbers and response options intact."""
         all_source_files = (
             detected.data_files +
             detected.district_data_files +
+            detected.election_results_files +
             detected.questionnaire_files +
             detected.codebook_files +
             detected.design_report_files +

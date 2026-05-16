@@ -86,13 +86,12 @@ class DistrictDataTemplateParser:
     """Read standardized district files without country-specific assumptions."""
 
     def discover_files(self, working_dir: Path) -> list[Path]:
-        roots = [
-            Path(working_dir),
-            Path(working_dir) / "micro" / "district data",
-            Path(working_dir) / "micro",
-            Path(working_dir) / "E-mails",
-            Path(working_dir) / "emails",
-        ]
+        working_dir = Path(working_dir)
+        roots = (
+            [working_dir]
+            if working_dir.name.casefold() in {"district data", "district_data"}
+            else [working_dir / "District Data", working_dir / "micro" / "district data"]
+        )
         found: dict[str, Path] = {}
         for root in roots:
             if not root.exists():
@@ -116,6 +115,33 @@ class DistrictDataTemplateParser:
             if table:
                 return table
         return None
+
+    def write_template(self, working_dir: Path, source_files: list[str] | None = None) -> Path:
+        """Create a standardized district data template in District Data/."""
+        output_dir = Path(working_dir) / "District Data"
+        output_dir.mkdir(parents=True, exist_ok=True)
+        output_path = output_dir / "standardized_district_data_template.xlsx"
+        columns = [
+            "DistrictID",
+            "OriginalDistrictName",
+            "EnglishDistrictName",
+            *DISTRICT_REQUIRED_BASE,
+            *[f"{prefix}_{letter}" for prefix in DISTRICT_PARTY_PREFIXES for letter in PARTY_LETTERS],
+            "Notes",
+            "References",
+        ]
+        df = pd.DataFrame(columns=columns)
+        with pd.ExcelWriter(output_path, engine="openpyxl") as writer:
+            df.to_excel(writer, index=False, sheet_name="District Data")
+            ws = writer.book["District Data"]
+            ws.insert_rows(1, amount=3)
+            ws["A1"] = "CSES standardized district data table"
+            ws["A2"] = "Use this sheet to prepare district data from the source files in District Data/."
+            if source_files:
+                ws["A3"] = "Source files: " + ", ".join(Path(item).name for item in source_files)
+            else:
+                ws["A3"] = "Source files:"
+        return output_path
 
     def parse(self, path: Path) -> DistrictDataTable | None:
         suffix = path.suffix.lower()

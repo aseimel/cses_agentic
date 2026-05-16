@@ -90,6 +90,7 @@ class WorkflowStandardsEngine:
             add("folder_micro", (self.working_dir / "micro").exists(), "Missing micro folder.")
             add("folder_macro", (self.working_dir / "macro").exists(), "Missing macro folder.")
             add("folder_election_results", (self.working_dir / "Election Results").exists(), "Missing Election Results folder.")
+            add("folder_district_data", (self.working_dir / "District Data").exists(), "Missing District Data folder.")
         elif step_num == 1:
             study_design = self._study_design(state)
             add("data_file", bool(state.data_file), "No data file registered.")
@@ -119,7 +120,11 @@ class WorkflowStandardsEngine:
             target_count = (getattr(state, "workflow_tracking", {}) or {}).get("target_count") or len(self.module6_schema.get("variables", []))
             add("full_schema_tracking", target_count >= 200, f"Tracking sheet covers only {target_count} CSES schema variables.")
         elif step_num == 5:
-            add("election_results", bool(self._find_files(["*Election*Results*", "*election*results*", "*results*.xlsx", "*results*.docx", "*results*.csv"])), "Election results material not found.")
+            add(
+                "election_results",
+                bool(self._find_files(["Election Results/*Election*Results*", "Election Results/*election*results*", "Election Results/*results*.xlsx", "Election Results/*results*.docx", "Election Results/*results*.csv"])),
+                "Election results material not found in Election Results/.",
+            )
         elif step_num == 6:
             add("frequency_artifact", bool(self._find_files(["micro/frequencies/*", "micro/*freq*"])), "Original-data frequency output not found.")
         elif step_num in {7, 8, 11}:

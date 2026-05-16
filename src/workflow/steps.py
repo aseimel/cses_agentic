@@ -23,6 +23,7 @@ from src.matching.party_order import (
     infer_election_context_from_macro_material,
     party_agreement_summary,
     party_order_message,
+    write_standardized_election_results_template,
     write_election_results_intake,
 )
 from src.matching.party_metadata import (
@@ -888,6 +889,7 @@ class StepExecutor:
         request_dir = self.working_dir / "Election Results"
         request_dir.mkdir(parents=True, exist_ok=True)
         review_path = request_dir / f"{self.state.country_code or 'CNT'}_{self.state.year or 'YEAR'}_election_results_review.md"
+        template_path = ""
 
         if files:
             lines = [
@@ -916,15 +918,26 @@ class StepExecutor:
                 )
             else:
                 lines.append("- None detected in the expected table format.")
+                template_path = str(write_standardized_election_results_template(self.working_dir, files))
+                lines.extend([
+                    "",
+                    "Standardized workbook prepared:",
+                    f"- {Path(template_path).name}",
+                ])
                 issues = ["Election-results file found, but no standardized party table was detected."]
                 message = (
-                    "Election-results material registered, but the standardized table format still needs processor review."
+                    "Election-results material registered, but the standardized table format still needs processor review.\n\n"
+                    "I created a standardized election-results workbook shell in Election Results/."
                 )
         else:
+            template_path = str(write_standardized_election_results_template(self.working_dir, []))
             lines = [
                 "# Election Results Material Review",
                 "",
                 "No election-results workbook was found in the study materials.",
+                "",
+                "Standardized workbook prepared:",
+                f"- {Path(template_path).name}",
                 "",
                 "Processor review needed:",
                 "- Provide the standardized election-results workbook, or confirm whether an approved public-source lookup should be used.",
@@ -947,7 +960,7 @@ class StepExecutor:
         return StepResult(
             success=True,
             message=message,
-            artifacts=[str(review_path), str(intake_path)] + files,
+            artifacts=[str(review_path), str(intake_path)] + ([template_path] if template_path else []) + files,
             issues=issues,
             next_action="Continue non-party source review. Party order agreement happens before party and vote-choice matching."
         )
@@ -2051,15 +2064,20 @@ class StepExecutor:
         else:
             table = parser.parse_best(self.working_dir)
 
-        review_dir = self.working_dir / "micro" / "district data"
+        review_dir = self.working_dir / "District Data"
         review_dir.mkdir(parents=True, exist_ok=True)
         review_path = review_dir / f"{self.state.country_code or 'CNT'}_{self.state.year or 'YEAR'}_district_data_review.md"
 
         if not table:
+            discovered = [str(path) for path in parser.discover_files(self.working_dir)]
+            template_path = parser.write_template(self.working_dir, discovered)
             lines = [
                 f"# District Data Review: {self.state.country} {self.state.year}",
                 "",
                 "No standardized district data file was found.",
+                "",
+                "Standardized district data workbook prepared:",
+                f"- {template_path.name}",
                 "",
                 "Processor review needed:",
                 "- Provide the standardized district data file, or confirm that district data is not included in this run.",
@@ -2074,8 +2092,11 @@ class StepExecutor:
             }
             return StepResult(
                 success=False,
-                message="District data review needs a standardized district data file",
-                artifacts=[str(review_path)],
+                message=(
+                    "District data review needs a standardized district data file.\n\n"
+                    "I created a standardized district data workbook shell in District Data/."
+                ),
+                artifacts=[str(review_path), str(template_path)],
                 issues=["Standardized district data file not found."],
                 next_action="Add the standardized district data file and rerun District Data Review"
             )

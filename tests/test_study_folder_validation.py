@@ -71,6 +71,37 @@ class StudyFolderValidationTests(unittest.TestCase):
             self.assertFalse(check.ok)
             self.assertIn("more than one", check.message.lower())
 
+    def test_initialization_structure_creates_election_and_district_folders(self):
+        with tempfile.TemporaryDirectory() as folder:
+            study_dir = Path(folder)
+            FileOrganizer(study_dir).create_study_structure(study_dir)
+
+            self.assertTrue((study_dir / "Election Results").is_dir())
+            self.assertTrue((study_dir / "District Data").is_dir())
+            self.assertTrue((study_dir / "micro" / "district data").is_dir())
+
+    def test_deposit_election_and_district_files_are_curated_to_dedicated_folders(self):
+        with tempfile.TemporaryDirectory() as folder:
+            study_dir = Path(folder)
+            deposit = study_dir / "E-mails" / "20240101"
+            deposit.mkdir(parents=True)
+            (deposit / "survey.csv").write_text("id,q1\n1,1\n", encoding="utf-8")
+            (deposit / "questionnaire.pdf").write_text("questionnaire", encoding="utf-8")
+            election_file = deposit / "Election results.xlsx"
+            district_file = deposit / "District Data Template.xlsx"
+            election_file.write_text("placeholder", encoding="utf-8")
+            district_file.write_text("placeholder", encoding="utf-8")
+
+            organizer = FileOrganizer(study_dir)
+            detected = organizer.detect_files(source_dir=study_dir / "E-mails", recursive=True)
+            organizer.create_study_structure(study_dir)
+            mapping = organizer.copy_files_with_standard_names(detected, study_dir / "E-mails", study_dir, "TST", "2024")
+
+            self.assertIn("election_results", mapping)
+            self.assertIn("district_data", mapping)
+            self.assertTrue(Path(mapping["election_results"]).is_relative_to(study_dir / "Election Results"))
+            self.assertTrue(Path(mapping["district_data"]).is_relative_to(study_dir / "District Data"))
+
 
 if __name__ == "__main__":
     unittest.main()

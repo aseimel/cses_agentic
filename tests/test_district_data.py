@@ -99,6 +99,27 @@ class DistrictDataWorkflowTests(unittest.TestCase):
             self.assertIn("4", validation.missing_observed_district_codes)
             self.assertFalse(validation.approved)
 
+    def test_district_discovery_uses_dedicated_folders_only(self):
+        with tempfile.TemporaryDirectory() as folder:
+            study_dir = Path(folder)
+            email_dir = study_dir / "emails"
+            email_dir.mkdir()
+            self._write_district_xlsx(email_dir / "District Data Template.xlsx")
+
+            table = DistrictDataTemplateParser().parse_best(study_dir)
+
+            self.assertIsNone(table)
+
+    def test_standardized_district_template_is_created_in_dedicated_folder(self):
+        with tempfile.TemporaryDirectory() as folder:
+            study_dir = Path(folder)
+
+            template = DistrictDataTemplateParser().write_template(study_dir, ["raw_districts.pdf"])
+
+            self.assertTrue(template.exists())
+            self.assertEqual(template.parent, study_dir / "District Data")
+            self.assertIsNone(DistrictDataTemplateParser().parse(template))
+
     def test_approved_district_plan_resolves_f400_recoding_and_generates_merge_syntax(self):
         with tempfile.TemporaryDirectory() as folder:
             study_dir = Path(folder)

@@ -2046,9 +2046,9 @@ def extract_party_codes_from_macro(
     model: Optional[str] = None
 ) -> ToolResult:
     """
-    Extract party information from macro folder using LLM.
+    Extract party information from the dedicated Election Results folder using LLM.
 
-    Searches macro/ folder for election results files and uses
+    Searches Election Results/ for election results files and uses
     LLM to semantically extract party names and vote shares.
 
     Args:
@@ -2066,13 +2066,13 @@ def extract_party_codes_from_macro(
         if parties is None:
             return ToolResult(
                 success=False,
-                error="No election results found in macro/ folder. Please provide a file with party vote shares."
+                error="No election results found in Election Results/. Please provide the standardized election-results workbook or source table there."
             )
 
         if not parties:
             return ToolResult(
                 success=False,
-                error="Could not extract party data from macro folder files."
+                error="Could not extract party data from files in Election Results/."
             )
 
         return ToolResult(
@@ -2082,7 +2082,7 @@ def extract_party_codes_from_macro(
                 "n_parties": len(parties)
             },
             metadata={
-                "source": "macro_folder",
+                "source": "election_results_folder",
                 "top_party": parties[0].get("name") if parties else None
             }
         )

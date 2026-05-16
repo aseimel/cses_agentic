@@ -296,7 +296,7 @@ class StudyKnowledgeBaseBuilder:
             for path in getattr(state, "questionnaire_files", []) or []:
                 add(path)
 
-        for root_name in ("emails", "E-mails", "micro", "macro", "Election Results"):
+        for root_name in ("emails", "E-mails", "micro", "macro", "Election Results", "District Data"):
             root = self.working_dir / root_name
             if not root.exists():
                 continue
@@ -346,7 +346,7 @@ class StudyKnowledgeBaseBuilder:
 
         if state is not None:
             add(getattr(state, "data_file", None))
-        for root_name in ("emails", "E-mails", "micro", "macro", "Election Results"):
+        for root_name in ("emails", "E-mails", "micro", "macro", "Election Results", "District Data"):
             root = self.working_dir / root_name
             if not root.exists():
                 continue

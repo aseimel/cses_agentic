@@ -257,7 +257,12 @@ class ParallelEvidenceExtractionService:
         for path in getattr(state, "questionnaire_files", []) or []:
             add("questionnaire", path)
 
-        search_roots = [self.working_dir / "micro", self.working_dir / "macro", self.working_dir / "Election Results"]
+        search_roots = [
+            self.working_dir / "micro",
+            self.working_dir / "macro",
+            self.working_dir / "Election Results",
+            self.working_dir / "District Data",
+        ]
         suffixes = {".pdf", ".docx", ".txt", ".md", ".rtf"}
         for root in search_roots:
             if not root.exists():

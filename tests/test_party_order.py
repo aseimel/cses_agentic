@@ -9,6 +9,7 @@ from src.matching.party_order import (
     election_results_intake_summary,
     infer_election_context_from_macro_material,
     party_order_message,
+    write_standardized_election_results_template,
 )
 
 
@@ -182,6 +183,27 @@ class PartyOrderWorkflowTests(unittest.TestCase):
 
             self.assertEqual(summary["table_count"], 1)
             self.assertTrue(summary["standardized"])
+
+    def test_election_results_discovery_uses_dedicated_folder_only(self):
+        with tempfile.TemporaryDirectory() as folder:
+            study_dir = Path(folder)
+            (study_dir / "emails").mkdir()
+            self._write_workbook(study_dir / "emails" / "election_results.xlsx")
+
+            summary = election_results_intake_summary(study_dir)
+
+            self.assertEqual(summary["table_count"], 0)
+            self.assertFalse(summary["standardized"])
+
+    def test_standardized_election_results_template_is_created_in_dedicated_folder(self):
+        with tempfile.TemporaryDirectory() as folder:
+            study_dir = Path(folder)
+
+            template = write_standardized_election_results_template(study_dir, ["raw_results.pdf"])
+
+            self.assertTrue(template.exists())
+            self.assertEqual(template.parent, study_dir / "Election Results")
+            self.assertEqual(ElectionResultsWorkbookParser().parse_file(template), [])
 
 
 if __name__ == "__main__":

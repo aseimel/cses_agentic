@@ -84,13 +84,8 @@ class ElectionResultsWorkbookParser:
     }
 
     def discover_files(self, working_dir: Path) -> list[Path]:
-        roots = [
-            Path(working_dir),
-            Path(working_dir) / "Election Results",
-            Path(working_dir) / "macro",
-            Path(working_dir) / "E-mails",
-            Path(working_dir) / "emails",
-        ]
+        working_dir = Path(working_dir)
+        roots = [working_dir] if working_dir.name.casefold() == "election results" else [working_dir / "Election Results"]
         patterns = (
             "*Election*Results*.xlsx",
             "*election*results*.xlsx",
@@ -402,6 +397,32 @@ def write_election_results_intake(working_dir: Path, summary: dict[str, Any]) ->
     payload = {"generated_at": datetime.now(timezone.utc).isoformat(), **summary}
     path.write_text(json.dumps(payload, indent=2, ensure_ascii=False), encoding="utf-8")
     return path
+
+
+def write_standardized_election_results_template(working_dir: Path, source_files: list[str] | None = None) -> Path:
+    """Create the standard election-results workbook shell in Election Results/."""
+    output_dir = Path(working_dir) / "Election Results"
+    output_dir.mkdir(parents=True, exist_ok=True)
+    output_path = output_dir / "standardized_election_results_template.xlsx"
+    try:
+        import openpyxl
+    except ImportError as exc:
+        raise RuntimeError("openpyxl is required to create the election-results template") from exc
+
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.title = "Election Results"
+    ws.append(["CSES standardized election-results table"])
+    ws.append(["Use this sheet to prepare the party-order input from the source files in Election Results/."])
+    if source_files:
+        ws.append(["Source files", ", ".join(Path(item).name for item in source_files)])
+    ws.append([])
+    ws.append(["Party Label", "Numeric Code", "Party Name", "Votes", "% of Vote", "Seats", "% of Seats", "Notes"])
+    widths = [14, 14, 36, 14, 14, 12, 12, 40]
+    for idx, width in enumerate(widths, start=1):
+        ws.column_dimensions[openpyxl.utils.get_column_letter(idx)].width = width
+    wb.save(output_path)
+    return output_path
 
 
 def infer_election_context_from_macro_material(working_dir: Path) -> str:

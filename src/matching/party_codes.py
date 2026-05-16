@@ -565,19 +565,21 @@ def extract_party_results_from_macro(
     working_dir: Path
 ) -> Optional[list[dict]]:
     """
-    Extract party results from macro folder files.
+    Extract party results from the dedicated Election Results folder.
 
-    Looks for election results in macro/ folder and parses with LLM.
+    Looks only in Election Results/ and parses with LLM. Macro reports can
+    provide context elsewhere, but party-order inputs should be kept in the
+    standardized election-results folder.
 
     Args:
-        working_dir: Working directory containing macro/ folder
+        working_dir: Working directory containing Election Results/ folder
 
     Returns:
         List of party dicts or None if not found
     """
-    macro_dir = working_dir / "macro"
-    if not macro_dir.exists():
-        logger.info("No macro/ folder found")
+    election_dir = working_dir / "Election Results"
+    if not election_dir.exists():
+        logger.info("No Election Results/ folder found")
         return None
 
     # Look for files that might contain election results
@@ -587,7 +589,7 @@ def extract_party_results_from_macro(
     ]
 
     for pattern in result_patterns:
-        files = list(macro_dir.glob(pattern))
+        files = list(election_dir.glob(pattern))
         for file_path in files:
             try:
                 # Read file content
