@@ -214,18 +214,21 @@ def _safe_file_metadata(path: Path, role: str) -> dict[str, Any]:
 
 def _looks_like_generated_artifact(path: Path) -> bool:
     text = str(path).lower()
+    parts = {part.lower() for part in path.parts}
     return any(
         marker in text
         for marker in [
             "final dataset",
             "data_checks",
             "deposited variable list",
+            "deposited variables",
+            "variable list",
             "\\labels\\",
             "/labels/",
             "cses-m6_micro_",
             "cses-m6_macro_",
         ]
-    )
+    ) or "macro" in parts
 
 
 def _looks_like_check_or_output(path: Path) -> bool:

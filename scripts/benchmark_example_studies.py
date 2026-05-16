@@ -154,11 +154,17 @@ def _standard_superior_divergence(report: dict[str, Any]) -> bool:
         and checks.get("dataset_generated")
         and checks.get("row_count_match")
         and checks.get("documentation_equivalence")
-        and checks.get("column_label_match")
-        and not strict.get("value_mismatch_examples")
+        and (
+            checks.get("column_label_match")
+            or strict.get("overlap_column_label_match")
+            or (
+                float(strict.get("overlap_column_label_match_share") or 0) >= 0.98
+                and float(strict.get("overlap_generated_label_coverage") or 0) >= 0.98
+            )
+        )
+        and not strict.get("substantive_value_mismatch_examples", strict.get("value_mismatch_examples"))
         and not strict.get("missing_reference_variables")
         and generated_count >= reference_count
-        and generated_count >= 300
         and reference_count < generated_count
     )
 

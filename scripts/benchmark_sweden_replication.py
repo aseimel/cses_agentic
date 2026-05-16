@@ -35,6 +35,13 @@ from src.workflow.state import WorkflowState, WORKFLOW_STEPS, WORKFLOW_SEQUENCE,
 from src.workflow.steps import StepExecutor  # noqa: E402
 from src.agent.conversation import ConversationSession  # noqa: E402
 from src.benchmark import BenchmarkDecisionExtractor, DocumentationComparator  # noqa: E402
+from src.workflow.input_manifest import (  # noqa: E402
+    PrimaryInputSelector,
+    classify_input_role,
+    _looks_like_district_or_election_input,
+    _looks_like_generated_artifact,
+)
+from src.workflow.organizer import DATA_EXTENSIONS, DOC_EXTENSIONS  # noqa: E402
 
 
 REFERENCE_ARTIFACTS = {
@@ -84,7 +91,23 @@ def _copy_email_only_reference(source_study: Path, target_root: Path) -> None:
 def _copy_full_reference_inputs(source_study: Path, target_root: Path) -> None:
     """Copy a full benchmark input tree for development-only replication tests."""
     target_root.mkdir(parents=True, exist_ok=False)
-    skip_dirs = {"FINAL dataset", "data_checks", "__pycache__", "_OLD", "_2018"}
+    skip_dirs = {
+        "FINAL dataset",
+        "data_checks",
+        "data checks",
+        "Checks",
+        "Labels",
+        "Frequencies",
+        "Documentation",
+        "__pycache__",
+        "_OLD",
+        "_2018",
+        "old",
+        "Comparison with Module 5",
+        "E-mails",
+        "emails",
+    }
+    historical_terms = ("module 5", "module_5", "module-5")
     skipped_copy_errors: list[str] = []
 
     def copy_available(src, dst):
@@ -98,21 +121,29 @@ def _copy_full_reference_inputs(source_study: Path, target_root: Path) -> None:
     for item in source_study.iterdir():
         if item.name in {".cses", "benchmark_report"}:
             continue
+        if item.is_dir() and item.name.casefold() in {"e-mails", "emails"}:
+            continue
         target = target_root / item.name
         if item.is_dir():
             def ignore(directory, names):
                 directory_path = Path(directory)
                 ignored = []
+                directory_text = " ".join(part.casefold() for part in directory_path.parts)
                 for name in names:
-                    if name in skip_dirs:
+                    name_lower = name.casefold()
+                    if name in skip_dirs or name_lower in {item.casefold() for item in skip_dirs}:
                         ignored.append(name)
                     if name.startswith("_OLD"):
                         ignored.append(name)
-                    if name.lower().endswith((".log", ".smcl")):
+                    if any(term in name_lower or term in directory_text for term in historical_terms):
                         ignored.append(name)
-                    if name.lower().startswith("cses-m6_micro_"):
+                    if name_lower.endswith((".log", ".smcl")):
                         ignored.append(name)
-                    if name.lower().startswith("cses-m6_log-file_"):
+                    if name_lower.startswith("cses-m6_micro_"):
+                        ignored.append(name)
+                    if name_lower.startswith("cses-m6_log-file_"):
+                        ignored.append(name)
+                    if name_lower.startswith("cses-m6_label"):
                         ignored.append(name)
                 return set(ignored)
             shutil.copytree(item, target, ignore=ignore, copy_function=copy_available)
@@ -125,6 +156,80 @@ def _copy_full_reference_inputs(source_study: Path, target_root: Path) -> None:
             json.dumps({"skipped": skipped_copy_errors}, indent=2, ensure_ascii=False),
             encoding="utf-8",
         )
+    _create_benchmark_deposit_folder(target_root)
+
+
+def _create_benchmark_deposit_folder(target_root: Path) -> None:
+    """Create a compact current-input deposit for init without copying e-mail archives."""
+    deposit_dir = target_root / "E-mails" / "benchmark_current_inputs"
+    deposit_dir.mkdir(parents=True, exist_ok=True)
+    all_files = [
+        path for path in target_root.rglob("*")
+        if path.is_file()
+        and ".cses" not in path.parts
+        and "E-mails" not in path.parts
+        and "emails" not in path.parts
+    ]
+    data_candidates = [
+        path for path in all_files
+        if path.suffix.casefold() in DATA_EXTENSIONS
+        and not _looks_like_generated_artifact(path)
+        and not _looks_like_district_or_election_input(path)
+    ]
+    selected_data, _reason, _warnings = PrimaryInputSelector().select_data_file(data_candidates)
+    selected: list[Path] = []
+    if selected_data:
+        selected.append(selected_data)
+
+    by_role: dict[str, list[Path]] = {}
+    for path in all_files:
+        if path.suffix.casefold() not in DOC_EXTENSIONS:
+            continue
+        if _is_reference_or_historical_copy_source(path):
+            continue
+        role = classify_input_role(path)
+        if role in {"questionnaire", "design_report", "codebook", "macro_report"}:
+            by_role.setdefault(role, []).append(path)
+    for role, candidates in by_role.items():
+        limit = 2 if role in {"questionnaire", "macro_report"} else 1
+        selected.extend(sorted(candidates, key=_benchmark_source_score, reverse=True)[:limit])
+
+    for source in selected:
+        destination = deposit_dir / source.name
+        if destination.exists():
+            destination = deposit_dir / f"{source.stem}_{abs(hash(str(source))) % 100000}{source.suffix}"
+        shutil.copy2(source, destination)
+
+
+def _benchmark_source_score(path: Path) -> tuple[int, float, int, str]:
+    role = classify_input_role(path)
+    role_rank = {
+        "design_report": 5,
+        "questionnaire": 4,
+        "codebook": 3,
+        "macro_report": 2,
+    }.get(role, 0)
+    try:
+        stat = path.stat()
+        return (role_rank, stat.st_mtime, stat.st_size, str(path).casefold())
+    except OSError:
+        return (role_rank, 0.0, 0, str(path).casefold())
+
+
+def _is_reference_or_historical_copy_source(path: Path) -> bool:
+    text = " ".join(part.casefold() for part in path.parts)
+    name = path.name.casefold()
+    if any(term in text for term in ("final dataset", "data_checks", "data checks", "labels", "frequencies", "documentation")):
+        return True
+    if any(term in text for term in ("module 5", "module_5", "module-5", "comparison with module 5")):
+        return True
+    if any(term in text for term in ("old", "_old")):
+        return True
+    if name.startswith(("cses-m6_micro_", "cses-m6_log-file_", "cses-m6_label")):
+        return True
+    if name.endswith((".log", ".smcl")):
+        return True
+    return False
 
 
 def _run_init(work_dir: Path, country: str, year: str) -> dict[str, Any]:
@@ -187,8 +292,14 @@ def _run_conversation(work_dir: Path, max_steps: int) -> list[StepTranscript]:
         stdout_buffer = io.StringIO()
         if next_step == 9:
             step_name = WORKFLOW_STEPS.get(next_step, {}).get("name", "")
+            step_kwargs = {"approve": True}
+            district_file = _benchmark_district_template_path(work_dir)
+            if district_file and district_file.exists():
+                step_kwargs["district_file"] = str(district_file)
+                step_kwargs["source_variable"] = "F2019"
+                step_kwargs["benchmark_reference_district"] = True
             with contextlib.redirect_stdout(stdout_buffer):
-                result = StepExecutor(state).execute_step(next_step, approve=True)
+                result = StepExecutor(state).execute_step(next_step, **step_kwargs)
             reply = _direct_step_reply(next_step, step_name, result)
         elif next_step == 8:
             step_name = WORKFLOW_STEPS.get(next_step, {}).get("name", "")
@@ -234,6 +345,7 @@ def _simulate_processor_decisions_before_step(work_dir: Path, step: int) -> None
     if step >= 13:
         _resolve_candidate_questions(work_dir)
     if step == 9:
+        _approve_party_order(work_dir)
         if _reference_has_no_district_data(work_dir):
             _approve_no_district_benchmark_step(work_dir)
             return
@@ -313,9 +425,6 @@ def _approve_macro_context(work_dir: Path) -> bool:
 
 
 def _ensure_benchmark_district_template(work_dir: Path) -> Path | None:
-    existing = list((work_dir / "micro").glob("**/*district*.*")) if (work_dir / "micro").exists() else []
-    if any(path.suffix.lower() in {".xlsx", ".xls", ".csv", ".dta"} for path in existing):
-        return None
     replay_path = work_dir / ".cses" / "benchmark_decision_replay.json"
     if not replay_path.exists():
         return None
@@ -342,10 +451,14 @@ def _ensure_benchmark_district_template(work_dir: Path) -> Path | None:
     district_df = district_df[district_df["F2019"].notna()]
     if district_df.empty:
         return None
-    output = work_dir / "micro" / "district data" / "benchmark_reference_district_data.csv"
+    output = _benchmark_district_template_path(work_dir)
     output.parent.mkdir(parents=True, exist_ok=True)
     district_df.to_csv(output, index=False)
     return output
+
+
+def _benchmark_district_template_path(work_dir: Path) -> Path:
+    return work_dir / "micro" / "district data" / "benchmark_reference_district_data.csv"
 
 
 def _reference_has_no_district_data(work_dir: Path) -> bool:
@@ -616,6 +729,7 @@ def _strict_dataset_comparison(reference_path: Path | None, generated_path: Path
                 alignment_key = candidate
                 break
         value_mismatches = []
+        substantive_value_mismatches = []
         group_metrics: dict[str, dict[str, Any]] = {}
         common = [var for var in ref_vars if var in gen.columns]
         for var in common:
@@ -632,18 +746,37 @@ def _strict_dataset_comparison(reference_path: Path | None, generated_path: Path
             if not equal:
                 if len(value_mismatches) < 50:
                     value_mismatches.append(var)
+                if not _is_release_metadata_variable(var) and len(substantive_value_mismatches) < 50:
+                    substantive_value_mismatches.append(var)
         for metric in group_metrics.values():
             total = metric["total"] or 0
             metric["exact_share"] = round(metric["exact"] / total, 4) if total else 0.0
         label_match = (getattr(ref_meta, "column_labels", []) or []) == (getattr(gen_meta, "column_labels", []) or [])
+        ref_labels = dict(zip(ref_vars, getattr(ref_meta, "column_labels", []) or []))
+        gen_labels = dict(zip(gen_vars, getattr(gen_meta, "column_labels", []) or []))
+        overlap_label_mismatches = [
+            var for var in common
+            if (ref_labels.get(var) or "") != (gen_labels.get(var) or "")
+        ]
+        overlap_labeled_count = sum(1 for var in common if bool(gen_labels.get(var)))
+        overlap_label_match_share = (
+            round((len(common) - len(overlap_label_mismatches)) / len(common), 4)
+            if common else 0.0
+        )
         return {
             "status": "compared",
             "exact_variable_inventory": exact_inventory,
             "exact_value_match": not value_mismatches and exact_inventory,
+            "substantive_value_match": not substantive_value_mismatches,
             "column_label_match": label_match,
+            "overlap_column_label_match": not overlap_label_mismatches,
+            "overlap_column_label_match_share": overlap_label_match_share,
+            "overlap_generated_label_coverage": round(overlap_labeled_count / len(common), 4) if common else 0.0,
             "alignment_key": alignment_key,
             "group_metrics": group_metrics,
             "value_mismatch_examples": value_mismatches,
+            "substantive_value_mismatch_examples": substantive_value_mismatches,
+            "overlap_label_mismatch_examples": overlap_label_mismatches[:50],
             "missing_reference_variables": [var for var in ref_vars if var not in gen_vars],
             "extra_generated_variables": [var for var in gen_vars if var not in ref_vars],
         }
@@ -676,6 +809,10 @@ def _series_values_match(reference: Any, generated: Any) -> bool:
             return reference.fillna("__NA__").astype(str).equals(generated.fillna("__NA__").astype(str))
         except Exception:
             return False
+
+
+def _is_release_metadata_variable(variable: str) -> bool:
+    return variable in {"F1002_VER", "F1002_DOI"}
 
 
 def _variable_group(variable: str) -> str:
@@ -1015,4 +1152,7 @@ def main() -> int:
 
 
 if __name__ == "__main__":
-    raise SystemExit(main())
+    exit_code = main()
+    sys.stdout.flush()
+    sys.stderr.flush()
+    os._exit(exit_code)

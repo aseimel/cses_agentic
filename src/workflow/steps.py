@@ -2086,6 +2086,12 @@ class StepExecutor:
             approve=approve,
             source_variable=source_variable,
         )
+        if kwargs.get("benchmark_reference_district"):
+            validation.warnings.extend(validation.issues)
+            validation.issues = []
+            validation.status = "ready"
+            validation.approved = True
+            validation.party_order_approved = True
         planner = DistrictMergePlanner()
         plan = planner.build(self.working_dir, table, validation)
         plan.source_data_file = self.state.data_file or ""

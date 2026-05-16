@@ -300,7 +300,7 @@ class MatchingDecisionEngine:
             "target_count": len(decisions),
             "decisions": [item.to_dict() for item in decisions],
         }
-        decisions_path.write_text(json.dumps(payload, indent=2, ensure_ascii=False), encoding="utf-8")
+        decisions_path.write_text(json.dumps(payload, indent=2, ensure_ascii=False, default=str), encoding="utf-8")
         candidates_path.write_text(
             json.dumps(
                 {
@@ -315,6 +315,7 @@ class MatchingDecisionEngine:
                 },
                 indent=2,
                 ensure_ascii=False,
+                default=str,
             ),
             encoding="utf-8",
         )

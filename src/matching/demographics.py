@@ -165,7 +165,7 @@ class DemographicRecodingAssessmentEngine:
             "needs_processor_review_count": sum(1 for item in assessments if item.processor_review_required),
             "assessments": [item.to_dict() for item in assessments],
         }
-        path.write_text(json.dumps(payload, indent=2, ensure_ascii=False), encoding="utf-8")
+        path.write_text(json.dumps(payload, indent=2, ensure_ascii=False, default=str), encoding="utf-8")
         return path
 
     def _select_source(
@@ -435,7 +435,7 @@ class DemographicRecodingDossierBuilder:
             "dossier_count": len(dossiers),
             "dossiers": [item.to_dict() for item in dossiers],
         }
-        path.write_text(json.dumps(payload, indent=2, ensure_ascii=False), encoding="utf-8")
+        path.write_text(json.dumps(payload, indent=2, ensure_ascii=False, default=str), encoding="utf-8")
         return path
 
     def _target_standard(self, assessment: DemographicRecodingAssessment) -> dict[str, Any]:
@@ -566,7 +566,7 @@ class DemographicRecodingDecisionStore:
             "approved_count": sum(1 for item in decisions if item.approved),
             "decisions": [item.to_dict() for item in decisions],
         }
-        self.path.write_text(json.dumps(payload, indent=2, ensure_ascii=False), encoding="utf-8")
+        self.path.write_text(json.dumps(payload, indent=2, ensure_ascii=False, default=str), encoding="utf-8")
         return self.path
 
     def write_from_assessments(

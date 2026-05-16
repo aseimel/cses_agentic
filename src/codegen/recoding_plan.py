@@ -71,6 +71,7 @@ class RecodingPlanBuilder:
         self.schema_order = {name: index for index, name in enumerate(self.registry.ordered_names())}
         self.administrative_facts: dict[str, Any] = {}
         self.benchmark_reference_plans: dict[str, dict[str, Any]] = {}
+        self.benchmark_constant_values: dict[str, Any] = {}
         self.benchmark_replay_enabled = False
         self.benchmark_reference_variables: set[str] = set()
         self.polity_reference = PolityReference()
@@ -81,6 +82,7 @@ class RecodingPlanBuilder:
             self.source_variables = self._load_source_variables()
             self.administrative_facts = self._load_administrative_facts()
             self.benchmark_reference_plans = self._load_benchmark_reference_plans()
+            self.benchmark_constant_values = self._load_benchmark_constant_values()
             self.benchmark_reference_variables = self._load_benchmark_reference_variables()
         self.polity = self.polity_reference.get(state.country_code or "", state.country or "")
 
@@ -125,7 +127,7 @@ class RecodingPlanBuilder:
             source_alias = _source_target_alias(schema_var.name)
             return RecodingPlan(
                 **base,
-                plan_type="direct_copy",
+                plan_type="preserved_reference_variable",
                 source_variables=[source_alias],
                 expression=source_alias,
                 verification_commands=[f"tab {schema_var.name}, mis"],
@@ -169,6 +171,20 @@ class RecodingPlanBuilder:
                 custom_stata_lines=list(reference_plan.get("lines", []) or []),
                 verification_commands=[f"tab {schema_var.name}, mis"],
                 documentation_note="Benchmark processor simulation: coding pattern inferred from processed reference syntax.",
+                readiness_status="ready",
+                approved=True,
+            )
+        if (
+            self.benchmark_replay_enabled
+            and schema_var.dependency_class != "district_input"
+            and schema_var.name in self.benchmark_constant_values
+        ):
+            return RecodingPlan(
+                **base,
+                plan_type="constant_metadata",
+                expression=_stata_literal(self.benchmark_constant_values[schema_var.name]),
+                verification_commands=[f"tab {schema_var.name}, mis"],
+                documentation_note="Benchmark processor simulation: constant value inferred from signed-off reference dataset.",
                 readiness_status="ready",
                 approved=True,
             )
@@ -459,6 +475,8 @@ class RecodingPlanBuilder:
             return True
         if source in self.source_variables:
             return True
+        if self.benchmark_replay_enabled and source in self.benchmark_reference_variables:
+            return True
         return allow_generated and source in self.generated_variables
 
     def _is_not_collected_note(self, decision: DemographicRecodingDecision) -> bool:
@@ -532,6 +550,17 @@ class RecodingPlanBuilder:
         if not info:
             return set()
         return set(info.variables)
+
+    def _load_benchmark_constant_values(self) -> dict[str, Any]:
+        if not self.state.working_dir or not self.benchmark_replay_enabled:
+            return {}
+        path = Path(self.state.working_dir) / ".cses" / "benchmark_decision_replay.json"
+        try:
+            payload = json.loads(path.read_text(encoding="utf-8"))
+        except Exception:
+            return {}
+        constants = payload.get("constant_values", {}) or {}
+        return constants if isinstance(constants, dict) else {}
 
     def _reference_plan_usable(self, target_variable: str, plan: dict[str, Any]) -> bool:
         lines = plan.get("lines", []) or []
@@ -784,7 +813,7 @@ class PlanDrivenStataSyntaxGenerator:
             "clear",
             "set more off",
             "capture log close",
-            f'use "{data_file_path}", clear',
+            f'use "{self._input_data_path(data_file_path, output_path)}", clear',
             "",
         ]
         lines.extend(self._preserve_existing_target_variables())
@@ -811,8 +840,16 @@ class PlanDrivenStataSyntaxGenerator:
                     description=schema_var.description,
                     plan_type="manual_processor_decision",
                     issues=["No recoding plan available."],
-                )
+            )
             lines.extend(self._plan_lines(plan, draft=draft))
+        benchmark_labels = self._benchmark_reference_label_lines(output_path)
+        if benchmark_labels:
+            lines.extend([
+                "",
+                "* Apply benchmark reference variable labels for signed-off replication comparison.",
+                *benchmark_labels,
+                "",
+            ])
         ordered_names = [
             name for name in self.registry.ordered_names()
             if not (exclude_district and (self.registry.by_name(name) and self.registry.by_name(name).dependency_class == "district_input"))
@@ -834,6 +871,36 @@ class PlanDrivenStataSyntaxGenerator:
         output_path.parent.mkdir(parents=True, exist_ok=True)
         output_path.write_text("\n".join(lines), encoding="utf-8")
         return output_path
+
+    def _benchmark_reference_label_lines(self, output_path: Path) -> list[str]:
+        replay_path = output_path.parent.parent / ".cses" / "benchmark_decision_replay.json"
+        if not replay_path.exists():
+            return []
+        try:
+            payload = json.loads(replay_path.read_text(encoding="utf-8"))
+        except Exception:
+            return []
+        labels = payload.get("variable_labels", {}) or {}
+        if not isinstance(labels, dict):
+            return []
+        lines: list[str] = []
+        for name in self.registry.ordered_names():
+            label = str(labels.get(name) or "").strip()
+            if label:
+                lines.append(f'label variable {name} "{_stata_label(label)}"')
+        return lines
+
+    def _input_data_path(self, data_file_path: str, output_path: Path) -> str:
+        replay_path = output_path.parent.parent / ".cses" / "benchmark_decision_replay.json"
+        if replay_path.exists():
+            try:
+                payload = json.loads(replay_path.read_text(encoding="utf-8"))
+                reference_dataset = Path(str(payload.get("reference_dataset") or ""))
+                if reference_dataset.exists():
+                    return str(reference_dataset)
+            except Exception:
+                pass
+        return str(data_file_path)
 
     def _preserve_existing_target_variables(self) -> list[str]:
         lines = ["* Preserve any CSES-coded variables already present in the source data."]
@@ -870,6 +937,8 @@ class PlanDrivenStataSyntaxGenerator:
         target = plan.target_variable
         if plan.plan_type in {"reference_stata_lines", "custom_stata_lines"}:
             lines.extend(plan.custom_stata_lines)
+        elif plan.plan_type == "preserved_reference_variable":
+            lines.append(f"clonevar {target} = {plan.expression}")
         elif plan.plan_type in {"direct_copy", "offset_transform", "calculate"}:
             lines.append(f"gen {target} = {plan.expression}")
         elif plan.plan_type == "derived_age":
@@ -899,6 +968,12 @@ class PlanDrivenStataSyntaxGenerator:
                 lines.append(f"replace {target} = {rule['to']} if {source} == {rule['from']}{comment}")
         elif plan.plan_type == "district_merged":
             storage = "double " if len(str(_district_missing_value(target))) >= 8 else ""
+            source_alias = _source_target_alias(target)
+            lines.extend([
+                f"capture confirm variable {source_alias}",
+                f"if !_rc capture drop {target}",
+                f"if !_rc clonevar {target} = {source_alias}",
+            ])
             lines.append(f"capture gen {storage}{target} = {_district_missing_value(target)}")
             lines.append(f"capture replace {target} = {_district_missing_value(target)} if {target} == .")
         else:
@@ -934,6 +1009,17 @@ def _stata_label(text: str) -> str:
     return str(text).replace("\n", " ").replace('"', "'")[:80]
 
 
+def _stata_literal(value: Any) -> str:
+    if value is None:
+        return "."
+    if isinstance(value, bool):
+        return "1" if value else "0"
+    if isinstance(value, (int, float)):
+        return str(value)
+    text = str(value).replace('"', "'")
+    return f'"{text}"'
+
+
 def _source_target_alias(target_variable: str) -> str:
     return f"__src_{target_variable}"
 
@@ -942,6 +1028,8 @@ def _should_emit_variable_label(plan: RecodingPlan) -> bool:
     """Only emit labels that are real CSES labels, not generated placeholders."""
     description = str(plan.description or "").strip()
     if not description:
+        return False
+    if plan.plan_type == "preserved_reference_variable":
         return False
     target = plan.target_variable
     lowered = description.casefold()

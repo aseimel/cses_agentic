@@ -374,6 +374,7 @@ class BenchmarkDecisionExtractor:
             "reference_dataset": str(reference_dataset) if reference_dataset else "",
             "reference_syntax": str(reference_syntax) if reference_syntax else "",
             "constant_values": self._constant_values(reference_dataset),
+            "variable_labels": self._variable_labels(reference_dataset),
             "syntax_variable_blocks": self._syntax_blocks(reference_syntax),
             "reference_recoding_plans": self._reference_recoding_plans(reference_syntax),
             "documentation_decision_topics": self._documentation_topics(reference_dir),
@@ -400,6 +401,22 @@ class BenchmarkDecisionExtractor:
             if len(values) == 1:
                 constants[column] = _json_scalar(values[0])
         return constants
+
+    def _variable_labels(self, reference_dataset: Path | None) -> dict[str, str]:
+        if not reference_dataset or not reference_dataset.exists():
+            return {}
+        try:
+            import pyreadstat
+
+            _df, meta = pyreadstat.read_dta(str(reference_dataset), metadataonly=True)
+        except Exception:
+            return {}
+        labels = getattr(meta, "column_labels", []) or []
+        return {
+            name: str(label)
+            for name, label in zip(meta.column_names, labels)
+            if label is not None and str(label).strip() and str(label).strip().casefold() != "none"
+        }
 
     def _syntax_blocks(self, reference_syntax: Path | None) -> dict[str, str]:
         if not reference_syntax or not reference_syntax.exists():

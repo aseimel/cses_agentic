@@ -27,6 +27,35 @@ NARRATIVE_SUFFIXES = {".pdf", ".docx", ".txt", ".md", ".rtf"}
 DATA_SUFFIXES = {".dta", ".sav", ".por", ".csv", ".tsv", ".xlsx", ".xls", ".json", ".parquet", ".pq"}
 MAX_ONE_SHOT_CHARS = 650_000
 
+REFERENCE_OUTPUT_PARTS = {
+    ".cses",
+    "benchmark_report",
+    "final dataset",
+    "data_checks",
+    "data checks",
+    "checks",
+    "labels",
+    "frequencies",
+    "frequency",
+    "documentation",
+    "old",
+    "_old",
+}
+
+REFERENCE_OUTPUT_NAME_PREFIXES = (
+    "cses-m6_micro_",
+    "cses-m6_log-file_",
+    "cses-m6_label",
+    "cses-m6_checks",
+)
+
+HISTORICAL_REFERENCE_TERMS = (
+    "module 5",
+    "module_5",
+    "module-5",
+    "comparison with module 5",
+)
+
 
 @dataclass
 class StudyKBStatus:
@@ -71,6 +100,28 @@ def _safe_ascii(text: Any, limit: int | None = None) -> str:
         value = value.replace(source, target)
     value = value.encode("cp1252", errors="replace").decode("cp1252")
     return value[:limit] if limit else value
+
+
+def is_reference_or_historical_source(path: Path, working_dir: Path) -> bool:
+    path = Path(path)
+    working_dir = Path(working_dir)
+    try:
+        rel_parts = path.relative_to(working_dir).parts
+    except ValueError:
+        rel_parts = path.parts
+    lowered_parts = [part.casefold() for part in rel_parts]
+    lowered_name = path.name.casefold()
+    lowered_text = " ".join(lowered_parts)
+
+    if any(part in REFERENCE_OUTPUT_PARTS for part in lowered_parts):
+        return True
+    if any(term in lowered_text for term in HISTORICAL_REFERENCE_TERMS):
+        return True
+    if lowered_name.endswith((".log", ".smcl")):
+        return True
+    if lowered_name.startswith(REFERENCE_OUTPUT_NAME_PREFIXES):
+        return True
+    return False
 
 
 class StudyKnowledgeBase:
@@ -250,14 +301,14 @@ class StudyKnowledgeBaseBuilder:
             if not root.exists():
                 continue
             for path in root.rglob("*"):
-                if path.is_file() and path.suffix.lower() in NARRATIVE_SUFFIXES:
+                if path.is_file() and path.suffix.lower() in NARRATIVE_SUFFIXES and not self._is_reference_or_historical_source(path):
                     paths.append(path)
 
         docs = []
         seen = set()
         for path in paths:
             key = str(path.resolve()).lower()
-            if key in seen:
+            if key in seen or self._is_reference_or_historical_source(path):
                 continue
             seen.add(key)
             parsed = parser.parse(path)
@@ -300,7 +351,12 @@ class StudyKnowledgeBaseBuilder:
             if not root.exists():
                 continue
             for path in root.rglob("*"):
-                if path.is_file() and path.suffix.lower() in DATA_SUFFIXES and not self._is_internal_artifact(path):
+                if (
+                    path.is_file()
+                    and path.suffix.lower() in DATA_SUFFIXES
+                    and not self._is_internal_artifact(path)
+                    and not self._is_reference_or_historical_source(path)
+                ):
                     paths.append(path)
 
         summaries = []
@@ -309,7 +365,7 @@ class StudyKnowledgeBaseBuilder:
         targets = {name.upper() for name in CSES_TARGET_VARIABLES}
         for path in paths:
             key = str(path.resolve()).lower()
-            if key in seen or self._is_internal_artifact(path):
+            if key in seen or self._is_internal_artifact(path) or self._is_reference_or_historical_source(path):
                 continue
             seen.add(key)
             errors = []
@@ -472,6 +528,9 @@ class StudyKnowledgeBaseBuilder:
         except Exception as exc:
             self._progress(f"Study KB model call failed: {type(exc).__name__}")
             return {}
+
+    def _is_reference_or_historical_source(self, path: Path) -> bool:
+        return is_reference_or_historical_source(path, self.working_dir)
 
     def _fallback_payload(self, narrative_docs: list[dict], data_summaries: list[dict]) -> dict:
         fields: dict[str, list[dict]] = {}

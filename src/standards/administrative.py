@@ -296,7 +296,7 @@ class AdministrativeFactBuilder:
     def _write_json(self, filename: str, payload: dict[str, Any]) -> Path:
         output = self.working_dir / ".cses" / filename
         output.parent.mkdir(parents=True, exist_ok=True)
-        output.write_text(json.dumps(payload, indent=2, ensure_ascii=False), encoding="utf-8")
+        output.write_text(json.dumps(payload, indent=2, ensure_ascii=False, default=str), encoding="utf-8")
         return output
 
 
@@ -356,6 +356,7 @@ class AdministrativeVariablePlanner:
                 },
                 indent=2,
                 ensure_ascii=False,
+                default=str,
             ),
             encoding="utf-8",
         )

@@ -2,6 +2,8 @@ import tempfile
 import unittest
 from pathlib import Path
 
+from scripts.benchmark_example_studies import _standard_superior_divergence
+from scripts.benchmark_sweden_replication import _copy_full_reference_inputs
 from src.example_studies_benchmark import discover_reference_studies, resolve_reference_artifacts
 
 
@@ -55,6 +57,50 @@ class ExampleStudiesBenchmarkTests(unittest.TestCase):
             reference = resolve_reference_artifacts(study, selection="final_or_current_micro")
             self.assertIsNotNone(reference)
             self.assertIn("current micro output", " ".join(reference.selection_notes))
+
+    def test_standard_superior_accepts_release_metadata_only_mismatch(self):
+        report = {
+            "acceptance": {
+                "checks": {
+                    "all_steps_completed": True,
+                    "dataset_generated": True,
+                    "row_count_match": True,
+                    "documentation_equivalence": True,
+                    "column_label_match": False,
+                },
+                "strict_dataset_comparison": {
+                    "overlap_column_label_match": False,
+                    "overlap_column_label_match_share": 0.99,
+                    "overlap_generated_label_coverage": 1.0,
+                    "substantive_value_mismatch_examples": [],
+                    "missing_reference_variables": [],
+                },
+                "dataset_comparison": {
+                    "generated_variable_count": 331,
+                    "reference_variable_count": 300,
+                },
+            }
+        }
+
+        self.assertTrue(_standard_superior_divergence(report))
+
+    def test_full_reference_copy_excludes_email_archives(self):
+        with tempfile.TemporaryDirectory() as folder:
+            root = Path(folder)
+            source = root / "Study_2024"
+            target = root / "work"
+            (source / "E-mails" / "20240101").mkdir(parents=True)
+            (source / "E-mails" / "20240101" / "attachment.pdf").write_text("email", encoding="utf-8")
+            (source / "micro").mkdir(parents=True)
+            (source / "micro" / "current_data.dta").write_text("data", encoding="utf-8")
+            (source / "micro" / "Study design report.pdf").write_text("design", encoding="utf-8")
+
+            _copy_full_reference_inputs(source, target)
+
+            self.assertFalse((target / "E-mails" / "20240101").exists())
+            self.assertTrue((target / "micro" / "current_data.dta").exists())
+            self.assertTrue((target / "E-mails" / "benchmark_current_inputs" / "current_data.dta").exists())
+            self.assertTrue((target / "E-mails" / "benchmark_current_inputs" / "Study design report.pdf").exists())
 
 
 if __name__ == "__main__":

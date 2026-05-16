@@ -449,12 +449,12 @@ class MatchingEvidenceBuilder:
             "questionnaire_to_data_links": data_links,
             "matching_readiness": readiness,
         }
-        (self.cses_dir / "questionnaire_items.json").write_text(json.dumps(payload["questionnaire_items"], indent=2, ensure_ascii=False), encoding="utf-8")
-        (self.cses_dir / "source_variable_profiles.json").write_text(json.dumps(payload["source_variable_profiles"], indent=2, ensure_ascii=False), encoding="utf-8")
-        (self.cses_dir / "target_variable_profiles.json").write_text(json.dumps(payload["target_variable_profiles"], indent=2, ensure_ascii=False), encoding="utf-8")
-        (self.cses_dir / "canonical_item_matches.json").write_text(json.dumps(payload["canonical_item_matches"], indent=2, ensure_ascii=False), encoding="utf-8")
-        (self.cses_dir / "questionnaire_to_data_links.json").write_text(json.dumps(payload["questionnaire_to_data_links"], indent=2, ensure_ascii=False), encoding="utf-8")
-        (self.cses_dir / "matching_evidence.json").write_text(json.dumps(payload, indent=2, ensure_ascii=False), encoding="utf-8")
+        (self.cses_dir / "questionnaire_items.json").write_text(json.dumps(payload["questionnaire_items"], indent=2, ensure_ascii=False, default=str), encoding="utf-8")
+        (self.cses_dir / "source_variable_profiles.json").write_text(json.dumps(payload["source_variable_profiles"], indent=2, ensure_ascii=False, default=str), encoding="utf-8")
+        (self.cses_dir / "target_variable_profiles.json").write_text(json.dumps(payload["target_variable_profiles"], indent=2, ensure_ascii=False, default=str), encoding="utf-8")
+        (self.cses_dir / "canonical_item_matches.json").write_text(json.dumps(payload["canonical_item_matches"], indent=2, ensure_ascii=False, default=str), encoding="utf-8")
+        (self.cses_dir / "questionnaire_to_data_links.json").write_text(json.dumps(payload["questionnaire_to_data_links"], indent=2, ensure_ascii=False, default=str), encoding="utf-8")
+        (self.cses_dir / "matching_evidence.json").write_text(json.dumps(payload, indent=2, ensure_ascii=False, default=str), encoding="utf-8")
         return payload
 
     def _readiness(
