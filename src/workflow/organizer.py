@@ -300,6 +300,16 @@ class DetectedFiles:
         return "\n".join(lines)
 
 
+@dataclass
+class StudyFolderCheck:
+    """Validation result for a user-selected study folder."""
+    ok: bool
+    initialized: bool = False
+    email_folder: Path | None = None
+    message: str = ""
+    details: list[str] = field(default_factory=list)
+
+
 def detect_questionnaire_language(filename: str) -> str:
     """
     Detect if a questionnaire is the English translation or native version.
@@ -430,6 +440,81 @@ class FileOrganizer:
         """Initialize organizer for a directory."""
         self.working_dir = working_dir or Path.cwd()
 
+    @staticmethod
+    def _is_email_folder_name(name: str) -> bool:
+        normalized = name.lower().replace('-', '').replace('_', '')
+        return normalized in {"emails", "email"}
+
+    def validate_study_folder(self) -> StudyFolderCheck:
+        """
+        Check whether the selected folder is one processable study folder.
+
+        A valid selected folder is either already initialized itself, or it has
+        exactly one direct email/deposit folder with data files. Parent folders
+        containing multiple studies are rejected instead of guessed.
+        """
+        folder = self.working_dir
+        if not folder.exists() or not folder.is_dir():
+            return StudyFolderCheck(
+                ok=False,
+                message="The selected folder does not exist or is not a folder.",
+            )
+
+        if (folder / ".cses" / "state.json").exists() or (folder / ".cses").exists():
+            return StudyFolderCheck(
+                ok=True,
+                initialized=True,
+                message="Initialized CSES study folder.",
+            )
+
+        direct_children = [item for item in folder.iterdir() if item.is_dir() and not item.name.startswith(".")]
+        initialized_children = [item for item in direct_children if (item / ".cses").exists()]
+        nested_email_children = [
+            item
+            for item in direct_children
+            if any(child.is_dir() and self._is_email_folder_name(child.name) for child in item.iterdir())
+        ]
+        email_folders = [item for item in direct_children if self._is_email_folder_name(item.name)]
+
+        if initialized_children or (nested_email_children and not email_folders):
+            examples = initialized_children or nested_email_children
+            names = ", ".join(item.name for item in examples[:5])
+            return StudyFolderCheck(
+                ok=False,
+                message="This looks like a parent folder containing multiple study folders. Open one specific study folder instead.",
+                details=[f"Study-like subfolders found: {names}"] if names else [],
+            )
+
+        if not email_folders:
+            return StudyFolderCheck(
+                ok=False,
+                message="This does not look like a CSES study folder. Select a single study folder that contains one email/deposit folder.",
+            )
+
+        if len(email_folders) > 1:
+            names = ", ".join(item.name for item in email_folders)
+            return StudyFolderCheck(
+                ok=False,
+                message="This folder has more than one email/deposit folder. Select the specific study folder to process.",
+                details=[f"Email/deposit folders found: {names}"],
+            )
+
+        email_folder = email_folders[0]
+        detected = self.detect_files(source_dir=email_folder, recursive=True)
+        if not detected.data_files:
+            return StudyFolderCheck(
+                ok=False,
+                email_folder=email_folder,
+                message="The email/deposit folder does not contain a survey data file.",
+            )
+
+        return StudyFolderCheck(
+            ok=True,
+            initialized=False,
+            email_folder=email_folder,
+            message="Uninitialized CSES study folder with one email/deposit folder.",
+        )
+
     def find_email_folder(self) -> Path | None:
         """
         Find email folder containing deposited files.
@@ -437,15 +522,10 @@ class FileOrganizer:
         Returns:
             Path to email folder or None if not found
         """
-        # Match: emails, Emails, E-mails, E-mail, email, etc.
-        email_variants = ['emails', 'e-mails', 'e-mail', 'email']
-
         for item in self.working_dir.iterdir():
             if not item.is_dir():
                 continue
-            # Normalize: lowercase, remove hyphens/underscores
-            normalized = item.name.lower().replace('-', '').replace('_', '')
-            if normalized not in [v.replace('-', '') for v in email_variants]:
+            if not self._is_email_folder_name(item.name):
                 continue
 
             # Found email folder - verify it has subfolders with data files

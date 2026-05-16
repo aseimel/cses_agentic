@@ -552,6 +552,15 @@ class CSESGui(tk.Tk):
 
     def _load_study(self) -> None:
         folder = Path(self.folder_var.get()).expanduser()
+        folder_check = FileOrganizer(folder).validate_study_folder()
+        if not folder_check.ok:
+            message = self._format_invalid_study_folder_message(folder, folder_check)
+            self.conversation = None
+            self.loaded_state = None
+            self.status_var.set("Select one CSES study folder.")
+            self._refresh_sidebar(None)
+            self._append_chat("system", message)
+            return
         state = self._load_state_from_folder(folder)
         if not state:
             self.conversation = None
@@ -587,14 +596,23 @@ class CSESGui(tk.Tk):
         if state:
             self._normalize_state_working_dir(state, folder)
             return state
-
-        for subdir in folder.iterdir():
-            if subdir.is_dir() and (subdir / ".cses").exists():
-                state = WorkflowState.load(subdir)
-                if state:
-                    self._normalize_state_working_dir(state, subdir)
-                    return state
         return None
+
+    def _format_invalid_study_folder_message(self, folder: Path, folder_check) -> str:
+        lines = [
+            "This folder cannot be loaded as a CSES study.",
+            "",
+            folder_check.message,
+        ]
+        if folder_check.details:
+            lines.extend(["", "What I found:"])
+            lines.extend(f"- {detail}" for detail in folder_check.details)
+        lines.extend([
+            "",
+            "Please choose one study folder directly. It should either already be initialized or contain one email/deposit folder with the deposited study files.",
+            f"Selected folder: {folder}",
+        ])
+        return "\n".join(lines)
 
     def _normalize_state_working_dir(self, state: WorkflowState, folder: Path) -> None:
         state.rebase_paths(folder)

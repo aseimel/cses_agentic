@@ -362,19 +362,20 @@ def cmd_init(args) -> Path:
     if existing_state:
         return Path(existing_state.working_dir)
 
-    # Also check subdirectories
-    for subdir in working_dir.iterdir():
-        if subdir.is_dir() and (subdir / ".cses").exists():
-            existing_state = WorkflowState.load(subdir)
-            if existing_state:
-                return subdir
-
     print("Scanning for email folder...")
 
     organizer = FileOrganizer(working_dir)
+    folder_check = organizer.validate_study_folder()
+    if not folder_check.ok:
+        print("\n[X] This folder cannot be initialized as a CSES study.")
+        print(f"   {folder_check.message}")
+        for detail in folder_check.details:
+            print(f"   {detail}")
+        print("   Please run this command from one specific study folder.")
+        return None
 
     # Find email folder with data deposit
-    email_folder = organizer.find_email_folder()
+    email_folder = folder_check.email_folder or organizer.find_email_folder()
 
     if not email_folder:
         print("\n[X] No email folder found with data files.")
