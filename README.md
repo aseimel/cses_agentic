@@ -1,165 +1,231 @@
 # CSES Assistant
 
-A command-line tool that helps process CSES (Comparative Study of Electoral Systems) Module 6 election studies. It guides you through the 16-step workflow with LLM-assisted variable matching.
+CSES Assistant is a Windows-oriented, human-in-the-loop tool for processing
+Comparative Study of Electoral Systems (CSES) Module 6 studies. The core
+interface is a conversational assistant: the processor loads a study, chats with
+the agent, reviews evidence and proposed coding decisions, and presses
+`Proceed` to advance one workflow step at a time.
 
-## Features
+The goal is not unattended automation. The goal is to make the CSES processing
+workflow reproducible, standards-backed, and reviewable while producing
+professional Stata syntax, checks, documentation, and readiness reports.
 
-- **Automatic file detection**: Detects data files, questionnaires, and codebooks
-- **Standardized naming**: All files renamed with `COUNTRY_YEAR_` prefix
-- **Variable matching**: LLM-powered matching of source variables to CSES schema
-- **Dual-model validation**: Cross-checks mappings using Claude for accuracy
-- **Generates all outputs**: Stata .do files, tracking sheets, processing logs
+## Current Capabilities
 
-## Installation (Windows)
+- Windows GUI with a central chat interface, `Load Study`, and one-step
+  `Proceed` workflow control.
+- CSES standards wiki in `cses_wiki/`, including questionnaire, syntax,
+  documentation, validation, administrative, party, macro-context, and district
+  patterns.
+- OpenRouter-backed model routing for different workflow tasks, with
+  cost-efficient defaults and role-specific settings in the GUI.
+- Study material review that extracts eligibility, sample design, fieldwork,
+  mode, weights, questionnaire coverage, and missing items before decisions are
+  made.
+- Registry-driven Module 6 matching:
+  canonical CSES questionnaire item -> collaborator questionnaire item -> source
+  data variable -> CSES target variable.
+- Separate review gates for administrative information, demographics, party
+  order, macro context, party metadata, district data, recoding plans, Stata
+  execution, checks, documentation, and final readiness.
+- Plan-driven Stata generation using CSES-style `**>>>` variable blocks,
+  explicit missing-value handling, source-target checks, labels, final order,
+  save, and `log close`.
+- Stata execution through the package-owned MCP-Stata bridge rather than direct
+  interactive Stata launches.
+- Benchmark harnesses for Sweden and for signed-off example studies. These are
+  development checks only; installed/runtime workflows must not depend on raw
+  example-study folders.
 
-### Prerequisites
+## What This Tool Is Not
 
-1. **Python 3.10+** - Download from [python.org](https://www.python.org/downloads/)
-   - **IMPORTANT**: Check "Add Python to PATH" during installation!
+- It is not a menu replacement for the conversational processor workflow.
+- It is not intended to process studies without human review.
+- It must not contain country-specific runtime logic. Example studies are used
+  to discover general workflow requirements and regression cases.
+- It must not require `example_studies/`, `auto_macro/`, local Stata installs, or
+  raw benchmark data to be committed to Git.
 
-2. **Claude CLI** (optional, for Claude Max subscribers):
-   - Install [Node.js](https://nodejs.org/)
-   - Run: `npm install -g @anthropic-ai/claude-code`
-   - Run: `claude login`
+## Installation
 
-### One-Line Install
+### Requirements
 
-Open **PowerShell** and run:
+- Windows
+- Python 3.10 or newer
+- Stata, if you want to run generated `.do` files
+- An OpenRouter API key for AI-assisted workflow steps
+
+### Manual Setup
 
 ```powershell
-irm https://raw.githubusercontent.com/aseimel/cses_agentic/main/install.ps1 | iex
-```
-
-Or download `install.ps1` and run:
-```powershell
-powershell -ExecutionPolicy Bypass -File install.ps1
-```
-
-### Manual Install
-
-```powershell
-# Clone repository
 git clone https://github.com/aseimel/cses_agentic.git
 cd cses_agentic
 
-# Create virtual environment
 python -m venv .venv
 .\.venv\Scripts\Activate.ps1
-
-# Install dependencies
 pip install -r requirements.txt
-
-# Run
-python cses_cli.py
-
-# Open the Windows GUI
-python cses_cli.py gui
 ```
 
-## Usage
+### Run The GUI
 
-1. **Navigate to a folder with collaborator files**:
-   ```
-   cd C:\Users\YourName\Downloads\Korea_2024_deposit
-   ```
-
-2. **Start the CLI or GUI**:
-   ```
-   cses
-   cses gui
-   ```
-
-3. **Follow the prompts** to:
-   - Detect and organize files
-   - Run variable matching
-   - Review and approve mappings
-   - Generate outputs
-
-## Generated Output Structure
-
-```
-KOR_2024/
-├── KOR_2024_original_data.dta        # Original data from collaborator
-├── KOR_2024_questionnaire.pdf        # Questionnaire
-├── KOR_2024_codebook.docx            # Codebook
-│
-│   --- Generated during processing ---
-├── KOR_2024_processing.do            # Stata do file
-├── KOR_2024_variable_mappings.xlsx   # Variable mappings
-├── KOR_2024_tracking_sheet.xlsx      # CSES tracking sheet
-├── KOR_2024_processing_log.txt       # Processing log
-├── KOR_2024_frequencies.txt          # Frequency tables
-├── KOR_2024_M6.dta                   # Final harmonized dataset
+```powershell
+python -B cses_cli.py gui
 ```
 
-## Configuration
+You can also launch the GUI module directly during development:
 
-Use the Windows GUI Settings tab, or edit `~/.cses-agent/.env`, to configure:
-
-```bash
-# LiteLLM provider keys
-OPENAI_API_KEY=your-key-here
-ANTHROPIC_API_KEY=your-key-here
-XAI_API_KEY=your-key-here
-GEMINI_API_KEY=your-key-here
-
-# Curated model profile selected in the GUI
-CSES_MODEL_PROFILE=gesis_recommended
-
-# Optional: main chat dropdown models selected in the GUI
-CSES_CHAT_MODELS=xai/grok-4-1-fast,openai/gpt-4.1
-CSES_CHAT_MODEL=xai/grok-4-1-fast
-
-# Optional OpenWebUI/OpenAI-compatible service.
-# Leave disabled for direct vendor APIs.
-CSES_USE_OPENWEBUI=false
-# OPENAI_API_BASE=https://your-openwebui.example.org/api/v1
-
-# Stata executable path
-STATA_PATH=C:\Program Files\Stata18\StataMP-64.exe
+```powershell
+python -B src\gui_app.py
 ```
 
-Stata execution runs through the app's bundled Stata bridge. Select the Stata
-executable in the GUI Settings tab, or set `STATA_PATH` in `~/.cses-agent/.env`.
+In the GUI Settings tab, add:
 
-## Project Context
+- OpenRouter API key
+- Stata executable path, for example
+  `C:\Program Files\Stata19\StataSE-64.exe`
 
-Each study can define plain-text context files that the chat assistant reads:
+Settings are stored under the user-level CSES settings folder. API keys and raw
+study data should never be committed.
+
+## Typical Workflow
+
+1. Put a study deposit in a study folder.
+2. Open the GUI.
+3. Click `Load Study`.
+   - If the folder has not been initialized, the app initializes it.
+   - If it is already initialized, the app loads the existing study state.
+4. Chat with the assistant about the current study.
+5. Click `Proceed` to run exactly one workflow step.
+6. Review and approve, edit, or reject proposed decisions.
+7. Continue through matching, recoding, Stata execution, checks, documentation,
+   and readiness.
+
+The assistant should explain processor-facing decisions in CSES terms: sample
+eligibility, sample type, fieldwork, mode, weights, CSES item coverage, missing
+items, party order, district review, coding decisions, and final readiness.
+Internal implementation terms should stay out of the normal GUI and chat.
+
+## CLI Commands
+
+The GUI is the preferred interface, but the CLI remains available for
+development, testing, and scripted checks.
+
+```powershell
+python -B cses_cli.py --help
+python -B cses_cli.py init
+python -B cses_cli.py status
+python -B cses_cli.py step 1
+python -B cses_cli.py match
+python -B cses_cli.py generate
+python -B cses_cli.py benchmark
+python -B cses_cli.py wiki audit
+```
+
+## Stata Execution
+
+Generated Stata syntax is run through the bundled MCP-Stata integration:
+
+- Python package dependency: `mcp-stata`
+- Local wrapper: `src/stata_mcp.py`
+- Isolated runner: `src/stata_mcp_runner.py`
+
+Configure `STATA_PATH` in the GUI Settings tab or in the user settings file. The
+workflow should use MCP-backed execution for Stata runs so the app can capture
+results, parse failures, and avoid relying on manual interactive execution.
+
+## CSES Standards Wiki
+
+Runtime standards live in `cses_wiki/`. This is the installed knowledge source
+for:
+
+- workflow procedures
+- CSES Module 6 schema
+- canonical Module 6 questionnaire registry
+- Stata syntax patterns
+- documentation templates
+- validation checks
+- administrative, demographic, party, macro, and district rules
+
+Development-only source material can be distilled into this wiki, but runtime
+processing should depend on the checked-in wiki files rather than raw example
+folders.
+
+Useful maintenance command:
+
+```powershell
+python -B cses_cli.py wiki audit
+```
+
+## Benchmarks
+
+Benchmarks are development tools. They help verify that the generic workflow can
+handle real signed-off studies without hardcoding study-specific behavior.
+
+List discovered final-reference studies:
+
+```powershell
+python -B scripts\benchmark_example_studies.py --list-only
+```
+
+Run one study:
+
+```powershell
+python -B scripts\benchmark_example_studies.py --study Sweden_2022 --stata-path "C:\Path\To\StataSE-64.exe"
+```
+
+Run the full final-reference corpus:
+
+```powershell
+python -B scripts\benchmark_example_studies.py --stata-path "C:\Path\To\StataSE-64.exe"
+```
+
+Benchmark outputs classify differences as workflow bugs, missing inputs,
+reference-selection issues, legitimate processor judgments, or stricter
+standard-backed divergences. A benchmark pass does not remove the need for
+processor review in production.
+
+## Repository Structure
 
 ```text
-agent.md                         # assistant role and project boundaries
-workflow.md                      # project-specific workflow notes
-.agents/skills/<skill>/SKILL.md  # reusable project-specific instructions
+src/
+  agent/          conversational assistant and workflow tools
+  benchmark.py    replication benchmark services
+  gui_app.py      Windows GUI
+  workflow/       canonical workflow steps and state
+  standards/      CSES standards, tracking, and validators
+  matching/       registry-driven and ensemble matching
+  preprocessing/  document, evidence, and study-material processing
+  stata_mcp.py    MCP-Stata execution wrapper
+
+cses_wiki/
+  patterns/       schema, questionnaire registry, syntax, docs, checks
+  procedures/     workflow standards
+  topics/         CSES reference guidance
+  retrieval/      generated retrieval index
+
+scripts/
+  benchmark_sweden_replication.py
+  benchmark_example_studies.py
 ```
 
-The GUI's Project Context tab can create starter files for non-technical users.
+## Development Rules
 
-## Commands
+- Keep the conversational chat workflow intact.
+- Make changes generic across countries, years, and folder structures.
+- Do not hardcode study names, country names, or example-study paths in runtime
+  logic.
+- Do not commit raw study data, benchmark working copies, Stata installs,
+  `.cses` study state, or API keys.
+- Stage explicit source, test, wiki, and documentation files only.
+- Run relevant tests before committing.
 
-| Command | Description |
-|---------|-------------|
-| `cses` | Start interactive mode |
-| `cses init` | Initialize study from files |
-| `cses status` | Show workflow progress |
-| `cses match` | Run variable matching |
-| `cses export` | Export mappings |
-| `cses gui` | Open the Windows GUI |
-| `cses --help` | Show all commands |
+## Quick Verification
 
-## Troubleshooting
+Useful lightweight checks before committing:
 
-### "cses is not recognized"
-
-Close and reopen your terminal/PowerShell after installation.
-
-### Python not found
-
-Make sure Python is installed and added to PATH. Reinstall Python and check "Add Python to PATH".
-
-### Permission errors
-
-The installer doesn't require admin privileges. Everything is installed to your user folder (`~/.cses-agent`).
-
-## Support
-
-For issues, contact your system administrator or open an issue on GitHub.
+```powershell
+python -B -m py_compile cses_cli.py src\gui_app.py
+python -B cses_cli.py --help
+python -B scripts\benchmark_example_studies.py --list-only
+git status --short
+```
