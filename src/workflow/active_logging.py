@@ -16,6 +16,7 @@ import json
 import logging
 import os
 import tempfile
+import time
 from dataclasses import dataclass, field, asdict
 from datetime import datetime
 from pathlib import Path
@@ -44,7 +45,14 @@ def atomic_write(path: Path, content: str):
     try:
         with os.fdopen(fd, 'w', encoding='utf-8') as f:
             f.write(content)
-        os.replace(tmp_path, path)
+        for attempt in range(5):
+            try:
+                os.replace(tmp_path, path)
+                break
+            except PermissionError:
+                if attempt == 4:
+                    raise
+                time.sleep(0.25)
     except Exception:
         if os.path.exists(tmp_path):
             os.unlink(tmp_path)
@@ -61,11 +69,20 @@ class LogData:
     meta: dict = field(default_factory=dict)
     deposited_files: dict = field(default_factory=dict)
     processing_notes: list = field(default_factory=list)
+    variable_mappings: list = field(default_factory=list)  # NEW: Variable mapping table
     collaborator_questions: list = field(default_factory=list)
+    candidate_collaborator_questions: list = field(default_factory=list)
     todo_items: list = field(default_factory=list)
     election_summary: str = ""
     study_design: dict = field(default_factory=dict)
     parties_leaders: str = ""
+    matching_summary: dict = field(default_factory=dict)  # NEW: Matching summary stats
+    standards_checks: dict = field(default_factory=dict)
+    wiki_citations: list = field(default_factory=list)
+    source_evidence: list = field(default_factory=list)
+    unresolved_risks: list = field(default_factory=list)
+    processor_decisions: list = field(default_factory=list)
+    final_readiness: dict = field(default_factory=dict)
 
     def to_dict(self) -> dict:
         return asdict(self)
@@ -76,11 +93,20 @@ class LogData:
             meta=data.get("meta", {}),
             deposited_files=data.get("deposited_files", {}),
             processing_notes=data.get("processing_notes", []),
+            variable_mappings=data.get("variable_mappings", []),
             collaborator_questions=data.get("collaborator_questions", []),
+            candidate_collaborator_questions=data.get("candidate_collaborator_questions", []),
             todo_items=data.get("todo_items", []),
             election_summary=data.get("election_summary", ""),
             study_design=data.get("study_design", {}),
-            parties_leaders=data.get("parties_leaders", "")
+            parties_leaders=data.get("parties_leaders", ""),
+            matching_summary=data.get("matching_summary", {}),
+            standards_checks=data.get("standards_checks", {}),
+            wiki_citations=data.get("wiki_citations", []),
+            source_evidence=data.get("source_evidence", []),
+            unresolved_risks=data.get("unresolved_risks", []),
+            processor_decisions=data.get("processor_decisions", []),
+            final_readiness=data.get("final_readiness", {})
         )
 
 
@@ -161,11 +187,18 @@ class ActiveLogger:
             },
             processing_notes=[],
             collaborator_questions=[],
+            candidate_collaborator_questions=[],
             todo_items=[],
             election_summary="",
             study_design={
                 "sample_design": "",
                 "sample_size": "",
+                "probability_sample_status": "",
+                "probability_sample_assessment": "",
+                "sampling_evidence": "",
+                "cses_item_coverage": "",
+                "eligibility_assessment": "",
+                "processor_eligibility_decision": "",
                 "response_rate": "",
                 "weighting": "",
                 "collection_period": "",
@@ -315,6 +348,81 @@ class ActiveLogger:
             lines.append("*No processing notes yet.*")
             lines.append("")
 
+        # Variable Mappings Section (NEW)
+        lines.extend(["### Variable Mappings", ""])
+
+        # Show matching summary if available
+        ms = d.matching_summary
+        if ms:
+            total = ms.get("total", 0)
+            matched = ms.get("matched", 0)
+            not_found = ms.get("not_found", 0)
+            needs_review = ms.get("needs_review", 0)
+            lines.append(f"**Summary:** {matched}/{total} variables mapped automatically")
+            lines.append(f"")
+            lines.append(f"- High confidence matches: {ms.get('high_confidence', 0)}")
+            lines.append(f"- Medium confidence (needs review): {ms.get('medium_confidence', 0)}")
+            lines.append(f"- Not found (collaborator needed): {not_found}")
+            lines.append("")
+
+        if d.variable_mappings:
+            # Render as a markdown table
+            lines.append("| CSES Variable | Source Variable | Confidence | Notes |")
+            lines.append("|---------------|-----------------|------------|-------|")
+            for mapping in d.variable_mappings:
+                cses_var = mapping.get("cses_variable", "")
+                source_var = mapping.get("source_variable", "")
+                confidence = mapping.get("confidence", "")
+                notes = mapping.get("notes", "")[:50]  # Truncate long notes
+                lines.append(f"| {cses_var} | {source_var} | {confidence} | {notes} |")
+            lines.append("")
+        else:
+            lines.append("*No variable mappings recorded yet. Run the matching process to populate this section.*")
+            lines.append("")
+
+        lines.append("---")
+        lines.append("")
+
+        # =================================================================
+        # Standards Checks
+        # =================================================================
+        lines.extend([
+            f"## CSES Standards Checks: {code}_{year}_M6",
+            "",
+        ])
+        if d.standards_checks:
+            for step_key in sorted(d.standards_checks, key=lambda item: int(item) if str(item).isdigit() else 999):
+                result = d.standards_checks.get(step_key, {})
+                lines.append(f"### Step {step_key}: {result.get('status', 'unknown')}")
+                lines.append("")
+                for source in result.get("wiki_sources", []):
+                    lines.append(f"- Source: {source}")
+                for issue in result.get("issues", []):
+                    lines.append(f"- Needs review: {issue}")
+                if not result.get("issues"):
+                    lines.append("- Standards check passed or no unresolved issues recorded.")
+                lines.append("")
+        else:
+            lines.append("*No standards checks recorded yet.*")
+            lines.append("")
+
+        if d.processor_decisions:
+            lines.append("### Processor Decisions")
+            lines.append("")
+            for decision in d.processor_decisions:
+                lines.append(f"- Step {decision.get('step')}: {decision.get('decision')}")
+                if decision.get("context"):
+                    lines.append(f"  Context: {decision.get('context')}")
+            lines.append("")
+
+        if d.final_readiness:
+            lines.append("### Final Readiness")
+            lines.append("")
+            lines.append(f"Status: {d.final_readiness.get('status', 'unknown')}")
+            for issue in d.final_readiness.get("issues", []):
+                lines.append(f"- {issue}")
+            lines.append("")
+
         lines.append("---")
         lines.append("")
 
@@ -344,6 +452,28 @@ class ActiveLogger:
         else:
             lines.append("*No questions for collaborator yet.*")
             lines.append("")
+
+        if d.candidate_collaborator_questions:
+            lines.extend([
+                "### Potential Collaborator Questions for Processor Review",
+                "",
+                "These items are not outgoing collaborator questions yet. The processor should decide whether the retrieved evidence is sufficient or whether a collaborator question is needed.",
+                "",
+            ])
+            for q in d.candidate_collaborator_questions:
+                lines.append(f"#### {q.get('id', '?')} [Step {q.get('step', '?')}] - {q.get('status', 'processor_review')}")
+                lines.append("")
+                missing = q.get("missing_items", [])
+                if missing:
+                    lines.append("Missing items:")
+                    for item in missing:
+                        lines.append(f"- {item}")
+                    lines.append("")
+                lines.append(q.get("question", ""))
+                if q.get("context"):
+                    lines.append("")
+                    lines.append(f"Context: {q.get('context')}")
+                lines.append("")
 
         lines.append("---")
         lines.append("")
@@ -391,6 +521,12 @@ class ActiveLogger:
             field_labels = [
                 ("sample_design", "Sample Design"),
                 ("sample_size", "Sample Size"),
+                ("probability_sample_status", "Probability Sample Status"),
+                ("probability_sample_assessment", "Probability Sample Assessment"),
+                ("sampling_evidence", "Sampling Evidence"),
+                ("cses_item_coverage", "CSES Item Coverage"),
+                ("eligibility_assessment", "Initial CSES Eligibility Assessment"),
+                ("processor_eligibility_decision", "Processor Eligibility Decision"),
                 ("response_rate", "Response Rate"),
                 ("weighting", "Weighting Methodology"),
                 ("collection_period", "Data Collection Period"),
@@ -459,8 +595,23 @@ class ActiveLogger:
             return False, "Log not initialized"
 
         try:
+            allowed_fields = {
+                "sample_design",
+                "sample_size",
+                "probability_sample_status",
+                "probability_sample_assessment",
+                "sampling_evidence",
+                "cses_item_coverage",
+                "eligibility_assessment",
+                "processor_eligibility_decision",
+                "response_rate",
+                "weighting",
+                "collection_period",
+                "mode",
+                "field_lag",
+            }
             for key, value in info.items():
-                if key in self.log_data.study_design:
+                if key in allowed_fields:
                     self.log_data.study_design[key] = value
             self._save_and_render()
             fields = ", ".join(info.keys())
@@ -535,6 +686,35 @@ class ActiveLogger:
             logger.error(f"Failed to add question: {e}")
             return False, f"Error: {e}"
 
+    def add_candidate_collaborator_question(self, question: str, context: str, step_num: int, missing_items: list[str] = None) -> tuple:
+        """
+        Record a potential collaborator question for processor review.
+
+        This deliberately does not create an outgoing collaborator question.
+        """
+        if not self.log_data:
+            return False, "Log not initialized"
+
+        try:
+            num = len(self.log_data.candidate_collaborator_questions) + 1
+            question_id = f"PCQ {num}"
+            entry = {
+                "id": question_id,
+                "question": question,
+                "context": context,
+                "step": step_num,
+                "missing_items": missing_items or [],
+                "status": "processor_review",
+                "timestamp": datetime.now().isoformat()
+            }
+            self.log_data.candidate_collaborator_questions.append(entry)
+            self.state.add_candidate_collaborator_question(question, context, step_num, missing_items)
+            self._save_and_render()
+            return True, f"Potential question {question_id} recorded for processor review"
+        except Exception as e:
+            logger.error(f"Failed to add potential question: {e}")
+            return False, f"Error: {e}"
+
     def add_todo_item(self, item: str) -> tuple:
         """
         Add a pre-release TODO item.
@@ -563,17 +743,187 @@ class ActiveLogger:
             return
 
         try:
+            def filenames(values: list | None) -> list[str]:
+                names: list[str] = []
+                for value in values or []:
+                    if not value or isinstance(value, bool):
+                        continue
+                    try:
+                        names.append(Path(value).name)
+                    except TypeError:
+                        logger.debug("Skipping non-path deposit inventory value: %r", value)
+                return names
+
             # Convert paths to filenames
             self.log_data.deposited_files = {
-                "data_files": [Path(f).name for f in data_files],
-                "questionnaires": [Path(f).name for f in questionnaires],
-                "codebooks": [Path(f).name for f in codebooks],
-                "design_reports": [Path(f).name for f in design_reports],
-                "other": [Path(f).name for f in (macro_reports or [])]
+                "data_files": filenames(data_files),
+                "questionnaires": filenames(questionnaires),
+                "codebooks": filenames(codebooks),
+                "design_reports": filenames(design_reports),
+                "other": filenames(macro_reports),
             }
             self._save_and_render()
         except Exception as e:
             logger.error(f"Failed to update deposit inventory: {e}")
+
+    def record_standards_check(self, step_num: int, result: dict):
+        """Record a standards check result and cited wiki sources."""
+        if not self.log_data:
+            return
+        self.log_data.standards_checks[str(step_num)] = result
+        for source in result.get("wiki_sources", []):
+            entry = {"step": step_num, "source": source}
+            if entry not in self.log_data.wiki_citations:
+                self.log_data.wiki_citations.append(entry)
+        for issue in result.get("issues", []):
+            risk = {"step": step_num, "issue": issue}
+            if risk not in self.log_data.unresolved_risks:
+                self.log_data.unresolved_risks.append(risk)
+        self._save_and_render()
+
+    def record_processor_decision(self, step_num: int, decision: str, context: str = ""):
+        """Record a human processor decision."""
+        if not self.log_data:
+            return
+        self.log_data.processor_decisions.append({
+            "step": step_num,
+            "decision": decision,
+            "context": context,
+            "timestamp": datetime.now().isoformat()
+        })
+        self._save_and_render()
+
+    def update_final_readiness(self, readiness: dict):
+        """Record final release readiness."""
+        if not self.log_data:
+            return
+        self.log_data.final_readiness = readiness
+        self._save_and_render()
+
+    def update_variable_mappings(self, mappings: list, matching_summary: dict = None):
+        """
+        Update the variable mappings table in the log.
+
+        This records which source variables were mapped to which CSES targets,
+        along with confidence levels and notes. This is for PROCESSING DECISIONS,
+        not failure reports.
+
+        Args:
+            mappings: List of dicts with keys:
+                - cses_variable: CSES target variable code (e.g., "F2001_A")
+                - source_variable: Source variable name or "NOT_FOUND"
+                - confidence: "high", "medium", "low", or percentage
+                - notes: Brief note about the mapping
+            matching_summary: Dict with summary stats:
+                - total: Total CSES variables
+                - matched: Number successfully matched
+                - high_confidence: High confidence matches
+                - medium_confidence: Medium confidence (needs review)
+                - not_found: Not found (collaborator needed)
+        """
+        if not self.log_data:
+            if self.state.country and self.state.year:
+                self._initialize()
+            if not self.log_data:
+                logger.warning("Cannot update mappings - log not initialized")
+                return
+
+        try:
+            # Clear existing mappings and add new ones
+            self.log_data.variable_mappings = []
+
+            for m in mappings:
+                # Only include matched variables (not the 60+ failures)
+                source = m.get("source_variable") or m.get("source") or ""
+                if source and source not in ["NOT_FOUND", "ERROR", ""]:
+                    self.log_data.variable_mappings.append({
+                        "cses_variable": m.get("cses_variable") or m.get("target") or "",
+                        "source_variable": source,
+                        "confidence": m.get("confidence") or m.get("confidence_level") or "",
+                        "notes": m.get("notes") or m.get("reasoning") or ""
+                    })
+
+            # Update summary stats
+            if matching_summary:
+                self.log_data.matching_summary = matching_summary
+
+            self._save_and_render()
+            logger.info(f"Updated variable mappings: {len(self.log_data.variable_mappings)} matches recorded")
+
+        except Exception as e:
+            logger.error(f"Failed to update variable mappings: {e}")
+
+    def add_focused_collaborator_questions(self, not_found_vars: list, max_questions: int = 20):
+        """
+        Add focused collaborator questions for variables that couldn't be matched.
+
+        Instead of adding 60+ questions for every NOT_FOUND variable, this groups
+        related questions and focuses on the most important ones.
+
+        Args:
+            not_found_vars: List of dicts with CSES variables that need clarification
+            max_questions: Maximum number of questions to generate (default 20)
+        """
+        if not self.log_data:
+            return
+
+        # Group by category
+        demo_vars = [v for v in not_found_vars if v.get("cses_variable", "").startswith("F2")]
+        survey_vars = [v for v in not_found_vars if v.get("cses_variable", "").startswith("F3")]
+        admin_vars = [v for v in not_found_vars if v.get("cses_variable", "").startswith("F1")]
+
+        questions_added = 0
+
+        # Add summary question if many variables missing
+        if len(not_found_vars) > 10:
+            total_missing = len(not_found_vars)
+            self.add_collaborator_question(
+                f"The automated matching could not find source variables for {total_missing} CSES target variables. "
+                f"Please review the variable mappings and provide guidance on the source variables for the unmatched items.",
+                "Variable matching",
+                0
+            )
+            questions_added += 1
+
+        # Add grouped questions for each category
+        if demo_vars and questions_added < max_questions:
+            demo_list = ", ".join(v.get("cses_variable", "") for v in demo_vars[:10])
+            self.add_collaborator_question(
+                f"Could not find demographic variables: {demo_list}. "
+                f"Which source variables in your data correspond to these concepts (age, gender, education, etc.)?",
+                "Demographics matching",
+                0
+            )
+            questions_added += 1
+
+        if survey_vars and questions_added < max_questions:
+            # Group by question type
+            trust_vars = [v for v in survey_vars if "F3007" in v.get("cses_variable", "")]
+            media_vars = [v for v in survey_vars if "F3002" in v.get("cses_variable", "")]
+            attitude_vars = [v for v in survey_vars if "F3004" in v.get("cses_variable", "") or "F3005" in v.get("cses_variable", "")]
+
+            if trust_vars:
+                trust_list = ", ".join(v.get("cses_variable", "") for v in trust_vars[:5])
+                self.add_collaborator_question(
+                    f"Could not find trust variables: {trust_list}. "
+                    f"Does your survey include questions about trust in parliament, government, courts, parties, etc.?",
+                    "Trust variables",
+                    0
+                )
+                questions_added += 1
+
+            if media_vars and questions_added < max_questions:
+                media_list = ", ".join(v.get("cses_variable", "") for v in media_vars[:5])
+                self.add_collaborator_question(
+                    f"Could not find media usage variables: {media_list}. "
+                    f"Does your survey include questions about TV news, newspapers, online news, social media usage?",
+                    "Media variables",
+                    0
+                )
+                questions_added += 1
+
+        self._save_and_render()
+        logger.info(f"Added {questions_added} focused collaborator questions")
 
     # =========================================================================
     # LEGACY API - For compatibility with existing code

@@ -30,9 +30,24 @@ Thumbs.db
 outputs/
 *.log
 app.log
+.cses/
+**/.cses/
 
 # Test outputs
 test_output/
 
 # Large data files (don't commit)
 repo/
+SouthKorea_2024/
+SouthKorea_2024_backup/
+Sweden_2022/
+example_studies/
+CSES_Module6_Questionnaire.txt
+
+# Local secrets and machine-specific credentials
+openrouter.txt
+openrouter.txt.txt
+*.key
+*.pem
+*.p12
+.env.local

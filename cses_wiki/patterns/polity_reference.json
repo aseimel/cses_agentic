@@ -1,0 +1,19 @@
+{
+  "schema_version": 1,
+  "source_policy": "Small runtime reference table for CSES administrative identifiers. This is data, not country-specific logic; entries can be extended without code changes.",
+  "polities": [
+    {
+      "country_code": "SWE",
+      "country_name": "Sweden",
+      "cses_polity_code": "7520",
+      "un_numeric": 752,
+      "un_alpha2": "SE",
+      "un_alpha3": "SWE",
+      "un_region": 154,
+      "oecd_member": 1,
+      "eu_member": 1,
+      "vdem_id": 5,
+      "administered_module_multiple_times": 0
+    }
+  ]
+}

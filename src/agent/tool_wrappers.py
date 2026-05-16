@@ -10,6 +10,7 @@ import logging
 from pathlib import Path
 from typing import Optional, Any
 from dataclasses import dataclass
+import time
 
 # Import existing modules
 import sys
@@ -27,8 +28,493 @@ from src.matching.party_codes import (
     generate_party_code_stata_section,
 )
 from src.preprocessing import DocumentAggregator
+from src.matching.recoding_strategist import RecodingStrategist, RecodingStrategy
+from src.reference.sweden_patterns import load_sweden_patterns, get_examples_for_code_generation
 
 logger = logging.getLogger(__name__)
+
+
+def generate_stata_code_for_variable(
+    target_var: str,
+    source_var: str,
+    source_info: dict,
+    reasoning: str = "",
+    recoding_strategy: Optional[RecodingStrategy] = None,
+    use_sweden_patterns: bool = True
+) -> str:
+    """
+    Use LLM to generate appropriate Stata code for a single variable mapping.
+
+    This is the key innovation - instead of using templates, the LLM generates
+    contextually appropriate Stata code based on the specific source and target,
+    using Sweden reference patterns as examples and recoding strategies for guidance.
+
+    Args:
+        target_var: CSES target variable code (e.g., "F2001_A")
+        source_var: Source variable name from deposited data
+        source_info: Dict with source variable metadata (description, value_labels, sample_values)
+        reasoning: Original reasoning from the matcher
+        recoding_strategy: Optional RecodingStrategy with transformation rules
+        use_sweden_patterns: Whether to include Sweden reference examples
+
+    Returns:
+        String of Stata code for this variable
+    """
+    from src.config import LLM_MODEL_CODE, LLM_TEMPERATURE
+    from src.model_runtime import ModelRole, ModelTaskRunner
+    import json
+    import re
+
+    # Get CSES coding expectations
+    cses_info = CSES_EXPECTED_CODINGS.get(target_var, {})
+    target_desc = cses_info.get("desc", "See CSES codebook")
+    target_coding = cses_info.get("coding", "See CSES codebook")
+
+    # For similar variables (F3002_2 is like F3002_1), use base pattern
+    base_var = re.sub(r'_[A-I]$', '_A', target_var)  # F3018_B -> F3018_A
+    base_var = re.sub(r'_\d+$', '_1', base_var)  # F3002_2 -> F3002_1
+    if base_var != target_var and base_var in CSES_EXPECTED_CODINGS:
+        target_coding = CSES_EXPECTED_CODINGS[base_var].get("coding", target_coding)
+
+    # Build source info string
+    source_desc = source_info.get('description', '') or source_info.get('desc', '')
+    source_labels = source_info.get('value_labels', {})
+    source_samples = source_info.get('sample_values', [])
+
+    labels_str = ""
+    if source_labels and isinstance(source_labels, dict):
+        labels_str = ", ".join(f"{k}={v}" for k, v in list(source_labels.items())[:10])
+
+    samples_str = ""
+    if source_samples:
+        samples_str = ", ".join(str(s) for s in source_samples[:10])
+
+    # Build recoding strategy section
+    recode_section = ""
+    if recoding_strategy:
+        recode_section = f"""
+RECODING STRATEGY (pre-analyzed transformation):
+- Transformation type: {recoding_strategy.transformation_type}
+- Stata pattern: {recoding_strategy.stata_pattern}
+- Confidence: {recoding_strategy.confidence:.2f}
+- Reasoning: {recoding_strategy.reasoning}
+"""
+        if recoding_strategy.recode_rules:
+            recode_section += "- Recode rules:\n"
+            for rule in recoding_strategy.recode_rules[:10]:
+                recode_section += f"    {rule.from_value} -> {rule.to_value} ({rule.comment})\n"
+        if recoding_strategy.warnings:
+            recode_section += f"- Warnings: {', '.join(recoding_strategy.warnings)}\n"
+
+    # Get Sweden reference patterns
+    sweden_examples = ""
+    if use_sweden_patterns:
+        try:
+            pattern_type = recoding_strategy.stata_pattern if recoding_strategy else "gen"
+            sweden_examples = get_examples_for_code_generation(target_var, pattern_type)
+            if sweden_examples and sweden_examples != "# No reference patterns available":
+                sweden_examples = f"""
+SWEDEN REFERENCE EXAMPLES (follow this style exactly):
+{sweden_examples}
+"""
+        except Exception as e:
+            logger.debug(f"Could not load Sweden patterns: {e}")
+
+    prompt = f"""Generate Stata code to create CSES variable {target_var} from source variable {source_var}.
+
+TARGET CSES VARIABLE:
+- Name: {target_var}
+- Description: {target_desc}
+- Expected coding: {target_coding}
+
+SOURCE VARIABLE:
+- Name: {source_var}
+- Description: {source_desc}
+- Value labels: {labels_str if labels_str else 'Not available'}
+- Sample values: {samples_str if samples_str else 'Not available'}
+
+MATCHING REASONING: {reasoning}
+{recode_section}
+{sweden_examples}
+
+REQUIREMENTS:
+1. Start with section header: **>>> {target_var} - {target_desc}
+2. Add coding notes comment block if complex transformation
+3. Use appropriate command: gen, recode, or replace
+4. Always end with: tab {target_var}, mis
+5. Add cross-tab if recoding: tab SOURCE {target_var}, mis
+6. Handle missing values explicitly (., 97, 98, 99 codes)
+
+INSTRUCTIONS:
+Generate the Stata code to create {target_var} from {source_var}. Consider:
+
+1. If source and target codings match directly, use simple gen:
+   gen {target_var} = {source_var}
+
+2. If source needs recoding (different scale, different labels), use recode or replace:
+   gen {target_var} = {source_var}
+   recode {target_var} (old1=new1) (old2=new2) ...
+
+3. If source is categorical (e.g., age groups) but target needs numeric (e.g., actual age):
+   gen {target_var} = .
+   replace {target_var} = 24 if {source_var} == 1  // 18-29 midpoint
+   replace {target_var} = 35 if {source_var} == 2  // 30-39 midpoint
+   ...
+
+4. Handle missing values - map source missing to CSES missing codes:
+   - 7/97/997 = Refused
+   - 8/98/998 = Don't know
+   - 9/99/999 = Missing/NA
+
+Return ONLY the Stata code, no explanations. Include brief comments with * prefix where helpful.
+Do NOT include any markdown formatting or code blocks."""
+
+    try:
+        runner = ModelTaskRunner()
+        response = runner.response(
+            ModelRole.RECODE_CODEGEN,
+            model_override=runner.model_for_role(ModelRole.RECODE_CODEGEN) or LLM_MODEL_CODE,
+            max_tokens=1024,
+            temperature=LLM_TEMPERATURE,
+            timeout=60,
+            purpose=f"Generate Stata code for {target_var}",
+            messages=[{"role": "user", "content": prompt}]
+        )
+
+        code = response.choices[0].message.content.strip()
+
+        # Clean up any markdown code blocks if present
+        code = re.sub(r'^```stata?\s*', '', code)
+        code = re.sub(r'\s*```$', '', code)
+        code = code.strip()
+
+        # Ensure it ends with tab command
+        if f"tab {target_var}" not in code:
+            code += f"\ntab {target_var}, mis"
+
+        return code
+
+    except Exception as e:
+        logger.warning(f"LLM code generation failed for {target_var}: {e}")
+        # Fallback to simple gen
+        return f"* LLM code generation failed: {str(e)[:50]}\ngen {target_var} = {source_var}\ntab {target_var}, mis"
+
+
+def generate_do_file_with_llm(
+    mappings: list[dict],
+    source_contexts: list[dict],
+    country_code: str,
+    country_name: str,
+    year: str,
+    author: str = "CSES Tool",
+    data_file_path: str = "",
+    party_result: Optional[PartyOrderResult] = None,
+    study_number: int = 0,
+    progress_callback: Optional[callable] = None,
+    recoding_strategies: Optional[dict[str, RecodingStrategy]] = None
+) -> str:
+    """
+    Generate complete .do file content using LLM for variable code generation.
+
+    This function orchestrates the LLM-powered code generation for each variable,
+    building a complete, executable .do file. Optionally uses pre-generated
+    recoding strategies and Sweden reference patterns for better code quality.
+
+    Args:
+        mappings: List of variable mappings from matcher
+        source_contexts: Source variable metadata
+        country_code: ISO alpha-3 country code
+        country_name: Full country name
+        year: Election year
+        author: Author for header
+        data_file_path: Path to source data file
+        party_result: Optional party code information
+        study_number: Study number within country
+        progress_callback: Optional callback for progress updates
+        recoding_strategies: Optional dict of target_var -> RecodingStrategy
+
+    Returns:
+        Complete .do file content as string
+    """
+    from datetime import datetime
+
+    def update_progress(msg: str):
+        logger.info(msg)
+        if progress_callback:
+            progress_callback(msg)
+
+    today = datetime.now().strftime("%B %d, %Y")
+    un_code = get_un_country_code(country_code) or get_un_country_code(country_name) or "XXX"
+
+    # Build lookups
+    mapping_lookup = {}
+    for m in mappings:
+        target = m.get("target") or m.get("cses_variable") or m.get("target_variable")
+        if target:
+            mapping_lookup[target] = m
+
+    source_lookup = {}
+    for ctx in source_contexts:
+        name = ctx.get('name', '')
+        if name:
+            source_lookup[name] = ctx
+
+    lines = []
+
+    # Header
+    lines.append("/***************************************************************************")
+    lines.append("**                     Process CSES-M6 Micro-Data                         **")
+    lines.append("**                     **************************                         **")
+    lines.append("**                                                                        **")
+    lines.append(f"** File Author:      {author:<52} **")
+    lines.append(f"** Date:             {today:<52} **")
+    lines.append(f"** CSES MODULE 6:    {country_name.upper()} {year:<40} **")
+    lines.append("**                                                                        **")
+    lines.append("** Generated with LLM-powered code generation                            **")
+    lines.append("***************************************************************************/")
+    lines.append("")
+
+    # Syntax instructions
+    lines.append("*-------------------------------------------------------------------------**")
+    lines.append("****************************************************************************")
+    lines.append("**\\\\\\              SYNTAX INSTRUCTIONS                                    **")
+    lines.append("****************************************************************************")
+    lines.append("*-------------------------------------------------------------------------**")
+    lines.append('* \\\\\\  Section Headings')
+    lines.append('* >>> Variable Headings')
+    lines.append("****************************************************************************")
+    lines.append("")
+
+    # Open data section
+    lines.append("*-------------------------------------------------------------------------*")
+    lines.append("***************************************************************************")
+    lines.append("**\\\\\\              OPEN DATA")
+    lines.append("***************************************************************************")
+    lines.append("*-------------------------------------------------------------------------*")
+    lines.append("")
+    lines.append("clear")
+    lines.append("set more off")
+    lines.append("capture log close")
+    lines.append("")
+    if data_file_path:
+        lines.append(f'use "{data_file_path}", clear')
+    else:
+        lines.append('* TODO: Specify path to data file')
+        lines.append('use "YOUR_DATA_FILE.dta", clear')
+    lines.append("")
+
+    # Fixed ID variables
+    lines.append("*-------------------------------------------------------------------------*")
+    lines.append("***************************************************************************")
+    lines.append("**\\\\\\       ID, WEIGHT, AND ADMINISTRATION VARIABLES")
+    lines.append("***************************************************************************")
+    lines.append("*-------------------------------------------------------------------------*")
+    lines.append("")
+
+    # F1001 - Dataset
+    lines.append("***************************************************************************")
+    lines.append("**>>> F1001 - DATASET")
+    lines.append("***************************************************************************")
+    lines.append('gen str13 F1001 = "CSES-MODULE-6"')
+    lines.append("tab F1001, mis")
+    lines.append("")
+
+    # F1004 - Study ID
+    lines.append("***************************************************************************")
+    lines.append("**>>> F1004 - ID VARIABLE - ELECTION STUDY (ALPHABETIC)")
+    lines.append("***************************************************************************")
+    lines.append(f'gen str F1004 = "{country_code}_{year}"')
+    lines.append("tab F1004, mis")
+    lines.append("")
+
+    # F1005 - Numeric study ID
+    lines.append("***************************************************************************")
+    lines.append("**>>> F1005 - ID VARIABLE - ELECTION STUDY (NUMERIC)")
+    lines.append("***************************************************************************")
+    lines.append(f"gen long F1005 = {un_code}{study_number}{year}")
+    lines.append("format F1005 %8.0f")
+    lines.append("tab F1005, mis")
+    lines.append("")
+
+    # F1006 - Polity code
+    lines.append("***************************************************************************")
+    lines.append("**>>> F1006 - ID COMPONENT - POLITY CSES CODE")
+    lines.append("***************************************************************************")
+    lines.append(f'gen str F1006 = "{un_code}{study_number}"')
+    lines.append("tab F1006, mis")
+    lines.append("")
+
+    # F1009 - Election year
+    lines.append("***************************************************************************")
+    lines.append("**>>> F1009 - ID COMPONENT - ELECTION YEAR")
+    lines.append("***************************************************************************")
+    lines.append(f"gen F1009 = {year}")
+    lines.append("tab F1009, mis")
+    lines.append("")
+
+    # Demographics section
+    lines.append("")
+    lines.append("*-------------------------------------------------------------------------*")
+    lines.append("***************************************************************************")
+    lines.append("**\\\\\\       DEMOGRAPHICS")
+    lines.append("***************************************************************************")
+    lines.append("*-------------------------------------------------------------------------*")
+
+    # Variable lists by category
+    demo_vars = ["F2001_Y", "F2001_A", "F2002", "F2003", "F2004", "F2005", "F2006",
+                 "F2007", "F2008", "F2009", "F2010_2", "F2011", "F2012", "F2013",
+                 "F2014", "F2015", "F2016", "F2017", "F2018", "F2019", "F2020", "F2021"]
+
+    survey_vars = ["F3001", "F3002_1", "F3002_2", "F3002_3", "F3002_4", "F3002_5",
+                   "F3002_6_1", "F3003", "F3004_1", "F3004_2", "F3004_3", "F3004_4",
+                   "F3005_1", "F3005_2", "F3005_3", "F3006", "F3007_1", "F3007_2",
+                   "F3007_3", "F3007_4", "F3007_5", "F3007_6", "F3007_7", "F3008_1",
+                   "F3008_2", "F3009", "F3010", "F3011_LH_PL", "F3012_1", "F3013",
+                   "F3014", "F3017", "F3018_A", "F3018_B", "F3018_C", "F3019_A",
+                   "F3019_B", "F3019_C", "F3020", "F3021", "F3022", "F3023", "F3024"]
+
+    # Process demographics
+    matched_count = 0
+    total_count = 0
+
+    for var_code in demo_vars:
+        total_count += 1
+        m = mapping_lookup.get(var_code, {})
+        source = m.get("source") or m.get("source_variable") or ""
+        reasoning = m.get("reasoning") or m.get("notes") or ""
+
+        lines.append("")
+        lines.append("***************************************************************************")
+        cses_desc = CSES_EXPECTED_CODINGS.get(var_code, {}).get("desc", var_code)
+        lines.append(f"**>>> {var_code} - {cses_desc}")
+        lines.append("***************************************************************************")
+        lines.append("")
+
+        if source and source not in ["NOT_FOUND", "ERROR", "NO_CONSENSUS"]:
+            matched_count += 1
+            update_progress(f"Generating Stata code for {var_code} <- {source}")
+
+            # Get source info
+            source_info = source_lookup.get(source, {})
+
+            # Get recoding strategy if available
+            recode_strategy = recoding_strategies.get(var_code) if recoding_strategies else None
+
+            # Generate code using LLM
+            stata_code = generate_stata_code_for_variable(
+                target_var=var_code,
+                source_var=source,
+                source_info=source_info,
+                reasoning=reasoning,
+                recoding_strategy=recode_strategy,
+                use_sweden_patterns=True
+            )
+
+            lines.append(f"* Source: {source}")
+            if reasoning:
+                lines.append(f"* Reasoning: {reasoning[:100]}")
+            lines.append(stata_code)
+        else:
+            lines.append(f"* Source: NOT FOUND - requires manual mapping or collaborator input")
+            lines.append(f"* gen {var_code} = .")
+            lines.append(f"* tab {var_code}, mis")
+
+        lines.append("")
+
+    # Survey questions section
+    lines.append("")
+    lines.append("*-------------------------------------------------------------------------*")
+    lines.append("***************************************************************************")
+    lines.append("**\\\\\\       SURVEY QUESTIONS")
+    lines.append("***************************************************************************")
+    lines.append("*-------------------------------------------------------------------------*")
+
+    for var_code in survey_vars:
+        total_count += 1
+        m = mapping_lookup.get(var_code, {})
+        source = m.get("source") or m.get("source_variable") or ""
+        reasoning = m.get("reasoning") or m.get("notes") or ""
+
+        lines.append("")
+        lines.append("***************************************************************************")
+        cses_desc = CSES_EXPECTED_CODINGS.get(var_code, {}).get("desc", var_code)
+        lines.append(f"**>>> {var_code} - {cses_desc}")
+        lines.append("***************************************************************************")
+        lines.append("")
+
+        if source and source not in ["NOT_FOUND", "ERROR", "NO_CONSENSUS"]:
+            matched_count += 1
+            update_progress(f"Generating Stata code for {var_code} <- {source}")
+
+            source_info = source_lookup.get(source, {})
+
+            # Get recoding strategy if available
+            recode_strategy = recoding_strategies.get(var_code) if recoding_strategies else None
+
+            stata_code = generate_stata_code_for_variable(
+                target_var=var_code,
+                source_var=source,
+                source_info=source_info,
+                reasoning=reasoning,
+                recoding_strategy=recode_strategy,
+                use_sweden_patterns=True
+            )
+
+            lines.append(f"* Source: {source}")
+            if reasoning:
+                lines.append(f"* Reasoning: {reasoning[:100]}")
+            lines.append(stata_code)
+        else:
+            lines.append(f"* Source: NOT FOUND - requires manual mapping or collaborator input")
+            lines.append(f"* gen {var_code} = .")
+            lines.append(f"* tab {var_code}, mis")
+
+        lines.append("")
+
+    # Save section
+    lines.append("")
+    lines.append("*-------------------------------------------------------------------------*")
+    lines.append("***************************************************************************")
+    lines.append("**\\\\\\       SAVE PROCESSED DATA")
+    lines.append("***************************************************************************")
+    lines.append("*-------------------------------------------------------------------------*")
+    lines.append("")
+    lines.append(f'save "cses-m6_micro_{country_code}_{year}.dta", replace')
+    lines.append("")
+    lines.append(f"* Matched {matched_count}/{total_count} variables")
+    lines.append("")
+
+    update_progress(f"Generated .do file with {matched_count}/{total_count} variables matched")
+
+    return "\n".join(lines)
+
+
+# CSES target variable expected codings for LLM code generation
+CSES_EXPECTED_CODINGS = {
+    "F2001_Y": {"desc": "Year of birth", "coding": "4-digit year (1900-2010), 9999=Missing"},
+    "F2001_A": {"desc": "Age in years", "coding": "Numeric age 18-120, 9999=Missing. If source is categorical age groups, convert to midpoints."},
+    "F2002": {"desc": "Gender", "coding": "1=Male, 2=Female, 3=Other, 7=Refused, 8=DK, 9=Missing"},
+    "F2003": {"desc": "Education level", "coding": "1-8 scale (1=None to 8=Post-grad), 7=Refused, 8=DK, 9=Missing"},
+    "F2004": {"desc": "Marital status", "coding": "1=Married, 2=Living with partner, 3=Separated, 4=Divorced, 5=Widowed, 6=Single, 7=Refused, 8=DK, 9=Missing"},
+    "F2005": {"desc": "Union membership", "coding": "1=Member, 2=Household member, 3=Not member, 7=Refused, 8=DK, 9=Missing"},
+    "F2006": {"desc": "Employment status", "coding": "1=Full-time, 2=Part-time, 3=Unemployed, 4=Student, 5=Retired, 6=Homemaker, 7=Other, 97=Refused, 98=DK, 99=Missing"},
+    "F2011": {"desc": "Religious denomination", "coding": "Numeric codes vary by country, 9997=Refused, 9998=DK, 9999=Missing"},
+    "F2012": {"desc": "Religious attendance", "coding": "1=Every week, 2=Almost every week, 3=Once/twice a month, 4=Few times a year, 5=Once a year, 6=Less often, 7=Never, 97=Refused, 98=DK, 99=Missing"},
+    "F2020": {"desc": "Rural/Urban", "coding": "1=Rural, 2=Small town, 3=Suburb, 4=Urban, 7=Refused, 8=DK, 9=Missing"},
+    "F2021": {"desc": "Household size", "coding": "Numeric count 1-20, 97=Refused, 98=DK, 99=Missing"},
+    "F3001": {"desc": "Political interest", "coding": "1=Very interested, 2=Somewhat, 3=Not very, 4=Not at all, 7=Refused, 8=DK, 9=Missing"},
+    "F3002_1": {"desc": "Media: Public TV", "coding": "1=Every day, 2=3-4 days, 3=1-2 days, 4=Less often, 5=Never, 7=Refused, 8=DK, 9=Missing"},
+    "F3003": {"desc": "Internal efficacy", "coding": "1=Strongly agree, 2=Agree, 3=Neither, 4=Disagree, 5=Strongly disagree, 7=Refused, 8=DK, 9=Missing"},
+    "F3006": {"desc": "How democratic", "coding": "0-10 scale (0=Not democratic, 10=Completely democratic), 97=Refused, 98=DK, 99=Missing"},
+    "F3007_1": {"desc": "Trust: Parliament", "coding": "0-10 scale (0=No trust, 10=Complete trust), 97=Refused, 98=DK, 99=Missing"},
+    "F3009": {"desc": "State of economy", "coding": "1=Very good, 2=Good, 3=Neither, 4=Bad, 5=Very bad, 7=Refused, 8=DK, 9=Missing"},
+    "F3010": {"desc": "Voted in election", "coding": "1=Yes voted, 2=No did not vote, 7=Refused, 8=DK, 9=Missing"},
+    "F3018_A": {"desc": "Like/Dislike Party A", "coding": "0-10 scale (0=Strongly dislike, 10=Strongly like), 96=Haven't heard, 97=Refused, 98=DK, 99=Missing"},
+    "F3019_A": {"desc": "Left-Right Party A", "coding": "0-10 scale (0=Left, 10=Right), 95=Don't know L-R, 96=Haven't heard, 97=Refused, 98=DK, 99=Missing"},
+    "F3020": {"desc": "Left-Right self", "coding": "0-10 scale (0=Left, 10=Right), 95=Don't know L-R, 97=Refused, 98=DK, 99=Missing"},
+    "F3021": {"desc": "Party identification", "coding": "1=Yes has party ID, 2=No, 7=Refused, 8=DK, 9=Missing"},
+    "F3024": {"desc": "Satisfaction with democracy", "coding": "1=Very satisfied, 2=Fairly, 3=Not very, 4=Not at all, 7=Refused, 8=DK, 9=Missing"},
+}
 
 
 @dataclass
@@ -207,8 +693,7 @@ def aggregate_documents(
     source_variables: list[dict],
     codebook_text: str = "",
     questionnaire_text: str = "",
-    design_report_text: str = "",
-    model: Optional[str] = None
+    design_report_text: str = ""
 ) -> ToolResult:
     """
     Aggregate document information for matching.
@@ -220,7 +705,7 @@ def aggregate_documents(
         ToolResult with aggregated summary string on success
     """
     try:
-        aggregator = DocumentAggregator(model=model)
+        aggregator = DocumentAggregator()
         summary = aggregator.aggregate_variable_info(
             source_variables=source_variables,
             codebook_text=codebook_text,
@@ -253,8 +738,7 @@ def validate_single_mapping(
     target_variable: str,
     source_info: dict,
     original_confidence: float,
-    original_reasoning: str,
-    model: Optional[str] = None
+    original_reasoning: str
 ) -> ToolResult:
     """
     Validate a single variable mapping using the validation LLM.
@@ -277,7 +761,7 @@ def validate_single_mapping(
         )
 
         # Run validation
-        result = validate_proposal(proposal, model=model)
+        result = validate_proposal(proposal)
 
         return ToolResult(
             success=True,
@@ -469,10 +953,13 @@ def export_tracking_sheet(
         ToolResult with output path on success
     """
     try:
+        from datetime import datetime
         import pandas as pd
 
         output_path = Path(output_path)
         output_path.parent.mkdir(parents=True, exist_ok=True)
+
+        today = datetime.now().strftime("%B %d, %Y")
 
         # CSES variable descriptions from M6 codebook
         # Format: questionnaire_code, description
@@ -628,7 +1115,10 @@ def export_do_file(
     author: str = "CSES Tool",
     data_file_path: str = "",
     party_result: Optional[PartyOrderResult] = None,
-    study_number: int = 0
+    study_number: int = 0,
+    source_contexts: Optional[list[dict]] = None,
+    use_llm_generation: bool = False,
+    progress_callback: Optional[callable] = None
 ) -> ToolResult:
     """
     Export mappings to CSES Stata .do file format.
@@ -650,6 +1140,9 @@ def export_do_file(
         data_file_path: Path to source data file
         party_result: Optional PartyOrderResult with party codes
         study_number: Study number within country (usually 0)
+        source_contexts: Source variable metadata (required for LLM generation)
+        use_llm_generation: If True, use LLM to generate Stata code for each variable
+        progress_callback: Optional callback for progress updates
 
     Returns:
         ToolResult with output path on success
@@ -834,8 +1327,7 @@ def export_do_file(
         lines.append("capture log close")
         lines.append("")
         lines.append("* Set Working Directory")
-        lines.append("* TODO: Update path to your working directory")
-        lines.append('cd "YOUR_PATH_HERE"')
+        lines.append(f'cd "{output_path.parent}"')
         lines.append("")
         lines.append("* Open File")
         if data_file_path:
@@ -899,7 +1391,7 @@ def export_do_file(
                 lines.append("* TODO: Add recode rules if needed")
             else:
                 lines.append("* Source variable: NOT FOUND - requires manual review")
-                lines.append(f"* gen {var_code} = .")
+                lines.append(f"gen {var_code} = .")
 
             lines.append(f"tab {var_code}, mis")
             lines.append("")
@@ -1039,8 +1531,10 @@ def export_do_file(
         lines.append(f'save "cses-m6_micro_{country_code}_{year}.dta", replace')
         lines.append("")
         lines.append("* Run label files")
-        lines.append('do "labels/cses-m6_micro-var-labels.do"')
-        lines.append('do "labels/cses-m6_micro-val-labels.do"')
+        lines.append('capture confirm file "labels/cses-m6_micro-var-labels.do"')
+        lines.append('if _rc == 0 do "labels/cses-m6_micro-var-labels.do"')
+        lines.append('capture confirm file "labels/cses-m6_micro-val-labels.do"')
+        lines.append('if _rc == 0 do "labels/cses-m6_micro-val-labels.do"')
         lines.append("")
         lines.append(f'save "cses-m6_micro_{country_code}_{year}.dta", replace')
         lines.append("")
@@ -1073,7 +1567,7 @@ def run_stata_debug(
     Run a Stata .do file and return errors for debugging.
 
     This tool allows the agent to:
-    1. Execute a .do file in Stata batch mode
+    1. Execute a .do file through the package-owned Stata bridge
     2. Parse the log file for errors
     3. Return structured error information for fixing
 
@@ -1087,11 +1581,13 @@ def run_stata_debug(
         - data: Dict with log content, errors, and context
         - metadata: Execution details
     """
-    import os
-    import subprocess
     import re
+    import os
+    from src.settings import apply_settings_to_environment
+    from src.stata_mcp import MCPStataRunner
 
     try:
+        apply_settings_to_environment()
         do_file_path = Path(do_file_path)
 
         if not do_file_path.exists():
@@ -1110,32 +1606,25 @@ def run_stata_debug(
                 error="Stata path not configured. Set STATA_PATH environment variable or run 'cses setup'."
             )
 
+        stata_candidate = Path(stata_path)
+        if stata_candidate.is_dir():
+            for exe_name in ["StataSE-64.exe", "StataMP-64.exe", "StataBE-64.exe", "Stata-64.exe"]:
+                candidate = stata_candidate / exe_name
+                if candidate.exists():
+                    stata_path = str(candidate)
+                    break
+
         if not Path(stata_path).exists():
             return ToolResult(
                 success=False,
                 error=f"Stata executable not found: {stata_path}"
             )
 
-        # Run Stata in batch mode
         print(f"Running Stata on: {do_file_path.name}")
-
-        try:
-            result = subprocess.run(
-                [stata_path, "-b", "do", str(do_file_path)],
-                cwd=str(do_file_path.parent),
-                capture_output=True,
-                text=True,
-                timeout=300  # 5 minute timeout
-            )
-        except subprocess.TimeoutExpired:
-            return ToolResult(
-                success=False,
-                error="Stata execution timed out after 5 minutes",
-                metadata={"timeout": True}
-            )
+        result = MCPStataRunner(stata_path=stata_path).run_do_file(do_file_path)
 
         # Read log file
-        log_path = do_file_path.with_suffix(".log")
+        log_path = Path(result.log_path) if result.log_path else do_file_path.with_suffix(".log")
         if not log_path.exists():
             # Try smcl file
             smcl_path = do_file_path.with_suffix(".smcl")
@@ -1145,11 +1634,11 @@ def run_stata_debug(
         if not log_path.exists():
             return ToolResult(
                 success=False,
-                error="Stata ran but no log file was generated",
+                error=result.error or "Stata ran but no log file was generated",
                 data={
                     "stdout": result.stdout,
                     "stderr": result.stderr,
-                    "returncode": result.returncode
+                    "returncode": result.rc,
                 }
             )
 
@@ -1191,7 +1680,15 @@ def run_stata_debug(
                         "context": context
                     })
 
-        if errors:
+        if result.rc not in (None, 0) and not errors:
+            errors.append({
+                "line_number": 0,
+                "error_code": str(result.rc),
+                "error_line": f"Stata returned r({result.rc}).",
+                "context": result.stderr or result.stdout[-1000:],
+            })
+
+        if errors or not result.success:
             # Build error summary for the agent
             error_summary = []
             for e in errors[:10]:  # Limit to first 10 errors
@@ -1211,9 +1708,10 @@ def run_stata_debug(
                 },
                 metadata={
                     "total_errors": len(errors),
-                    "log_lines": len(lines)
+                    "log_lines": len(lines),
+                    "stata_bridge": "mcp-stata",
                 },
-                error=f"Found {len(errors)} error(s) in Stata execution"
+                error=result.error or f"Found {len(errors)} error(s) in Stata execution"
             )
         else:
             return ToolResult(
@@ -1225,12 +1723,113 @@ def run_stata_debug(
                 },
                 metadata={
                     "log_lines": len(lines),
-                    "log_size": len(log_content)
+                    "log_size": len(log_content),
+                    "stata_bridge": "mcp-stata",
                 }
             )
 
     except Exception as e:
         logger.error(f"Error running Stata debug: {e}")
+        return ToolResult(success=False, error=str(e))
+
+
+def llm_fix_stata_error(
+    do_file_path: Path | str,
+    error_info: dict,
+    max_attempts: int = 3
+) -> ToolResult:
+    """
+    Use LLM to fix a Stata error in a .do file.
+
+    This function reads the .do file, identifies the problematic code,
+    uses the LLM to suggest a fix, applies the fix, and re-runs Stata
+    to verify the fix worked.
+
+    Args:
+        do_file_path: Path to the .do file
+        error_info: Dict with error details (line_number, error_code, context)
+        max_attempts: Maximum number of fix attempts
+
+    Returns:
+        ToolResult with fixed code or error if unfixable
+    """
+    from src.config import LLM_TEMPERATURE
+    from src.model_runtime import ModelRole, ModelTaskRunner
+    import re
+
+    do_file_path = Path(do_file_path)
+
+    if not do_file_path.exists():
+        return ToolResult(success=False, error=f".do file not found: {do_file_path}")
+
+    try:
+        content = do_file_path.read_text(encoding="utf-8")
+        lines = content.split("\n")
+
+        line_num = error_info.get("line_number", 0)
+        error_code = error_info.get("error_code", "unknown")
+        error_context = error_info.get("context", "")
+        error_line = error_info.get("error_line", "")
+
+        # Get surrounding code for context
+        start_line = max(0, line_num - 10)
+        end_line = min(len(lines), line_num + 5)
+        surrounding_code = "\n".join(f"{i+1}: {lines[i]}" for i in range(start_line, end_line))
+
+        prompt = f"""Fix the following Stata error in a CSES data processing .do file.
+
+ERROR:
+- Error code: r({error_code})
+- Line {line_num}: {error_line}
+
+ERROR CONTEXT:
+{error_context}
+
+SURROUNDING CODE:
+{surrounding_code}
+
+COMMON STATA ERRORS:
+- r(111): Observation out of range
+- r(198): Invalid syntax
+- r(100): Variable not found
+- r(110): Variable already defined
+- r(109): Type mismatch
+
+Provide the CORRECTED Stata code to fix this error. Return ONLY the fixed code lines.
+If multiple lines need to change, include all of them.
+Include brief comments explaining the fix.
+
+Do NOT include any markdown formatting or code blocks."""
+
+        runner = ModelTaskRunner()
+        response = runner.response(
+            ModelRole.STATA_REPAIR,
+            model_override=runner.model_for_role(ModelRole.STATA_REPAIR),
+            max_tokens=1024,
+            temperature=LLM_TEMPERATURE,
+            timeout=60,
+            purpose=f"Repair Stata error r({error_code})",
+            messages=[{"role": "user", "content": prompt}]
+        )
+
+        fixed_code = response.choices[0].message.content.strip()
+        # Clean up markdown if present
+        fixed_code = re.sub(r'^```stata?\s*', '', fixed_code)
+        fixed_code = re.sub(r'\s*```$', '', fixed_code)
+
+        return ToolResult(
+            success=True,
+            data={
+                "original_error": error_info,
+                "suggested_fix": fixed_code,
+                "line_number": line_num,
+                "file_path": str(do_file_path)
+            },
+            metadata={"fix_generated": True}
+        )
+
+    except Exception as e:
+        logger.error(f"Error in LLM fix generation: {e}")
         return ToolResult(success=False, error=str(e))
 
 

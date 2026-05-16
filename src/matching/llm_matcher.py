@@ -20,8 +20,8 @@ import os
 from pathlib import Path
 from dataclasses import dataclass, field
 from typing import Optional
-from litellm import completion
 
+from src.model_runtime import ModelRole, ModelTaskRunner
 from src.utils.toon_encoder import encode_table
 
 logger = logging.getLogger(__name__)
@@ -97,6 +97,13 @@ CSES_TARGET_VARIABLES = {
     "F3024": "Satisfaction with democracy",
 }
 
+try:
+    from src.standards.schema import load_target_variables
+
+    CSES_TARGET_VARIABLES = load_target_variables()
+except Exception as exc:
+    logger.warning(f"Using fallback CSES target subset because schema could not be loaded: {exc}")
+
 
 @dataclass
 class MatchProposal:
@@ -157,12 +164,11 @@ class LLMMatcher:
     - Stage 2 (this class with gpt-oss:120b): Reads summary, does matching
     """
 
-    def __init__(self, model: Optional[str] = None):
-        # Load model from environment - prefer LLM_MODEL_MATCH for two-stage pipeline
-        # Falls back to LLM_MODEL for backwards compatibility
-        self.model = model or os.getenv("LLM_MODEL_MATCH") or os.getenv("LLM_MODEL", "openai/gpt-oss:120b")
-        # Use temperature=0 for consistent, deterministic outputs
-        self.temperature = 0
+    def __init__(self, working_dir: Path | None = None):
+        from src.config import LLM_MODEL_MATCH, LLM_TEMPERATURE
+        self.runner = ModelTaskRunner(working_dir or Path.cwd())
+        self.model = self.runner.model_for_role(ModelRole.MATCH_FAST) or LLM_MODEL_MATCH
+        self.temperature = LLM_TEMPERATURE
         logger.info(f"LLMMatcher initialized with model: {self.model}")
 
     def _extract_codebook_definitions(self, codebook_text: str, source_varnames: list[str]) -> dict[str, str]:
@@ -218,11 +224,12 @@ Return JSON (only include variables found in this section):
 Return ONLY valid JSON."""
 
             try:
-                response = completion(
-                    model=self.model,
+                response = self.runner.response(
+                    ModelRole.LARGE_TEXT,
                     max_tokens=4096,
                     temperature=self.temperature,
                     timeout=120,  # 2 minutes per codebook chunk
+                    purpose=f"Extract codebook definitions chunk {chunk_num}",
                     messages=[{"role": "user", "content": prompt}]
                 )
 
@@ -347,47 +354,123 @@ Return ONLY valid JSON."""
         This is for CSES data where source variables should closely match
         the standardized CSES questions.
         """
-        # Build TOON table for all targets
+        if len(cses_targets) > 80:
+            proposals: list[MatchProposal] = []
+            assigned_sources: set[str] = set()
+            batch_size = 45
+            for start in range(0, len(cses_targets), batch_size):
+                batch_targets = cses_targets[start:start + batch_size]
+                batch_proposals = self._match_batch_with_index(batch_targets, source_index, assigned_sources)
+                seen_targets = {proposal.target_variable for proposal in batch_proposals}
+                for target in batch_targets:
+                    if target not in seen_targets:
+                        batch_proposals.append(MatchProposal(
+                            source_variable="ERROR",
+                            target_variable=target,
+                            confidence=0.0,
+                            confidence_level="low",
+                            reasoning="Not returned by batched matching model",
+                            matched_by="missing",
+                            needs_review=True,
+                        ))
+                for proposal in batch_proposals:
+                    if proposal.source_variable not in {"NOT_FOUND", "ERROR", "NO_CONSENSUS"}:
+                        assigned_sources.add(proposal.source_variable)
+                proposals.extend(batch_proposals)
+            return proposals
+
+        # Build TOON table for all targets with detailed descriptions
         target_rows = [{'code': c, 'desc': CSES_TARGET_VARIABLES[c]} for c in cses_targets]
         targets_toon = 'targets' + encode_table(target_rows, ['code', 'desc'], '|')
 
-        prompt = f"""Match CSES target variables to source variables from the dataset.
+        prompt = f"""You are matching source survey variables to CSES (Comparative Study of Electoral Systems) Module 6 target variables.
 
-This is CSES (Comparative Study of Electoral Systems) data - source variables should closely match
-the standardized CSES Module 6 schema based on question text and meaning.
+IMPORTANT: Your task is to find which source variable in the deposited data corresponds to each CSES target concept.
 
-CSES TARGET VARIABLES TO MATCH:
+=== CSES TARGET VARIABLES (what we need to create) ===
 {targets_toon}
 
-SOURCE VARIABLES FROM DATASET:
+=== AVAILABLE SOURCE VARIABLES IN DEPOSITED DATA ===
+The following variables exist in the source data file. Each entry shows:
+- Variable name
+- Description/question text (if available)
+- Value labels (response codes)
+
 {source_index}
 
-TASK: For each CSES target, find the source variable that measures the SAME concept.
-Match based on:
-1. Question text similarity (most important)
-2. Variable description
-3. Value labels (response options)
+=== MATCHING INSTRUCTIONS ===
+
+For EACH CSES target, find the source variable that measures the SAME concept:
+
+1. DEMOGRAPHICS (F2001-F2021):
+   - F2001_Y (Year of birth): Look for birth year, age, DOB variables
+   - F2001_A (Age): Look for age in years or can be calculated from birth year
+   - F2002 (Gender): Look for sex, gender variables with Male/Female coding
+   - F2003 (Education): Look for education level, school, degree variables
+   - F2004 (Marital status): Look for married, single, partnership variables
+   - F2005 (Union membership): Look for trade union, labor union variables
+   - F2006 (Employment): Look for job, work status, employed/unemployed variables
+   - Common patterns: D01, D02, etc. or TAGE, TSEX, etc.
+
+2. SURVEY QUESTIONS (F3001-F3024):
+   - F3001 (Political interest): "How interested are you in politics?"
+   - F3002_* (Media usage): TV, radio, newspaper, social media consumption
+   - F3003 (Internal efficacy): "Politics is too complicated"
+   - F3004_* (Democracy attitudes): Democracy preferable, courts, strong leader
+   - F3005_* (Governance attitudes): Experts, business leaders, referendums
+   - F3006 (How democratic): "How democratic is [country]?" (0-10 scale)
+   - F3007_* (Trust): Trust in parliament, government, courts, parties, media
+   - F3008_* (Government performance): Economic performance, COVID response
+   - F3009 (Economy): State of the economy assessment
+   - F3010 (Turnout): "Did you vote in the election?"
+   - F3011_* (Vote choice): Which party did you vote for?
+   - F3012-F3014 (Election satisfaction): Satisfaction with vote, choices, fairness
+   - F3017 (External efficacy): "Politicians don't care what people think"
+   - F3018_* (Party likes/dislikes): Like/dislike scale for parties (0-10)
+   - F3019_* (Party left-right): Left-right placement of parties (0-10)
+   - F3020 (Self left-right): Respondent's own left-right position (0-10)
+   - F3021-F3023 (Party ID): Party identification, which party, strength
+   - F3024 (Satisfaction with democracy): Overall satisfaction
+   - Common patterns: Q01, Q02, Q03, etc.
+
+3. MATCHING RULES:
+   - Match by CONCEPT, not just name similarity
+   - If variable name contains "Q" followed by number (Q1, Q02), it's likely a survey question
+   - If variable name contains "D" followed by number (D1, D02), it's likely demographics
+   - Value labels are strong indicators (1=Male,2=Female clearly maps to F2002)
+   - Sample values help identify scales (1-4 vs 0-10 vs actual years)
+   - If a source variable is categorical age (1=18-29, 2=30-39...), note this - it can still map to F2001_A with recoding
+
+4. NOT_FOUND vs COLLABORATOR_NEEDED:
+   - Use "NOT_FOUND" only if no variable in the source data measures this concept
+   - If you find a variable that MIGHT match but you're uncertain, still propose it with lower confidence
+   - The goal is to maximize matches, not minimize false positives
 
 Return JSON with ALL {len(cses_targets)} mappings:
 {{"mappings":[
-  {{"target":"F2001_Y","source":"SOURCE_VAR_NAME","confidence":0.95,"reasoning":"Question asks year of birth"}},
-  {{"target":"F2002","source":"GENDER_VAR","confidence":0.98,"reasoning":"Measures gender with 1=Male,2=Female"}},
+  {{"target":"F2001_Y","source":"D01b","confidence":0.95,"reasoning":"D01b asks year of birth"}},
+  {{"target":"F2002","source":"TSEX","confidence":0.98,"reasoning":"TSEX measures gender with 1=Male,2=Female"}},
+  {{"target":"F3001","source":"Q01","confidence":0.95,"reasoning":"Q01 asks 'How interested are you in politics?'"}},
   ...
 ]}}
 
-RULES:
-- Return a mapping for EVERY target (use "NOT_FOUND" if no match)
-- Confidence: 0.95+ for exact question match, 0.80-0.94 for similar, <0.80 for uncertain
-- Each source variable can only map to ONE target
-- Return ONLY valid JSON"""
+CRITICAL RULES:
+- Return a mapping for EVERY target listed above
+- If you find a plausible source variable, propose it even with medium confidence
+- Confidence: 0.90+ for clear match, 0.70-0.89 for likely match, 0.50-0.69 for possible match needing review, <0.50 for weak/uncertain
+- Each source variable can only map to ONE target (no duplicates)
+- Include reasoning that explains WHY this source measures the CSES concept
+- Return ONLY valid JSON, no other text"""
 
         # Call LLM with enough tokens for all mappings
         # ~50 tokens per mapping × 64 targets = ~3200 tokens
-        response = completion(
-            model=self.model,
+        response = self.runner.response(
+            ModelRole.MATCH_FAST,
+            model_override=self.model,
             max_tokens=8192,
             temperature=self.temperature,
-            timeout=300,  # 5 minutes for matching all variables
+            timeout=75,
+            purpose="One-shot CSES target variable matching",
             messages=[{"role": "user", "content": prompt}]
         )
 
@@ -492,17 +575,21 @@ RULES:
 
     def _build_source_index(self, source_contexts: list[dict], extracted_defs: dict[str, str] = None) -> str:
         """
-        Build a TOON-formatted index of source variables.
+        Build a comprehensive index of source variables for matching.
 
         Combines:
         1. Data file metadata (variable labels, value labels)
         2. Extracted codebook definitions (from Pass 1 LLM extraction)
+        3. Sample values to help identify variable types
 
         This is token-efficient because the codebook extraction already
         distilled the key information from the raw document.
         """
         extracted_defs = extracted_defs or {}
         cses_direct_matches = []
+
+        # Collect all variable names for summary
+        all_var_names = [ctx.get('name', '?') for ctx in source_contexts]
 
         # Build rows for TOON table
         rows = []
@@ -523,27 +610,62 @@ RULES:
             elif ctx.get('question_text'):
                 desc = ctx['question_text']
 
-            # Compact labels from data file
+            # Compact labels from data file - include more labels for matching
             labels_str = ''
             if ctx.get('value_labels') and isinstance(ctx['value_labels'], dict):
-                labels = list(ctx['value_labels'].items())[:5]
+                labels = list(ctx['value_labels'].items())[:8]  # Increased from 5
                 labels_str = ';'.join(f"{k}={v}" for k, v in labels)
+
+            # Add sample values to help identify variable type
+            samples_str = ''
+            if ctx.get('sample_values'):
+                samples = ctx['sample_values'][:6] if isinstance(ctx.get('sample_values'), list) else []
+                if samples:
+                    samples_str = ','.join(str(s) for s in samples)
+
+            # Combine description and samples for richer context
+            full_desc = desc[:200] if desc else ''
+            if samples_str and not labels_str:
+                # If no labels but have samples, include samples in description
+                if full_desc:
+                    full_desc = f"{full_desc} [samples: {samples_str}]"
+                else:
+                    full_desc = f"[samples: {samples_str}]"
 
             rows.append({
                 'name': name,
-                'desc': desc[:250] if desc else '',  # Allow longer since it's already distilled
+                'desc': full_desc,
                 'labels': labels_str
             })
 
         # Build TOON table with pipe delimiter
         toon_table = 'vars' + encode_table(rows, ['name', 'desc', 'labels'], delimiter='|')
 
-        # Add note about CSES-named variables if present
-        if cses_direct_matches:
-            header = f"note: Source contains CSES-named vars: {','.join(cses_direct_matches[:10])}\n"
-            toon_table = header + toon_table
+        # Add header with summary of available variables
+        header_parts = []
 
-        return toon_table
+        # Summary of variable count
+        header_parts.append(f"# Total source variables: {len(source_contexts)}")
+
+        # List all variable names compactly
+        header_parts.append(f"# Variable names: {', '.join(all_var_names[:100])}")
+        if len(all_var_names) > 100:
+            header_parts.append(f"# ... and {len(all_var_names) - 100} more")
+
+        # Note about CSES-named variables if present
+        if cses_direct_matches:
+            header_parts.append(f"# Note: Source contains CSES-named vars: {','.join(cses_direct_matches[:10])}")
+
+        # Look for common patterns
+        q_vars = [n for n in all_var_names if re.match(r'^Q\d', n, re.IGNORECASE)]
+        d_vars = [n for n in all_var_names if re.match(r'^D\d', n, re.IGNORECASE)]
+        if q_vars:
+            header_parts.append(f"# Survey question variables (Q*): {', '.join(q_vars[:20])}")
+        if d_vars:
+            header_parts.append(f"# Demographic variables (D*): {', '.join(d_vars[:20])}")
+
+        header = '\n'.join(header_parts) + '\n\n# Detailed variable information:\n'
+        return header + toon_table
 
     def _match_batch_with_index(
         self,
@@ -583,10 +705,12 @@ Example format:
 
         # Try up to 2 times for valid JSON response
         for attempt in range(2):
-            response = completion(
-                model=self.model,
+            response = self.runner.response(
+                ModelRole.MATCH_FAST,
+                model_override=self.model,
                 max_tokens=4096,
                 temperature=self.temperature,  # 0 for consistency
+                purpose="Batch CSES target variable matching",
                 messages=[{"role": "user", "content": prompt}]
             )
 
@@ -740,10 +864,12 @@ Return JSON:
 
 Return ONLY valid JSON."""
 
-        response = completion(
-            model=self.model,
+        response = self.runner.response(
+            ModelRole.MATCH_FAST,
+            model_override=self.model,
             max_tokens=4096,
             temperature=self.temperature,
+            purpose="Context-rich CSES target variable matching",
             messages=[{"role": "user", "content": prompt}]
         )
 
@@ -796,6 +922,18 @@ class PatternMatcher:
         return None
 
 
-def create_matcher(model: Optional[str] = None) -> LLMMatcher:
-    """Create a matcher instance using environment configuration."""
-    return LLMMatcher(model=model)
+def create_matcher(model: str = None, use_ensemble: bool = False):
+    """
+    Create a matcher instance.
+
+    Args:
+        model: Optional model override (ignored if use_ensemble=True)
+        use_ensemble: If True, returns EnsembleMatcher for multi-model quorum voting
+
+    Returns:
+        LLMMatcher or EnsembleMatcher instance
+    """
+    if use_ensemble:
+        from src.matching.ensemble_matcher import EnsembleMatcher
+        return EnsembleMatcher()
+    return LLMMatcher()

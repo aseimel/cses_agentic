@@ -1,0 +1,117 @@
+{
+  "schema_version": 1,
+  "module": "CSES Module 6",
+  "source_policy": "Runtime administrative-variable contract distilled into cses_wiki. Raw example studies are development inputs only and are not required by the installed app.",
+  "default_missing_value_rule": "Use CSES administrative missing or not-applicable codes only when the value cannot be derived from approved study information.",
+  "rules": [
+    {
+      "match": ["F1001"],
+      "generation_category": "fixed_release_value",
+      "evidence_rule": "CSES module release identity",
+      "stata_rule": "constant_string",
+      "requires_processor_confirmation": false,
+      "validation_checks": ["variable_exists", "constant_value", "tab_missing"]
+    },
+    {
+      "match": ["F1002_VER", "F1002_DOI", "F1106"],
+      "generation_category": "fixed_release_value",
+      "evidence_rule": "release metadata or final deposit metadata",
+      "stata_rule": "release_placeholder_until_final_deposit",
+      "requires_processor_confirmation": true,
+      "validation_checks": ["variable_exists", "release_placeholder_review", "tab_missing"]
+    },
+    {
+      "match": ["F1003_1", "F1003_2"],
+      "generation_category": "source_data_copy",
+      "evidence_rule": "respondent identifier in deposited data",
+      "source_aliases": ["A1", "A01", "ID", "RESPID", "respondent_id"],
+      "stata_rule": "copy_or_generate_respondent_id",
+      "requires_processor_confirmation": true,
+      "validation_checks": ["variable_exists", "respondent_id_unique", "source_target_verification", "tab_missing"]
+    },
+    {
+      "match": ["F1004", "F1005", "F1006", "F1006_UN", "F1006_UNALPHA2", "F1006_UNALPHA3", "F1006_NAM", "F1007_REG", "F1007_OECD", "F1007_EU", "F1007_VDEM", "F1008", "F1009"],
+      "generation_category": "study_identity_value",
+      "evidence_rule": "study setup, polity reference table, election year, and processor confirmation",
+      "stata_rule": "metadata_or_reference_lookup",
+      "requires_processor_confirmation": true,
+      "validation_checks": ["variable_exists", "country_code_consistency", "constant_value", "tab_missing"]
+    },
+    {
+      "prefix": "F1010_",
+      "generation_category": "election_metadata",
+      "evidence_rule": "first-round election date from election results or study materials",
+      "stata_rule": "derive_date_parts",
+      "requires_processor_confirmation": true,
+      "validation_checks": ["variable_exists", "valid_date", "election_fieldwork_order", "tab_missing"]
+    },
+    {
+      "prefix": "F1011_",
+      "generation_category": "election_metadata",
+      "evidence_rule": "second-round election date or explicit not-applicable decision",
+      "stata_rule": "derive_date_parts_or_not_applicable",
+      "requires_processor_confirmation": true,
+      "validation_checks": ["variable_exists", "valid_date_or_not_applicable", "tab_missing"]
+    },
+    {
+      "match": ["F1012_1", "F1012_2", "F1013", "F1014"],
+      "generation_category": "election_metadata",
+      "evidence_rule": "study timing, COVID timing, context, and election type from study materials",
+      "stata_rule": "metadata_coding_with_processor_review",
+      "requires_processor_confirmation": true,
+      "validation_checks": ["variable_exists", "allowed_code_review", "tab_missing"]
+    },
+    {
+      "match": ["F1015_1", "F1015_2", "F1015_3", "F1016_1", "F1016_2", "F1016_3", "F1017"],
+      "generation_category": "fieldwork_design_fact",
+      "evidence_rule": "mode and mode-selection information from design materials or respondent-level mode variable",
+      "source_aliases": ["mode", "MODE", "interview_mode"],
+      "stata_rule": "copy_or_code_mode_information",
+      "requires_processor_confirmation": true,
+      "validation_checks": ["variable_exists", "mode_code_check", "source_target_verification", "tab_missing"]
+    },
+    {
+      "match": ["F1018_1", "F1018_2", "F1020_1", "F1020_2"],
+      "generation_category": "fieldwork_design_fact",
+      "evidence_rule": "fieldwork dates and election dates from study materials",
+      "stata_rule": "derive_day_differences",
+      "requires_processor_confirmation": true,
+      "validation_checks": ["variable_exists", "valid_day_difference", "election_fieldwork_order", "tab_missing"]
+    },
+    {
+      "match": ["F1019_M", "F1019_D", "F1019_Y"],
+      "generation_category": "source_data_copy",
+      "evidence_rule": "questionnaire administration date from deposited administrative variables",
+      "source_aliases": ["A4a", "A04a", "A4b", "A04b", "A4c", "A04c"],
+      "stata_rule": "copy_questionnaire_date_parts",
+      "requires_processor_confirmation": true,
+      "validation_checks": ["variable_exists", "valid_date_parts", "source_target_verification", "tab_missing"]
+    },
+    {
+      "match": ["F1021", "F1022_1", "F1022_2", "F1023", "F1024"],
+      "generation_category": "source_data_copy",
+      "evidence_rule": "interview duration, interviewer, language, and version variables where supplied",
+      "source_aliases": ["A2", "A02", "A3", "A03", "A6", "A06", "duration", "language", "version"],
+      "stata_rule": "copy_if_supplied_else_review_missing",
+      "requires_processor_confirmation": true,
+      "validation_checks": ["variable_exists", "source_target_verification", "tab_missing"]
+    },
+    {
+      "match": ["F1100"],
+      "generation_category": "study_identity_value",
+      "evidence_rule": "sample component from study setup or processor decision",
+      "stata_rule": "metadata_or_processor_decision",
+      "requires_processor_confirmation": true,
+      "validation_checks": ["variable_exists", "allowed_code_review", "tab_missing"]
+    },
+    {
+      "match": ["F1101_1", "F1101_2", "F1101_3", "F1102_1", "F1102_2", "F1102_3", "F1103_1", "F1103_2", "F1103_3", "F1104", "F1105_1", "F1105_2", "F1105_3"],
+      "generation_category": "weight_derivation",
+      "evidence_rule": "available original weights, weight documentation, row count, and CSES weight construction rules",
+      "source_aliases": ["A5", "A05", "weight", "weights", "wgt"],
+      "stata_rule": "copy_original_weights_and_derive_cses_weights",
+      "requires_processor_confirmation": true,
+      "validation_checks": ["variable_exists", "weight_available_or_intentional_missing", "weight_mean_check", "source_target_verification", "tab_missing"]
+    }
+  ]
+}

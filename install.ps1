@@ -225,7 +225,9 @@ $packagesToInstall = @(
     @{pkg="openai"; mod="openai"},
     @{pkg="rich"; mod="rich"},
     @{pkg="tqdm"; mod="tqdm"},
-    @{pkg="textual"; mod="textual"}
+    @{pkg="textual"; mod="textual"},
+    @{pkg="mcp"; mod="mcp"},
+    @{pkg="mcp-stata"; mod="mcp_stata"}
 )
 
 $missingPackages = @()
@@ -304,7 +306,9 @@ $modulesToTest = @(
     @("openai", "openai"),
     @("rich", "rich"),
     @("tqdm", "tqdm"),
-    @("textual", "textual")
+    @("textual", "textual"),
+    @("mcp", "mcp"),
+    @("mcp_stata", "mcp-stata")
 )
 
 $failedModules = @()

@@ -1,0 +1,82 @@
+{
+  "schema_version": 1,
+  "generated_at": "deterministic",
+  "soft_gate_default": true,
+  "runtime_dependency_policy": {
+    "required": [
+      "cses_wiki"
+    ],
+    "not_required": [
+      "example_studies"
+    ]
+  },
+  "stata_syntax_checks": [
+    {
+      "id": "header_block",
+      "description": "Micro syntax begins with a CSES processing header."
+    },
+    {
+      "id": "section_markers",
+      "description": "Major sections use the CSES section marker style."
+    },
+    {
+      "id": "variable_headers",
+      "description": "Processed variables use **>>> F-code headings."
+    },
+    {
+      "id": "tab_missing",
+      "description": "Each generated target variable is verified with tab ..., mis."
+    },
+    {
+      "id": "missing_values",
+      "description": "Missing values are recoded explicitly to CSES codes."
+    },
+    {
+      "id": "labels",
+      "description": "Variable and value labels are applied through label files."
+    },
+    {
+      "id": "check_files",
+      "description": "Validation, inconsistency, and theoretical checks are run."
+    },
+    {
+      "id": "clean_stata_run",
+      "description": "The final do-file runs cleanly in Stata."
+    }
+  ],
+  "documentation_checks": [
+    {
+      "id": "log_sections",
+      "description": "Processing log contains all required CSES sections."
+    },
+    {
+      "id": "study_design_sources",
+      "description": "Study design and weights claims cite deposited sources."
+    },
+    {
+      "id": "eligibility_decision",
+      "description": "Eligibility decision records item coverage, sample design, and sample size."
+    },
+    {
+      "id": "collaborator_questions",
+      "description": "Collaborator questions are focused, grouped, and contextualized."
+    },
+    {
+      "id": "release_todos",
+      "description": "Pre-release TODOs are empty or explicitly resolved before final deposit."
+    }
+  ],
+  "common_section_order": [
+    "SYNTAX INSTRUCTIONS",
+    "Section Headings",
+    "OPEN DATA",
+    "FREQUENCIES OF ORIGINAL DATA",
+    "ID, WEIGHT, AND ADMINISTRATION VARIABLES",
+    "DEMOGRAPHIC VARIABLES",
+    "SURVEY VARIABLES",
+    "DISTRICT-LEVEL VARIABLES",
+    "PARTY CODE IDENTIFIERS - PARTY & LEADER",
+    "DATA BRIDGING VARIABLES",
+    "VOTE CHOICE - IMD NUMERIC PARTY CODE VARIABLES"
+  ]
+}

@@ -45,6 +45,12 @@ def build():
         "--hidden-import", "pypdf",
         "--hidden-import", "docx",
         "--hidden-import", "dotenv",
+        "--hidden-import", "mcp",
+        "--hidden-import", "mcp_stata",
+        "--hidden-import", "mcp_stata.server",
+        "--hidden-import", "src.stata_mcp_runner",
+        "--collect-all", "mcp",
+        "--collect-all", "mcp_stata",
         # Add data files
         "--add-data", f"{project_dir}/.env.example;.",
         # Entry point

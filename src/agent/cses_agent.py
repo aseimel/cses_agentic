@@ -22,7 +22,7 @@ import sys
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
 from src.ingest import extract_context, ExtractionResult
-from src.matching import create_matcher, MatchingResult
+from src.matching import create_ensemble_matcher, MatchingResult
 from src.preprocessing import DocumentAggregator
 from src.agent.validator import (
     validate_proposals,
@@ -135,7 +135,7 @@ class CSESAgent:
 
         # Initialize components
         self.aggregator = DocumentAggregator()
-        self.matcher = create_matcher()
+        self.matcher = create_ensemble_matcher()
 
         # Initialize audit logger
         self.audit_logger = None
@@ -202,11 +202,12 @@ class CSESAgent:
         )
         report(f"  Aggregated summary: {len(summary)} chars")
 
-        # Stage 2: Original LLM matching
-        report("Stage 3/4: Running LLM matching (one-shot)...")
-        matching_result = self.matcher.match_variables(
+        # Stage 2: Ensemble LLM matching with quorum voting
+        report("Stage 3/4: Running ensemble matching with quorum voting...")
+        matching_result = self.matcher.match_with_quorum(
             source_contexts=source_contexts,
-            pre_aggregated_summary=summary
+            pre_aggregated_summary=summary,
+            progress_callback=report
         )
         report(f"  Generated {len(matching_result.proposals)} proposals")
 
@@ -218,7 +219,7 @@ class CSESAgent:
                     source_variable=proposal.source_variable,
                     confidence=proposal.confidence,
                     reasoning=proposal.reasoning,
-                    model=self.matcher.model
+                    model="ensemble_quorum"
                 )
 
         # Stage 3: LLM validation (optional)

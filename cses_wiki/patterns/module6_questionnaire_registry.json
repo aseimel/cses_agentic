@@ -1,0 +1,6285 @@
+{
+  "schema_version": 1,
+  "module": "CSES Module 6",
+  "generated_at": "2026-04-30T16:23:22.910620+00:00",
+  "source_policy": "Runtime uses this distilled registry. The raw questionnaire text is development-only.",
+  "source_file": "CSES_Module6_Questionnaire.txt",
+  "item_count": 130,
+  "items": [
+    {
+      "item_id": "A1",
+      "normalized_id": "A1",
+      "aliases": [
+        "A01"
+      ],
+      "section": "administrative",
+      "item_type": "admin_supplied_variable",
+      "title": "ID COMPONENT - RESPONDENT WITHIN ELECTION STUDY",
+      "text": "",
+      "notes": "This item should provide a unique, numeric identification code for each respondent in the study. ..................................................................",
+      "help_text": "",
+      "response_options": [],
+      "missing_codes": [],
+      "target_variables": [],
+      "source_line": 194
+    },
+    {
+      "item_id": "A2",
+      "normalized_id": "A2",
+      "aliases": [
+        "A02"
+      ],
+      "section": "administrative",
+      "item_type": "admin_supplied_variable",
+      "title": "INTERVIEWER WITHIN ELECTION STUDY",
+      "text": "",
+      "notes": "This item should provide a unique, numeric identification code for each interviewer who administered the survey. ..................................................................",
+      "help_text": "",
+      "response_options": [],
+      "missing_codes": [],
+      "target_variables": [],
+      "source_line": 203
+    },
+    {
+      "item_id": "A3",
+      "normalized_id": "A3",
+      "aliases": [
+        "A03"
+      ],
+      "section": "administrative",
+      "item_type": "admin_supplied_variable",
+      "title": "INTERVIEWER GENDER",
+      "text": "",
+      "notes": "This item should indicate the interviewer's gender. ..................................................................",
+      "help_text": "",
+      "response_options": [
+        {
+          "code": "1",
+          "label": "MALE"
+        },
+        {
+          "code": "2",
+          "label": "FEMALE"
+        },
+        {
+          "code": "5",
+          "label": "OTHER"
+        },
+        {
+          "code": "9",
+          "label": "MISSING"
+        }
+      ],
+      "missing_codes": [
+        "9"
+      ],
+      "target_variables": [],
+      "source_line": 212
+    },
+    {
+      "item_id": "A4a",
+      "normalized_id": "A4A",
+      "aliases": [
+        "A4A",
+        "A04a"
+      ],
+      "section": "administrative",
+      "item_type": "admin_supplied_variable",
+      "title": "DATE QUESTIONNAIRE ADMINISTERED - MONTH",
+      "text": "",
+      "notes": "",
+      "help_text": "",
+      "response_options": [],
+      "missing_codes": [],
+      "target_variables": [
+        "F1019_M"
+      ],
+      "source_line": 226
+    },
+    {
+      "item_id": "A4b",
+      "normalized_id": "A4B",
+      "aliases": [
+        "A4B",
+        "A04b"
+      ],
+      "section": "administrative",
+      "item_type": "admin_supplied_variable",
+      "title": "DATE QUESTIONNAIRE ADMINISTERED - DAY",
+      "text": "",
+      "notes": "",
+      "help_text": "",
+      "response_options": [],
+      "missing_codes": [],
+      "target_variables": [
+        "F1019_D"
+      ],
+      "source_line": 227
+    },
+    {
+      "item_id": "A4c",
+      "normalized_id": "A4C",
+      "aliases": [
+        "A4C",
+        "A04c"
+      ],
+      "section": "administrative",
+      "item_type": "admin_supplied_variable",
+      "title": "DATE QUESTIONNAIRE ADMINISTERED - YEAR",
+      "text": "",
+      "notes": "This item should indicate the date on which the post-election interview took place. Please note that recording and providing this information to CSES is especially important because it is used in combination with the date of birth information in the demographic section to calculate the age of the respondent. .................................................................. MONTH DAY 01-31. DAY OF MONTH YEAR 2021-2026. YEAR 9999. MISSING",
+      "help_text": "",
+      "response_options": [
+        {
+          "code": "01",
+          "label": "JANUARY"
+        },
+        {
+          "code": "02",
+          "label": "FEBRUARY"
+        },
+        {
+          "code": "03",
+          "label": "MARCH"
+        },
+        {
+          "code": "04",
+          "label": "APRIL"
+        },
+        {
+          "code": "05",
+          "label": "MAY"
+        },
+        {
+          "code": "06",
+          "label": "JUNE"
+        },
+        {
+          "code": "07",
+          "label": "JULY"
+        },
+        {
+          "code": "08",
+          "label": "AUGUST"
+        },
+        {
+          "code": "09",
+          "label": "SEPTEMBER"
+        },
+        {
+          "code": "10",
+          "label": "OCTOBER"
+        },
+        {
+          "code": "11",
+          "label": "NOVEMBER"
+        },
+        {
+          "code": "12",
+          "label": "DECEMBER"
+        },
+        {
+          "code": "99",
+          "label": "MISSING"
+        },
+        {
+          "code": "99",
+          "label": "MISSING"
+        }
+      ],
+      "missing_codes": [
+        "99",
+        "99"
+      ],
+      "target_variables": [
+        "F1019_Y"
+      ],
+      "source_line": 228
+    },
+    {
+      "item_id": "A5",
+      "normalized_id": "A5",
+      "aliases": [
+        "A05"
+      ],
+      "section": "administrative",
+      "item_type": "admin_supplied_variable",
+      "title": "ORIGINAL WEIGHT: SAMPLE >>> ORIGINAL WEIGHT: DEMOGRAPHIC >>> ORIGINAL WEIGHT: POLITICAL",
+      "text": "",
+      "notes": "Please provide any weights that you have available. We are able to include up to three separate weights in the CSES dataset: one sample weight, one demographic weight, and one political weight. Please also provide whatever documentation is available concerning the weights and their creation. ..................................................................",
+      "help_text": "",
+      "response_options": [],
+      "missing_codes": [],
+      "target_variables": [
+        "F1101_2"
+      ],
+      "source_line": 272
+    },
+    {
+      "item_id": "A6",
+      "normalized_id": "A6",
+      "aliases": [
+        "A06"
+      ],
+      "section": "administrative",
+      "item_type": "admin_supplied_variable",
+      "title": "LANGUAGE OF QUESTIONNAIRE ADMINISTRATION",
+      "text": "",
+      "notes": "For election studies where the questionnaire is administered in more than one language, please indicate here what language was used to conduct the interview for each respondent. .................................................................. =========================================================================== ))) CSES MODULE 6 QUESTIONNAIRE: CSES MODULE =========================================================================== This is the CSES Module itself, a common module of survey questions for researchers to include in their national post-election survey. The questionnaire is intended to be administered exactly as it appears in this document. All items in this section begin with the letter \"Q\". ..................................................................",
+      "help_text": "",
+      "response_options": [],
+      "missing_codes": [],
+      "target_variables": [],
+      "source_line": 286
+    },
+    {
+      "item_id": "Q01",
+      "normalized_id": "Q01",
+      "aliases": [
+        "Q1"
+      ],
+      "section": "cses_module",
+      "item_type": "core_question",
+      "title": "POLITICAL INTEREST",
+      "text": "How interested would you say you are in politics? Are you very interested, somewhat interested, not very interested, or not at all interested? ..................................................................",
+      "notes": "",
+      "help_text": "",
+      "response_options": [
+        {
+          "code": "1",
+          "label": "VERY INTERESTED"
+        },
+        {
+          "code": "2",
+          "label": "SOMEWHAT INTERESTED"
+        },
+        {
+          "code": "3",
+          "label": "NOT VERY INTERESTED"
+        },
+        {
+          "code": "4",
+          "label": "NOT AT ALL INTERESTED"
+        },
+        {
+          "code": "7",
+          "label": "VOLUNTEERED: REFUSED"
+        },
+        {
+          "code": "8",
+          "label": "VOLUNTEERED: DON'T KNOW"
+        },
+        {
+          "code": "9",
+          "label": "MISSING"
+        }
+      ],
+      "missing_codes": [
+        "7",
+        "8",
+        "9"
+      ],
+      "target_variables": [
+        "F3001"
+      ],
+      "source_line": 309
+    },
+    {
+      "item_id": "Q02a",
+      "normalized_id": "Q02A",
+      "aliases": [
+        "Q02A",
+        "Q2a"
+      ],
+      "section": "cses_module",
+      "item_type": "core_question",
+      "title": "MEDIA USAGE: WATCH NEWS ON A PUBLIC TELEVISION BROADCASTER",
+      "text": "In the next questions, we would like to know what kind of media you used to follow news about parties and candidates during the recent election campaign. We begin with the traditional media of television, radio and newspapers, but regardless of whether you use these media in the traditional ways or online. During the recent election campaign, in a typical week, how many days did you: Watch the news on a public television broadcaster? ..................................................................",
+      "notes": "If necessary, you may include in the question named examples of public television broadcasters for your country and election. For example: \"Watch the news on a public television broadcaster such as [BROADCASTER 1] or [BROADCASTER 2]?\" For the purpose of this question, \"Public broadcasters\" are broadcasters controlled by public agencies or the state. They are usually funded through license fees or other kinds of audience contributions or from the state budget; sometimes they also generate funding by running advertisements. If the term \"public broadcaster\" is not common in your country and likely to be misunderstood by respondents, please use the term you consider most appropriate; often this may be the term \"state television\". Since in most countries only one or at best a small number of broadcasters are run as public or state broadcasters, please mention the names of all that exist in your country. Please include a brief explanation of the wording you chose for this question in the documentation of your dataset. If your media system has distinct public national, regional and/or local broadcasters please refer to those that are the most important ones as sources of news about national elections. Please note that what counts for this question is the broadcaster as source of news, regardless of whether its newscasts are viewed on television sets, online, or via apps. ..................................................................",
+      "help_text": "Interviewer instruction: If the respondent says 'every day' please ask them for a number of days. ..................................................................",
+      "response_options": [
+        {
+          "code": "0",
+          "label": "NONE / ZERO DAYS"
+        },
+        {
+          "code": "1",
+          "label": "ONE DAY"
+        },
+        {
+          "code": "2",
+          "label": "TWO DAYS"
+        },
+        {
+          "code": "3",
+          "label": "THREE DAYS"
+        },
+        {
+          "code": "4",
+          "label": "FOUR DAYS"
+        },
+        {
+          "code": "5",
+          "label": "FIVE DAYS"
+        },
+        {
+          "code": "6",
+          "label": "SIX DAYS"
+        },
+        {
+          "code": "7",
+          "label": "SEVEN DAYS"
+        },
+        {
+          "code": "97",
+          "label": "VOLUNTEERED: REFUSED"
+        },
+        {
+          "code": "98",
+          "label": "VOLUNTEERED: DON'T KNOW"
+        },
+        {
+          "code": "99",
+          "label": "MISSING"
+        }
+      ],
+      "missing_codes": [
+        "97",
+        "98",
+        "99"
+      ],
+      "target_variables": [
+        "F3002_1"
+      ],
+      "source_line": 329
+    },
+    {
+      "item_id": "Q02b",
+      "normalized_id": "Q02B",
+      "aliases": [
+        "Q02B",
+        "Q2b"
+      ],
+      "section": "cses_module",
+      "item_type": "core_question",
+      "title": "MEDIA USAGE: WATCH NEWS ON A PRIVATE TELEVISION BROADCASTER",
+      "text": "(During the recent election campaign, in a typical week, how many days did you:) Watch the news on a private television broadcaster? ..................................................................",
+      "notes": "If necessary, you may include in the question named examples of commercial television broadcasters for your country and election. For example: \"Watch the news on a private television broadcaster such as [BROADCASTER 1] or [BROADCASTER 2]?\" For the purpose of this question, \"private broadcasters\" are commercial broadcasters run by private companies and funded by advertisement and/or subscription revenues. Collaborators can use either the term \"private television broadcaster\" or \"commercial television broadcaster\" in the question text - whichever is likely to be most understood by respondents in your data collection. To clarify the meaning of this category to respondents, please refer to the names of those private television broadcasters in your country that are the most important ones among private broadcasters as sources of news about national elections. If your media system has distinct private national, regional and/or local broadcasters please refer to those that are the most important ones as sources of news about national elections. Please note that what counts for this question is the broadcaster as source of news, regardless of whether its newscasts are viewed on television sets, online, or via apps. ..................................................................",
+      "help_text": "At their discretion, the interviewer may use the optional phrase (the phrase which is in parentheses) if they perceive it would be helpful to the respondent. Interviewer instruction: If the respondent says 'every day' please ask them for a number of days. ..................................................................",
+      "response_options": [
+        {
+          "code": "0",
+          "label": "NONE / ZERO DAYS"
+        },
+        {
+          "code": "1",
+          "label": "ONE DAY"
+        },
+        {
+          "code": "2",
+          "label": "TWO DAYS"
+        },
+        {
+          "code": "3",
+          "label": "THREE DAYS"
+        },
+        {
+          "code": "4",
+          "label": "FOUR DAYS"
+        },
+        {
+          "code": "5",
+          "label": "FIVE DAYS"
+        },
+        {
+          "code": "6",
+          "label": "SIX DAYS"
+        },
+        {
+          "code": "7",
+          "label": "SEVEN DAYS"
+        },
+        {
+          "code": "97",
+          "label": "VOLUNTEERED: REFUSED"
+        },
+        {
+          "code": "98",
+          "label": "VOLUNTEERED: DON'T KNOW"
+        },
+        {
+          "code": "99",
+          "label": "MISSING"
+        }
+      ],
+      "missing_codes": [
+        "97",
+        "98",
+        "99"
+      ],
+      "target_variables": [
+        "F3002_2"
+      ],
+      "source_line": 394
+    },
+    {
+      "item_id": "Q02c",
+      "normalized_id": "Q02C",
+      "aliases": [
+        "Q2c",
+        "Q02C"
+      ],
+      "section": "cses_module",
+      "item_type": "core_question",
+      "title": "MEDIA USAGE: LISTEN TO THE NEWS ON RADIO",
+      "text": "(During the recent election campaign, in a typical week, how many days did you:) Listen to the news on the radio? ..................................................................",
+      "notes": "",
+      "help_text": "At their discretion, the interviewer may use the optional phrase (the phrase which is in parentheses) if they perceive it would be helpful to the respondent. Interviewer instruction: If the respondent says 'every day' please ask them for a number of days. ..................................................................",
+      "response_options": [
+        {
+          "code": "0",
+          "label": "NONE / ZERO DAYS"
+        },
+        {
+          "code": "1",
+          "label": "ONE DAY"
+        },
+        {
+          "code": "2",
+          "label": "TWO DAYS"
+        },
+        {
+          "code": "3",
+          "label": "THREE DAYS"
+        },
+        {
+          "code": "4",
+          "label": "FOUR DAYS"
+        },
+        {
+          "code": "5",
+          "label": "FIVE DAYS"
+        },
+        {
+          "code": "6",
+          "label": "SIX DAYS"
+        },
+        {
+          "code": "7",
+          "label": "SEVEN DAYS"
+        },
+        {
+          "code": "97",
+          "label": "VOLUNTEERED: REFUSED"
+        },
+        {
+          "code": "98",
+          "label": "VOLUNTEERED: DON'T KNOW"
+        },
+        {
+          "code": "99",
+          "label": "MISSING"
+        }
+      ],
+      "missing_codes": [
+        "97",
+        "98",
+        "99"
+      ],
+      "target_variables": [
+        "F3002_3"
+      ],
+      "source_line": 456
+    },
+    {
+      "item_id": "Q02d",
+      "normalized_id": "Q02D",
+      "aliases": [
+        "Q02D",
+        "Q2d"
+      ],
+      "section": "cses_module",
+      "item_type": "core_question",
+      "title": "MEDIA USAGE: READ NEWSPAPERS",
+      "text": "(During the recent election campaign, in a typical week, how many days did you:) Read newspapers, regardless of whether you read them in print or online? ..................................................................",
+      "notes": "",
+      "help_text": "At their discretion, the interviewer may use the optional phrase (the phrase which is in parentheses) if they perceive it would be helpful to the respondent. Interviewer instruction: If the respondent says 'every day' please ask them for a number of days. ..................................................................",
+      "response_options": [
+        {
+          "code": "0",
+          "label": "NONE / ZERO DAYS"
+        },
+        {
+          "code": "1",
+          "label": "ONE DAY"
+        },
+        {
+          "code": "2",
+          "label": "TWO DAYS"
+        },
+        {
+          "code": "3",
+          "label": "THREE DAYS"
+        },
+        {
+          "code": "4",
+          "label": "FOUR DAYS"
+        },
+        {
+          "code": "5",
+          "label": "FIVE DAYS"
+        },
+        {
+          "code": "6",
+          "label": "SIX DAYS"
+        },
+        {
+          "code": "7",
+          "label": "SEVEN DAYS"
+        },
+        {
+          "code": "97",
+          "label": "VOLUNTEERED: REFUSED"
+        },
+        {
+          "code": "98",
+          "label": "VOLUNTEERED: DON'T KNOW"
+        },
+        {
+          "code": "99",
+          "label": "MISSING"
+        }
+      ],
+      "missing_codes": [
+        "97",
+        "98",
+        "99"
+      ],
+      "target_variables": [
+        "F3002_4"
+      ],
+      "source_line": 489
+    },
+    {
+      "item_id": "Q02e",
+      "normalized_id": "Q02E",
+      "aliases": [
+        "Q2e",
+        "Q02E"
+      ],
+      "section": "cses_module",
+      "item_type": "core_question",
+      "title": "MEDIA USAGE: ONLINE NEWS SITES",
+      "text": "(During the recent election campaign, in a typical week, how many days did you:) Visit online news sites? ..................................................................",
+      "notes": "",
+      "help_text": "At their discretion, the interviewer may use the optional phrase (the phrase which is in parentheses) if they perceive it would be helpful to the respondent. Interviewer instruction: If the respondent says 'every day' please ask them for a number of days. ..................................................................",
+      "response_options": [
+        {
+          "code": "0",
+          "label": "NONE / ZERO DAYS"
+        },
+        {
+          "code": "1",
+          "label": "ONE DAY"
+        },
+        {
+          "code": "2",
+          "label": "TWO DAYS"
+        },
+        {
+          "code": "3",
+          "label": "THREE DAYS"
+        },
+        {
+          "code": "4",
+          "label": "FOUR DAYS"
+        },
+        {
+          "code": "5",
+          "label": "FIVE DAYS"
+        },
+        {
+          "code": "6",
+          "label": "SIX DAYS"
+        },
+        {
+          "code": "7",
+          "label": "SEVEN DAYS"
+        },
+        {
+          "code": "97",
+          "label": "VOLUNTEERED: REFUSED"
+        },
+        {
+          "code": "98",
+          "label": "VOLUNTEERED: DON'T KNOW"
+        },
+        {
+          "code": "99",
+          "label": "MISSING"
+        }
+      ],
+      "missing_codes": [
+        "97",
+        "98",
+        "99"
+      ],
+      "target_variables": [
+        "F3002_5"
+      ],
+      "source_line": 523
+    },
+    {
+      "item_id": "Q02f",
+      "normalized_id": "Q02F",
+      "aliases": [
+        "Q2f",
+        "Q02F"
+      ],
+      "section": "cses_module",
+      "item_type": "core_question",
+      "title": "MEDIA USAGE: SOCIAL MEDIA",
+      "text": "During the recent election campaign, in a typical week, how many days did you: Use social media such as Facebook, Twitter, or Whatsapp to follow news about parties and candidates? ..................................................................",
+      "notes": "The social media examples in the question text should be changed to the most common social media platforms in the country at the time of the election. ..................................................................",
+      "help_text": "Interviewer instruction: If the respondent says 'every day' please ask them for a number of days. ..................................................................",
+      "response_options": [
+        {
+          "code": "0",
+          "label": "NONE / ZERO DAYS -> GO TO QUESTION Q03"
+        },
+        {
+          "code": "1",
+          "label": "ONE DAY -> GO TO QUESTION Q03"
+        },
+        {
+          "code": "2",
+          "label": "TWO DAYS -> GO TO QUESTION Q03"
+        },
+        {
+          "code": "3",
+          "label": "THREE DAYS -> GO TO QUESTION Q03"
+        },
+        {
+          "code": "4",
+          "label": "FOUR DAYS -> GO TO QUESTION Q03"
+        },
+        {
+          "code": "5",
+          "label": "FIVE DAYS -> GO TO QUESTION Q03"
+        },
+        {
+          "code": "6",
+          "label": "SIX DAYS -> GO TO QUESTION Q03"
+        },
+        {
+          "code": "7",
+          "label": "SEVEN DAYS"
+        },
+        {
+          "code": "97",
+          "label": "VOLUNTEERED: REFUSED -> GO TO QUESTION Q03"
+        },
+        {
+          "code": "98",
+          "label": "VOLUNTEERED: DON'T KNOW -> GO TO QUESTION Q03"
+        },
+        {
+          "code": "99",
+          "label": "MISSING -> GO TO QUESTION Q03"
+        }
+      ],
+      "missing_codes": [
+        "97",
+        "98",
+        "99"
+      ],
+      "target_variables": [
+        "F3002_6_1"
+      ],
+      "source_line": 556
+    },
+    {
+      "item_id": "Q02g",
+      "normalized_id": "Q02G",
+      "aliases": [
+        "Q2g",
+        "Q02G"
+      ],
+      "section": "cses_module",
+      "item_type": "core_question",
+      "title": "MEDIA USAGE: SOCIAL MEDIA - PER DAY",
+      "text": "And how often during a typical day did you use social media such as Facebook, Twitter, or Whatsapp to follow news about parties and candidates - only about once per day, several times per day, or at least ten times per day? ..................................................................",
+      "notes": "The social media examples in the question text should be changed to the most common social media platforms in the country at the time of the election. This question should be asked only of respondents who answered \"7. SEVEN DAYS\" in the previous question. ..................................................................",
+      "help_text": "",
+      "response_options": [
+        {
+          "code": "1",
+          "label": "ONLY ABOUT ONCE PER DAY"
+        },
+        {
+          "code": "2",
+          "label": "SEVERAL TIMES PER DAY"
+        },
+        {
+          "code": "3",
+          "label": "AT LEAST TEN TIMES PER DAY"
+        },
+        {
+          "code": "7",
+          "label": "VOLUNTEERED: REFUSED"
+        },
+        {
+          "code": "8",
+          "label": "VOLUNTEERED: DON'T KNOW"
+        },
+        {
+          "code": "9",
+          "label": "MISSING"
+        }
+      ],
+      "missing_codes": [
+        "7",
+        "8",
+        "9"
+      ],
+      "target_variables": [
+        "F3002_6_2"
+      ],
+      "source_line": 591
+    },
+    {
+      "item_id": "Q03",
+      "normalized_id": "Q03",
+      "aliases": [
+        "Q3"
+      ],
+      "section": "cses_module",
+      "item_type": "core_question",
+      "title": "INTERNAL EFFICACY",
+      "text": "Please tell me whether you strongly agree, somewhat agree, neither agree nor disagree, somewhat disagree, or strongly disagree with each of the following statements: You feel you understand the most important political issues of this country. ..................................................................",
+      "notes": "",
+      "help_text": "",
+      "response_options": [
+        {
+          "code": "1",
+          "label": "STRONGLY AGREE"
+        },
+        {
+          "code": "2",
+          "label": "SOMEWHAT AGREE"
+        },
+        {
+          "code": "3",
+          "label": "NEITHER AGREE NOR DISAGREE"
+        },
+        {
+          "code": "4",
+          "label": "SOMEWHAT DISAGREE"
+        },
+        {
+          "code": "5",
+          "label": "STRONGLY DISAGREE"
+        },
+        {
+          "code": "7",
+          "label": "VOLUNTEERED: REFUSED"
+        },
+        {
+          "code": "8",
+          "label": "VOLUNTEERED: DON'T KNOW"
+        },
+        {
+          "code": "9",
+          "label": "MISSING"
+        }
+      ],
+      "missing_codes": [
+        "7",
+        "8",
+        "9"
+      ],
+      "target_variables": [
+        "F3003"
+      ],
+      "source_line": 619
+    },
+    {
+      "item_id": "Q04a",
+      "normalized_id": "Q04A",
+      "aliases": [
+        "Q04A",
+        "Q4a"
+      ],
+      "section": "cses_module",
+      "item_type": "core_question",
+      "title": "TRUST AND SUPPORT FOR DEMOCRACY: PREFERABLE",
+      "text": "(Please tell me whether you strongly agree, somewhat agree, neither agree nor disagree, somewhat disagree or strongly disagree with each of the following statements:) Democracy is always and under all circumstances preferable to any other kind of government. ..................................................................",
+      "notes": "If possible, collaborators should randomize the order in which the four questions are asked within this (Q04) battery. ..................................................................",
+      "help_text": "At their discretion, the interviewer may use the optional phrase (the phrase which is in parentheses) if they perceive it would be helpful to the respondent in remembering the possible answer choices. ..................................................................",
+      "response_options": [
+        {
+          "code": "1",
+          "label": "STRONGLY AGREE"
+        },
+        {
+          "code": "2",
+          "label": "SOMEWHAT AGREE"
+        },
+        {
+          "code": "3",
+          "label": "NEITHER AGREE NOR DISAGREE"
+        },
+        {
+          "code": "4",
+          "label": "SOMEWHAT DISAGREE"
+        },
+        {
+          "code": "5",
+          "label": "STRONGLY DISAGREE"
+        },
+        {
+          "code": "7",
+          "label": "VOLUNTEERED: REFUSED"
+        },
+        {
+          "code": "8",
+          "label": "VOLUNTEERED: DON'T KNOW"
+        },
+        {
+          "code": "9",
+          "label": "MISSING"
+        }
+      ],
+      "missing_codes": [
+        "7",
+        "8",
+        "9"
+      ],
+      "target_variables": [
+        "F3004_1"
+      ],
+      "source_line": 643
+    },
+    {
+      "item_id": "Q04b",
+      "normalized_id": "Q04B",
+      "aliases": [
+        "Q04B",
+        "Q4b"
+      ],
+      "section": "cses_module",
+      "item_type": "core_question",
+      "title": "TRUST AND SUPPORT FOR DEMOCRACY: COURTS",
+      "text": "(Please tell me whether you strongly agree, somewhat agree, neither agree nor disagree, somewhat disagree or strongly disagree with each of the following statements:) The courts should be able to stop the government acting beyond its authority. ..................................................................",
+      "notes": "If possible, collaborators should randomize the order in which the four questions are asked within this (Q04) battery. ..................................................................",
+      "help_text": "At their discretion, the interviewer may use the optional phrase (the phrase which is in parentheses) if they perceive it would be helpful to the respondent in remembering the possible answer choices. ..................................................................",
+      "response_options": [
+        {
+          "code": "1",
+          "label": "STRONGLY AGREE"
+        },
+        {
+          "code": "2",
+          "label": "SOMEWHAT AGREE"
+        },
+        {
+          "code": "3",
+          "label": "NEITHER AGREE NOR DISAGREE"
+        },
+        {
+          "code": "4",
+          "label": "SOMEWHAT DISAGREE"
+        },
+        {
+          "code": "5",
+          "label": "STRONGLY DISAGREE"
+        },
+        {
+          "code": "7",
+          "label": "VOLUNTEERED: REFUSED"
+        },
+        {
+          "code": "8",
+          "label": "VOLUNTEERED: DON'T KNOW"
+        },
+        {
+          "code": "9",
+          "label": "MISSING"
+        }
+      ],
+      "missing_codes": [
+        "7",
+        "8",
+        "9"
+      ],
+      "target_variables": [
+        "F3004_2"
+      ],
+      "source_line": 677
+    },
+    {
+      "item_id": "Q04c",
+      "normalized_id": "Q04C",
+      "aliases": [
+        "Q4c",
+        "Q04C"
+      ],
+      "section": "cses_module",
+      "item_type": "party_vote_item",
+      "title": "TRUST AND SUPPORT FOR DEMOCRACY: STRONG LEADER",
+      "text": "(Please tell me whether you strongly agree, somewhat agree, neither agree nor disagree, somewhat disagree or strongly disagree with each of the following statements:) Having a strong leader in government is good for COUNTRY even if the leader bends the rules to get things done. ..................................................................",
+      "notes": "If possible, collaborators should randomize the order in which the four questions are asked within this (Q04) battery. ..................................................................",
+      "help_text": "At their discretion, the interviewer may use the optional phrase (the phrase which is in parentheses) if they perceive it would be helpful to the respondent in remembering the possible answer choices. ..................................................................",
+      "response_options": [
+        {
+          "code": "1",
+          "label": "STRONGLY AGREE"
+        },
+        {
+          "code": "2",
+          "label": "SOMEWHAT AGREE"
+        },
+        {
+          "code": "3",
+          "label": "NEITHER AGREE NOR DISAGREE"
+        },
+        {
+          "code": "4",
+          "label": "SOMEWHAT DISAGREE"
+        },
+        {
+          "code": "5",
+          "label": "STRONGLY DISAGREE"
+        },
+        {
+          "code": "7",
+          "label": "VOLUNTEERED: REFUSED"
+        },
+        {
+          "code": "8",
+          "label": "VOLUNTEERED: DON'T KNOW"
+        },
+        {
+          "code": "9",
+          "label": "MISSING"
+        }
+      ],
+      "missing_codes": [
+        "7",
+        "8",
+        "9"
+      ],
+      "target_variables": [
+        "F3004_3"
+      ],
+      "source_line": 711
+    },
+    {
+      "item_id": "Q04d",
+      "normalized_id": "Q04D",
+      "aliases": [
+        "Q04D",
+        "Q4d"
+      ],
+      "section": "cses_module",
+      "item_type": "core_question",
+      "title": "TRUST AND SUPPORT FOR DEMOCRACY: REPRESENTATION OF WOMEN",
+      "text": "(Please tell me whether you strongly agree, somewhat agree, neither agree nor disagree, somewhat disagree or strongly disagree with each of the following statements:) Policies to increase the representation of women in politics have gone too far. ..................................................................",
+      "notes": "If possible, collaborators should randomize the order in which the four questions are asked within this (Q04) battery. ..................................................................",
+      "help_text": "At their discretion, the interviewer may use the optional phrase (the phrase which is in parentheses) if they perceive it would be helpful to the respondent in remembering the possible answer choices. ..................................................................",
+      "response_options": [
+        {
+          "code": "1",
+          "label": "STRONGLY AGREE"
+        },
+        {
+          "code": "2",
+          "label": "SOMEWHAT AGREE"
+        },
+        {
+          "code": "3",
+          "label": "NEITHER AGREE NOR DISAGREE"
+        },
+        {
+          "code": "4",
+          "label": "SOMEWHAT DISAGREE"
+        },
+        {
+          "code": "5",
+          "label": "STRONGLY DISAGREE"
+        },
+        {
+          "code": "7",
+          "label": "VOLUNTEERED: REFUSED"
+        },
+        {
+          "code": "8",
+          "label": "VOLUNTEERED: DON'T KNOW"
+        },
+        {
+          "code": "9",
+          "label": "MISSING"
+        }
+      ],
+      "missing_codes": [
+        "7",
+        "8",
+        "9"
+      ],
+      "target_variables": [
+        "F3004_4"
+      ],
+      "source_line": 745
+    },
+    {
+      "item_id": "Q05a",
+      "normalized_id": "Q05A",
+      "aliases": [
+        "Q05A",
+        "Q5a"
+      ],
+      "section": "cses_module",
+      "item_type": "party_vote_item",
+      "title": "COUNTRY BETTER RUN: BUSINESS LEADERS",
+      "text": "(Please tell me whether you strongly agree, somewhat agree, neither agree nor disagree, somewhat disagree or strongly disagree with each of the following statements:) Instead of elected politicians, the country would be run better if important political decisions were left up to: Successful business leaders. ..................................................................",
+      "notes": "If possible, collaborators should randomize the order in which the three questions are asked within this (Q05) battery. ..................................................................",
+      "help_text": "At their discretion, the interviewer may use the optional phrase (the phrase which is in parentheses) if they perceive it would be helpful to the respondent in remembering the possible answer choices. ..................................................................",
+      "response_options": [
+        {
+          "code": "1",
+          "label": "STRONGLY AGREE"
+        },
+        {
+          "code": "2",
+          "label": "SOMEWHAT AGREE"
+        },
+        {
+          "code": "3",
+          "label": "NEITHER AGREE NOR DISAGREE"
+        },
+        {
+          "code": "4",
+          "label": "SOMEWHAT DISAGREE"
+        },
+        {
+          "code": "5",
+          "label": "STRONGLY DISAGREE"
+        },
+        {
+          "code": "7",
+          "label": "VOLUNTEERED: REFUSED"
+        },
+        {
+          "code": "8",
+          "label": "VOLUNTEERED: DON'T KNOW"
+        },
+        {
+          "code": "9",
+          "label": "MISSING"
+        }
+      ],
+      "missing_codes": [
+        "7",
+        "8",
+        "9"
+      ],
+      "target_variables": [
+        "F3005_1"
+      ],
+      "source_line": 779
+    },
+    {
+      "item_id": "Q05b",
+      "normalized_id": "Q05B",
+      "aliases": [
+        "Q05B",
+        "Q5b"
+      ],
+      "section": "cses_module",
+      "item_type": "core_question",
+      "title": "COUNTRY BETTER RUN: INDEPENDENT EXPERTS",
+      "text": "(Please tell me whether you strongly agree, somewhat agree, neither agree nor disagree, somewhat disagree or strongly disagree with each of the following statements:) Instead of elected politicians, the country would be run better if important political decisions were left up to: Independent experts. ..................................................................",
+      "notes": "If possible, collaborators should randomize the order in which the three questions are asked within this (Q05) battery. ..................................................................",
+      "help_text": "At their discretion, the interviewer may use the optional phrase (the phrase which is in parentheses) if they perceive it would be helpful to the respondent in remembering the possible answer choices. ..................................................................",
+      "response_options": [
+        {
+          "code": "1",
+          "label": "STRONGLY AGREE"
+        },
+        {
+          "code": "2",
+          "label": "SOMEWHAT AGREE"
+        },
+        {
+          "code": "3",
+          "label": "NEITHER AGREE NOR DISAGREE"
+        },
+        {
+          "code": "4",
+          "label": "SOMEWHAT DISAGREE"
+        },
+        {
+          "code": "5",
+          "label": "STRONGLY DISAGREE"
+        },
+        {
+          "code": "7",
+          "label": "VOLUNTEERED: REFUSED"
+        },
+        {
+          "code": "8",
+          "label": "VOLUNTEERED: DON'T KNOW"
+        },
+        {
+          "code": "9",
+          "label": "MISSING"
+        }
+      ],
+      "missing_codes": [
+        "7",
+        "8",
+        "9"
+      ],
+      "target_variables": [
+        "F3005_2"
+      ],
+      "source_line": 815
+    },
+    {
+      "item_id": "Q05c",
+      "normalized_id": "Q05C",
+      "aliases": [
+        "Q5c",
+        "Q05C"
+      ],
+      "section": "cses_module",
+      "item_type": "core_question",
+      "title": "COUNTRY BETTER RUN: CITIZENS IN REFERENDUMS",
+      "text": "(Please tell me whether you strongly agree, somewhat agree, neither agree nor disagree, somewhat disagree or strongly disagree with each of the following statements:) Instead of elected politicians, the country would be run better if important political decisions were left up to: Citizens in referendums. ..................................................................",
+      "notes": "If possible, collaborators should randomize the order in which the three questions are asked within this (Q05) battery. ..................................................................",
+      "help_text": "At their discretion, the interviewer may use the optional phrase (the phrase which is in parentheses) if they perceive it would be helpful to the respondent in remembering the possible answer choices. ..................................................................",
+      "response_options": [
+        {
+          "code": "1",
+          "label": "STRONGLY AGREE"
+        },
+        {
+          "code": "2",
+          "label": "SOMEWHAT AGREE"
+        },
+        {
+          "code": "3",
+          "label": "NEITHER AGREE NOR DISAGREE"
+        },
+        {
+          "code": "4",
+          "label": "SOMEWHAT DISAGREE"
+        },
+        {
+          "code": "5",
+          "label": "STRONGLY DISAGREE"
+        },
+        {
+          "code": "7",
+          "label": "VOLUNTEERED: REFUSED"
+        },
+        {
+          "code": "8",
+          "label": "VOLUNTEERED: DON'T KNOW"
+        },
+        {
+          "code": "9",
+          "label": "MISSING"
+        }
+      ],
+      "missing_codes": [
+        "7",
+        "8",
+        "9"
+      ],
+      "target_variables": [
+        "F3005_3"
+      ],
+      "source_line": 851
+    },
+    {
+      "item_id": "Q06",
+      "normalized_id": "Q06",
+      "aliases": [
+        "Q6"
+      ],
+      "section": "cses_module",
+      "item_type": "core_question",
+      "title": "HOW DEMOCRATIC IS YOUR COUNTRY",
+      "text": "On a scale of 0 to 10, where 0 means [COUNTRY] is not at all democratic, and 10 means [COUNTRY] is completely democratic, what position would you choose? .................................................................. 01. 02. 03. 04. 05. 06. 07. 08. 09.",
+      "notes": "",
+      "help_text": "",
+      "response_options": [
+        {
+          "code": "00",
+          "label": "NOT AT ALL DEMOCRATIC"
+        },
+        {
+          "code": "10",
+          "label": "COMPLETELY DEMOCRATIC"
+        },
+        {
+          "code": "97",
+          "label": "VOLUNTEERED: REFUSED"
+        },
+        {
+          "code": "98",
+          "label": "VOLUNTEERED: DON'T KNOW"
+        },
+        {
+          "code": "99",
+          "label": "MISSING"
+        }
+      ],
+      "missing_codes": [
+        "97",
+        "98",
+        "99"
+      ],
+      "target_variables": [
+        "F3006"
+      ],
+      "source_line": 887
+    },
+    {
+      "item_id": "Q07a",
+      "normalized_id": "Q07A",
+      "aliases": [
+        "Q07A",
+        "Q7a"
+      ],
+      "section": "cses_module",
+      "item_type": "core_question",
+      "title": "TRUST IN: PARLIAMENT",
+      "text": "We would now like to ask you a question about how much trust you have in certain institutions and groups. For each of the following institutions, please tell me if you trust it a lot, trust it somewhat, do not trust it very much, or do not trust it at all? How about: Parliament? Do you trust it a lot, trust it somewhat, do not trust it very much, or do not trust it at all? ..................................................................",
+      "notes": "If possible, collaborators should randomize the order in which the seven questions are asked within this (Q07) battery. In the question text for this question, please refer to the legislative body in your country, which could be Parliament (in parliamentary systems) or Congress (in non-parliamentary systems). ..................................................................",
+      "help_text": "",
+      "response_options": [
+        {
+          "code": "1",
+          "label": "TRUST A LOT"
+        },
+        {
+          "code": "2",
+          "label": "TRUST SOMEWHAT"
+        },
+        {
+          "code": "3",
+          "label": "DO NOT TRUST VERY MUCH"
+        },
+        {
+          "code": "4",
+          "label": "DO NOT TRUST AT ALL"
+        },
+        {
+          "code": "7",
+          "label": "VOLUNTEERED: REFUSED"
+        },
+        {
+          "code": "8",
+          "label": "VOLUNTEERED: DON'T KNOW"
+        },
+        {
+          "code": "9",
+          "label": "MISSING"
+        }
+      ],
+      "missing_codes": [
+        "7",
+        "8",
+        "9"
+      ],
+      "target_variables": [
+        "F3007_1"
+      ],
+      "source_line": 914
+    },
+    {
+      "item_id": "Q07b",
+      "normalized_id": "Q07B",
+      "aliases": [
+        "Q07B",
+        "Q7b"
+      ],
+      "section": "cses_module",
+      "item_type": "core_question",
+      "title": "TRUST IN: GOVERNMENT",
+      "text": "(How about:) The government? (Do you trust it a lot, trust it somewhat, do not trust it very much, or do not trust it at all?) ..................................................................",
+      "notes": "If possible, collaborators should randomize the order in which the seven questions are asked within this (Q07) battery. ..................................................................",
+      "help_text": "At their discretion, the interviewer may use the optional phrase (the phrase which is in parentheses) if they perceive it would be helpful to the respondent in remembering the possible answer choices. ..................................................................",
+      "response_options": [
+        {
+          "code": "1",
+          "label": "TRUST A LOT"
+        },
+        {
+          "code": "2",
+          "label": "TRUST SOMEWHAT"
+        },
+        {
+          "code": "3",
+          "label": "DO NOT TRUST VERY MUCH"
+        },
+        {
+          "code": "4",
+          "label": "DO NOT TRUST AT ALL"
+        },
+        {
+          "code": "7",
+          "label": "VOLUNTEERED: REFUSED"
+        },
+        {
+          "code": "8",
+          "label": "VOLUNTEERED: DON'T KNOW"
+        },
+        {
+          "code": "9",
+          "label": "MISSING"
+        }
+      ],
+      "missing_codes": [
+        "7",
+        "8",
+        "9"
+      ],
+      "target_variables": [
+        "F3007_2"
+      ],
+      "source_line": 951
+    },
+    {
+      "item_id": "Q07c",
+      "normalized_id": "Q07C",
+      "aliases": [
+        "Q07C",
+        "Q7c"
+      ],
+      "section": "cses_module",
+      "item_type": "core_question",
+      "title": "TRUST IN: JUDICIARY",
+      "text": "(How about:) The judiciary? (Do you trust it a lot, trust it somewhat, do not trust it very much, or do not trust it at all?) ..................................................................",
+      "notes": "If possible, collaborators should randomize the order in which the seven questions are asked within this (Q07) battery. ..................................................................",
+      "help_text": "At their discretion, the interviewer may use the optional phrase (the phrase which is in parentheses) if they perceive it would be helpful to the respondent in remembering the possible answer choices. ..................................................................",
+      "response_options": [
+        {
+          "code": "1",
+          "label": "TRUST A LOT"
+        },
+        {
+          "code": "2",
+          "label": "TRUST SOMEWHAT"
+        },
+        {
+          "code": "3",
+          "label": "DO NOT TRUST VERY MUCH"
+        },
+        {
+          "code": "4",
+          "label": "DO NOT TRUST AT ALL"
+        },
+        {
+          "code": "7",
+          "label": "VOLUNTEERED: REFUSED"
+        },
+        {
+          "code": "8",
+          "label": "VOLUNTEERED: DON'T KNOW"
+        },
+        {
+          "code": "9",
+          "label": "MISSING"
+        }
+      ],
+      "missing_codes": [
+        "7",
+        "8",
+        "9"
+      ],
+      "target_variables": [
+        "F3007_3"
+      ],
+      "source_line": 984
+    },
+    {
+      "item_id": "Q07d",
+      "normalized_id": "Q07D",
+      "aliases": [
+        "Q07D",
+        "Q7d"
+      ],
+      "section": "cses_module",
+      "item_type": "core_question",
+      "title": "TRUST IN: SCIENTISTS",
+      "text": "(How about:) Scientists? (Do you trust them a lot, trust them somewhat, do not trust them very much, or do not trust them at all?) ..................................................................",
+      "notes": "If possible, collaborators should randomize the order in which the seven questions are asked within this (Q07) battery. ..................................................................",
+      "help_text": "At their discretion, the interviewer may use the optional phrase (the phrase which is in parentheses) if they perceive it would be helpful to the respondent in remembering the possible answer choices. ..................................................................",
+      "response_options": [
+        {
+          "code": "1",
+          "label": "TRUST A LOT"
+        },
+        {
+          "code": "2",
+          "label": "TRUST SOMEWHAT"
+        },
+        {
+          "code": "3",
+          "label": "DO NOT TRUST VERY MUCH"
+        },
+        {
+          "code": "4",
+          "label": "DO NOT TRUST AT ALL"
+        },
+        {
+          "code": "7",
+          "label": "VOLUNTEERED: REFUSED"
+        },
+        {
+          "code": "8",
+          "label": "VOLUNTEERED: DON'T KNOW"
+        },
+        {
+          "code": "9",
+          "label": "MISSING"
+        }
+      ],
+      "missing_codes": [
+        "7",
+        "8",
+        "9"
+      ],
+      "target_variables": [
+        "F3007_4"
+      ],
+      "source_line": 1017
+    },
+    {
+      "item_id": "Q07e",
+      "normalized_id": "Q07E",
+      "aliases": [
+        "Q07E",
+        "Q7e"
+      ],
+      "section": "cses_module",
+      "item_type": "core_question",
+      "title": "TRUST IN: POLITICAL PARTIES",
+      "text": "(How about:) The political parties? (Do you trust them a lot, trust them somewhat, do not trust them very much, or do not trust them at all?) ..................................................................",
+      "notes": "If possible, collaborators should randomize the order in which the seven questions are asked within this (Q07) battery. ..................................................................",
+      "help_text": "At their discretion, the interviewer may use the optional phrase (the phrase which is in parentheses) if they perceive it would be helpful to the respondent in remembering the possible answer choices. ..................................................................",
+      "response_options": [
+        {
+          "code": "1",
+          "label": "TRUST A LOT"
+        },
+        {
+          "code": "2",
+          "label": "TRUST SOMEWHAT"
+        },
+        {
+          "code": "3",
+          "label": "DO NOT TRUST VERY MUCH"
+        },
+        {
+          "code": "4",
+          "label": "DO NOT TRUST AT ALL"
+        },
+        {
+          "code": "7",
+          "label": "VOLUNTEERED: REFUSED"
+        },
+        {
+          "code": "8",
+          "label": "VOLUNTEERED: DON'T KNOW"
+        },
+        {
+          "code": "9",
+          "label": "MISSING"
+        }
+      ],
+      "missing_codes": [
+        "7",
+        "8",
+        "9"
+      ],
+      "target_variables": [
+        "F3007_5"
+      ],
+      "source_line": 1050
+    },
+    {
+      "item_id": "Q07f",
+      "normalized_id": "Q07F",
+      "aliases": [
+        "Q7f",
+        "Q07F"
+      ],
+      "section": "cses_module",
+      "item_type": "core_question",
+      "title": "TRUST IN: TRADITIONAL MEDIA",
+      "text": "(How about:) Traditional news media, such as newspapers, television or radio? (Do you trust them a lot, trust them somewhat, do not trust them very much, or do not trust them at all?) ..................................................................",
+      "notes": "If possible, collaborators should randomize the order in which the seven questions are asked within this (Q07) battery. ..................................................................",
+      "help_text": "At their discretion, the interviewer may use the optional phrase (the phrase which is in parentheses) if they perceive it would be helpful to the respondent in remembering the possible answer choices. ..................................................................",
+      "response_options": [
+        {
+          "code": "1",
+          "label": "TRUST A LOT"
+        },
+        {
+          "code": "2",
+          "label": "TRUST SOMEWHAT"
+        },
+        {
+          "code": "3",
+          "label": "DO NOT TRUST VERY MUCH"
+        },
+        {
+          "code": "4",
+          "label": "DO NOT TRUST AT ALL"
+        },
+        {
+          "code": "7",
+          "label": "VOLUNTEERED: REFUSED"
+        },
+        {
+          "code": "8",
+          "label": "VOLUNTEERED: DON'T KNOW"
+        },
+        {
+          "code": "9",
+          "label": "MISSING"
+        }
+      ],
+      "missing_codes": [
+        "7",
+        "8",
+        "9"
+      ],
+      "target_variables": [
+        "F3007_6"
+      ],
+      "source_line": 1083
+    },
+    {
+      "item_id": "Q07g",
+      "normalized_id": "Q07G",
+      "aliases": [
+        "Q7g",
+        "Q07G"
+      ],
+      "section": "cses_module",
+      "item_type": "core_question",
+      "title": "TRUST IN: SOCIAL MEDIA",
+      "text": "(How about:) Social media, such as Facebook, Twitter, or Whatsapp? (Do you trust them a lot, trust them somewhat, do not trust them very much, or do not trust them at all?) ..................................................................",
+      "notes": "If possible, collaborators should randomize the order in which the seven questions are asked within this (Q07) battery. The social media examples in the question text should be changed to the most common social media platforms in the country at the time of the election. ..................................................................",
+      "help_text": "At their discretion, the interviewer may use the optional phrase (the phrase which is in parentheses) if they perceive it would be helpful to the respondent in remembering the possible answer choices. ..................................................................",
+      "response_options": [
+        {
+          "code": "1",
+          "label": "TRUST A LOT"
+        },
+        {
+          "code": "2",
+          "label": "TRUST SOMEWHAT"
+        },
+        {
+          "code": "3",
+          "label": "DO NOT TRUST VERY MUCH"
+        },
+        {
+          "code": "4",
+          "label": "DO NOT TRUST AT ALL"
+        },
+        {
+          "code": "7",
+          "label": "VOLUNTEERED: REFUSED"
+        },
+        {
+          "code": "8",
+          "label": "VOLUNTEERED: DON'T KNOW"
+        },
+        {
+          "code": "9",
+          "label": "MISSING"
+        }
+      ],
+      "missing_codes": [
+        "7",
+        "8",
+        "9"
+      ],
+      "target_variables": [
+        "F3007_7"
+      ],
+      "source_line": 1116
+    },
+    {
+      "item_id": "Q08a",
+      "normalized_id": "Q08A",
+      "aliases": [
+        "Q8a",
+        "Q08A"
+      ],
+      "section": "cses_module",
+      "item_type": "core_question",
+      "title": "GOVERNMENT PERFORMANCE: GENERAL",
+      "text": "Now thinking about the performance of the [government in [CAPITAL]/president] in general, how good or bad a job do you think the [government/president in [CAPITAL]] did over the past [NUMBER OF YEARS SINCE LAST GOVERNMENT TOOK OFFICE, BEFORE THE CURRENT ELECTION] years? Has [it/he/she] done a very good job? A good job? A bad job? A very bad job? ..................................................................",
+      "notes": "In studies of parliamentary elections, ask about the government. For \"in [CAPITAL]\" substitute the name of the capital of the country where the election was held. In studies of presidential elections, ask about the president. As appropriate, collaborators can instead ask about \"the government of [the incumbent prime minister]\". For example, for a presidential election study in an imaginary country with capital \"XYZ\", where the last election was five years ago and the president prior to the election was female, the question would read: \"Now thinking about the performance of the president in general, how good or bad a job do you think the president in XYZ has done over the past five years? Has she done a very good job? A good job? A bad job? A very bad job?\" When substituting a number for the phrase \"[NUMBER OF YEARS SINCE LAST GOVERNMENT TOOK OFFICE, BEFORE THE CURRENT ELECTION]\" please ignore interim/caretaker governments. ..................................................................",
+      "help_text": "",
+      "response_options": [
+        {
+          "code": "1",
+          "label": "VERY GOOD JOB"
+        },
+        {
+          "code": "2",
+          "label": "GOOD JOB"
+        },
+        {
+          "code": "3",
+          "label": "BAD JOB"
+        },
+        {
+          "code": "4",
+          "label": "VERY BAD JOB"
+        },
+        {
+          "code": "7",
+          "label": "VOLUNTEERED: REFUSED"
+        },
+        {
+          "code": "8",
+          "label": "VOLUNTEERED: DON'T KNOW"
+        },
+        {
+          "code": "9",
+          "label": "MISSING"
+        }
+      ],
+      "missing_codes": [
+        "7",
+        "8",
+        "9"
+      ],
+      "target_variables": [
+        "F3008_1"
+      ],
+      "source_line": 1153
+    },
+    {
+      "item_id": "Q08b",
+      "normalized_id": "Q08B",
+      "aliases": [
+        "Q08B",
+        "Q8b"
+      ],
+      "section": "cses_module",
+      "item_type": "core_question",
+      "title": "GOVERNMENT PERFORMANCE: PANDEMIC",
+      "text": "And how good or bad a job do you think the [government/president in [CAPITAL]] has done over the past [NUMBER OF YEARS SINCE LAST GOVERNMENT TOOK OFFICE, BEFORE THE CURRENT ELECTION] years in handling the consequences of the coronavirus pandemic? A very good job? A good job? A bad job? A very bad job? ..................................................................",
+      "notes": "In studies of parliamentary elections, ask about the government. For \"in [CAPITAL]\" substitute the name of the capital of the country where the election was held. In studies of presidential elections, ask about the president. For example, for a presidential election study in an imaginary country with capital \"XYZ\", where the last election was five years ago and the president prior to the election was female, the question would read: \"Now thinking about the performance of the president in general, how good or bad a job do you think the president in XYZ has done over the past five years? Has she done a very good job? A good job? A bad job? A very bad job?\" When substituting a number for the phrase \"[NUMBER OF YEARS SINCE LAST GOVERNMENT TOOK OFFICE, BEFORE THE CURRENT ELECTION]\" please ignore interim/caretaker governments. ..................................................................",
+      "help_text": "",
+      "response_options": [
+        {
+          "code": "1",
+          "label": "VERY GOOD JOB"
+        },
+        {
+          "code": "2",
+          "label": "GOOD JOB"
+        },
+        {
+          "code": "3",
+          "label": "BAD JOB"
+        },
+        {
+          "code": "4",
+          "label": "VERY BAD JOB"
+        },
+        {
+          "code": "7",
+          "label": "VOLUNTEERED: REFUSED"
+        },
+        {
+          "code": "8",
+          "label": "VOLUNTEERED: DON'T KNOW"
+        },
+        {
+          "code": "9",
+          "label": "MISSING"
+        }
+      ],
+      "missing_codes": [
+        "7",
+        "8",
+        "9"
+      ],
+      "target_variables": [
+        "F3008_2"
+      ],
+      "source_line": 1199
+    },
+    {
+      "item_id": "Q09",
+      "normalized_id": "Q09",
+      "aliases": [
+        "Q9"
+      ],
+      "section": "cses_module",
+      "item_type": "core_question",
+      "title": "STATE OF ECONOMY",
+      "text": "Would you say that over the past twelve months, the state of the economy in [COUNTRY] has gotten much better, gotten somewhat better, stayed about the same, gotten somewhat worse, or gotten much worse? ..................................................................",
+      "notes": "",
+      "help_text": "",
+      "response_options": [
+        {
+          "code": "1",
+          "label": "GOTTEN MUCH BETTER"
+        },
+        {
+          "code": "2",
+          "label": "GOTTEN SOMEWHAT BETTER"
+        },
+        {
+          "code": "3",
+          "label": "STAYED ABOUT THE SAME"
+        },
+        {
+          "code": "4",
+          "label": "GOTTEN SOMEWHAT WORSE"
+        },
+        {
+          "code": "5",
+          "label": "GOTTEN MUCH WORSE"
+        },
+        {
+          "code": "7",
+          "label": "VOLUNTEERED: REFUSED"
+        },
+        {
+          "code": "8",
+          "label": "VOLUNTEERED: DON'T KNOW"
+        },
+        {
+          "code": "9",
+          "label": "MISSING"
+        }
+      ],
+      "missing_codes": [
+        "7",
+        "8",
+        "9"
+      ],
+      "target_variables": [
+        "F3009"
+      ],
+      "source_line": 1241
+    },
+    {
+      "item_id": "Q10P1-a",
+      "normalized_id": "Q10P1A",
+      "aliases": [
+        "Q10P1A",
+        "Q10P1a",
+        "Q10P1_a"
+      ],
+      "section": "cses_module",
+      "item_type": "party_vote_item",
+      "title": "CURRENT PRESIDENTIAL ELECTION [FIRST ROUND]: DID RESPONDENT CAST A BALLOT [IF APPLICABLE]",
+      "text": "",
+      "notes": "For information about how to administer the vote choice items, please refer to the \"COLLABORATOR INSTRUCTIONS FOR THE ADMINISTRATION OF THE CSES QUESTIONNAIRE\" section which is found at the beginning of this questionnaire, paying special attention to Instruction 15. This item should ascertain whether or not the respondent cast a ballot, regardless of whether or not it was valid. .................................................................. [IF APPLICABLE]",
+      "help_text": "",
+      "response_options": [
+        {
+          "code": "1",
+          "label": "RESPONDENT CAST A BALLOT"
+        },
+        {
+          "code": "5",
+          "label": "RESPONDENT DID NOT CAST A BALLOT"
+        },
+        {
+          "code": "6",
+          "label": "VOLUNTEERED: RESPONDENT NOT REGISTERED ON ELECTORAL LISTS"
+        },
+        {
+          "code": "7",
+          "label": "VOLUNTEERED: REFUSED"
+        },
+        {
+          "code": "8",
+          "label": "VOLUNTEERED: DON'T KNOW"
+        },
+        {
+          "code": "9",
+          "label": "MISSING"
+        }
+      ],
+      "missing_codes": [
+        "7",
+        "8",
+        "9"
+      ],
+      "target_variables": [],
+      "source_line": 1263
+    },
+    {
+      "item_id": "Q10P1-b",
+      "normalized_id": "Q10P1B",
+      "aliases": [
+        "Q10P1b",
+        "Q10P1_b",
+        "Q10P1B"
+      ],
+      "section": "cses_module",
+      "item_type": "party_vote_item",
+      "title": "CURRENT PRESIDENTIAL ELECTION [FIRST ROUND]: VOTE CHOICE [IF APPLICABLE]",
+      "text": "",
+      "notes": "For information about how to administer the vote choice items, please refer to the \"COLLABORATOR INSTRUCTIONS FOR THE ADMINISTRATION OF THE CSES QUESTIONNAIRE\" section which is found at the beginning of this questionnaire. This item should report the respondent's vote choice for president. .................................................................. 01-95. [PLEASE PROVIDE PARTY/CANDIDATE CODES]",
+      "help_text": "",
+      "response_options": [
+        {
+          "code": "96",
+          "label": "RESPONDENT CAST INVALID BALLOT"
+        },
+        {
+          "code": "97",
+          "label": "VOLUNTEERED: REFUSED"
+        },
+        {
+          "code": "98",
+          "label": "VOLUNTEERED: DON'T KNOW"
+        },
+        {
+          "code": "99",
+          "label": "MISSING"
+        }
+      ],
+      "missing_codes": [
+        "97",
+        "98",
+        "99"
+      ],
+      "target_variables": [],
+      "source_line": 1290
+    },
+    {
+      "item_id": "Q10P2-a",
+      "normalized_id": "Q10P2A",
+      "aliases": [
+        "Q10P2a",
+        "Q10P2_a",
+        "Q10P2A"
+      ],
+      "section": "cses_module",
+      "item_type": "party_vote_item",
+      "title": "CURRENT PRESIDENTIAL ELECTION [SECOND ROUND]: DID RESPONDENT CAST A BALLOT [IF APPLICABLE]",
+      "text": "",
+      "notes": "If the data collection occurs between rounds in a two round election, this item should ascertain whether or not the respondent intends to cast a ballot in the second round, regardless of whether or not it will be valid. If the data collection occurs after the second round in a two round election, this item should ascertain whether or not the respondent cast a ballot in the second round, regardless of whether or not it was valid. .................................................................. [IF APPLICABLE]",
+      "help_text": "",
+      "response_options": [
+        {
+          "code": "1",
+          "label": "RESPONDENT CAST/WILL CAST A BALLOT"
+        },
+        {
+          "code": "5",
+          "label": "RESPONDENT DID NOT CAST/WILL NOT CAST A BALLOT"
+        },
+        {
+          "code": "6",
+          "label": "VOLUNTEERED: RESPONDENT NOT REGISTERED ON ELECTORAL LISTS"
+        },
+        {
+          "code": "7",
+          "label": "VOLUNTEERED: REFUSED"
+        },
+        {
+          "code": "8",
+          "label": "VOLUNTEERED: DON'T KNOW"
+        },
+        {
+          "code": "9",
+          "label": "MISSING"
+        }
+      ],
+      "missing_codes": [
+        "7",
+        "8",
+        "9"
+      ],
+      "target_variables": [],
+      "source_line": 1314
+    },
+    {
+      "item_id": "Q10P2-b",
+      "normalized_id": "Q10P2B",
+      "aliases": [
+        "Q10P2B",
+        "Q10P2_b",
+        "Q10P2b"
+      ],
+      "section": "cses_module",
+      "item_type": "party_vote_item",
+      "title": "CURRENT PRESIDENTIAL ELECTION [SECOND ROUND]: VOTE CHOICE [IF APPLICABLE]",
+      "text": "",
+      "notes": "If the data collection occurs between rounds in a two round election, this item should report the respondent's vote choice intention for president in the second round. If the data collection occurs after the second round in a two round election, this item should report the respondent's vote choice for president in the second round. .................................................................. 01-95. [PLEASE PROVIDE PARTY/CANDIDATE CODES]",
+      "help_text": "",
+      "response_options": [
+        {
+          "code": "96",
+          "label": "RESPONDENT CAST/WILL CAST INVALID BALLOT"
+        },
+        {
+          "code": "97",
+          "label": "VOLUNTEERED: REFUSED"
+        },
+        {
+          "code": "98",
+          "label": "VOLUNTEERED: DON'T KNOW"
+        },
+        {
+          "code": "99",
+          "label": "MISSING"
+        }
+      ],
+      "missing_codes": [
+        "97",
+        "98",
+        "99"
+      ],
+      "target_variables": [],
+      "source_line": 1341
+    },
+    {
+      "item_id": "Q10LH-a",
+      "normalized_id": "Q10LHA",
+      "aliases": [
+        "Q10LH_a",
+        "Q10LHA",
+        "Q10LHa"
+      ],
+      "section": "cses_module",
+      "item_type": "party_vote_item",
+      "title": "CURRENT LOWER HOUSE ELECTION: DID RESPONDENT CAST A BALLOT [IF APPLICABLE]",
+      "text": "",
+      "notes": "This item should ascertain whether or not the respondent cast a ballot, regardless of whether or not it was valid. .................................................................. [IF APPLICABLE]",
+      "help_text": "",
+      "response_options": [
+        {
+          "code": "1",
+          "label": "RESPONDENT CAST A BALLOT"
+        },
+        {
+          "code": "5",
+          "label": "RESPONDENT DID NOT CAST A BALLOT"
+        },
+        {
+          "code": "6",
+          "label": "VOLUNTEERED: RESPONDENT NOT REGISTERED ON ELECTORAL LISTS"
+        },
+        {
+          "code": "7",
+          "label": "VOLUNTEERED: REFUSED"
+        },
+        {
+          "code": "8",
+          "label": "VOLUNTEERED: DON'T KNOW"
+        },
+        {
+          "code": "9",
+          "label": "MISSING"
+        }
+      ],
+      "missing_codes": [
+        "7",
+        "8",
+        "9"
+      ],
+      "target_variables": [
+        "F3010_LH"
+      ],
+      "source_line": 1364
+    },
+    {
+      "item_id": "Q10LH-b",
+      "normalized_id": "Q10LHB",
+      "aliases": [
+        "Q10LHb",
+        "Q10LH_b",
+        "Q10LHB"
+      ],
+      "section": "cses_module",
+      "item_type": "party_vote_item",
+      "title": "CURRENT LOWER HOUSE ELECTION: VOTE CHOICE - PARTY LIST [IF APPLICABLE]",
+      "text": "",
+      "notes": "If applicable and respondent cast a ballot in the legislative election. This item should report the respondent's vote choice for party list. .................................................................. 01-95. [PLEASE PROVIDE PARTY/CANDIDATE CODES]",
+      "help_text": "",
+      "response_options": [
+        {
+          "code": "96",
+          "label": "RESPONDENT CAST INVALID BALLOT"
+        },
+        {
+          "code": "97",
+          "label": "VOLUNTEERED: REFUSED"
+        },
+        {
+          "code": "98",
+          "label": "VOLUNTEERED: DON'T KNOW"
+        },
+        {
+          "code": "99",
+          "label": "MISSING"
+        }
+      ],
+      "missing_codes": [
+        "97",
+        "98",
+        "99"
+      ],
+      "target_variables": [
+        "F3011_LH_PL"
+      ],
+      "source_line": 1385
+    },
+    {
+      "item_id": "Q10LH-c",
+      "normalized_id": "Q10LHC",
+      "aliases": [
+        "Q10LHc",
+        "Q10LH_c",
+        "Q10LHC"
+      ],
+      "section": "cses_module",
+      "item_type": "party_vote_item",
+      "title": "CURRENT LOWER HOUSE ELECTION: VOTE CHOICE - DISTRICT CANDIDATE [IF APPLICABLE]",
+      "text": "",
+      "notes": "If applicable and respondent cast a ballot in the legislative election. This item should report the respondent's vote choice for district candidate. If more than one candidate have one party's affiliation, please provide choice for individual candidates. For preferential voting systems, please provide the first two preferences (Q12LH-c1 and Q12LH-c2). .................................................................. 01-95. [PLEASE PROVIDE PARTY/CANDIDATE CODES]",
+      "help_text": "",
+      "response_options": [
+        {
+          "code": "96",
+          "label": "RESPONDENT CAST INVALID BALLOT"
+        },
+        {
+          "code": "97",
+          "label": "VOLUNTEERED: REFUSED"
+        },
+        {
+          "code": "98",
+          "label": "VOLUNTEERED: DON'T KNOW"
+        },
+        {
+          "code": "99",
+          "label": "MISSING"
+        }
+      ],
+      "missing_codes": [
+        "97",
+        "98",
+        "99"
+      ],
+      "target_variables": [],
+      "source_line": 1407
+    },
+    {
+      "item_id": "Q10LH-d",
+      "normalized_id": "Q10LHD",
+      "aliases": [
+        "Q10LHD",
+        "Q10LHd",
+        "Q10LH_d"
+      ],
+      "section": "cses_module",
+      "item_type": "party_vote_item",
+      "title": "CURRENT LOWER HOUSE ELECTION: DID RESPONDENT CAST CANDIDATE PREFERENCE VOTE",
+      "text": "",
+      "notes": "If an open-list electoral system was used for the legislative election in question and respondent cast a ballot. This item should report whether or not the respondent cast a preference vote for a candidate. For instance, if votes are cast for party lists, but citizens can, in addition to that, mark a preference for one or more candidates on the party list, then Q12LH-d may show answers to a question like this: \"Did you simply vote for a party or did you also express a candidate preference?\" In party list systems where voters have to vote directly for a candidate and cannot cast a vote just for the party list as such (e.g. Estonia, Finland, the Netherlands, Poland), this question should read like this: \"Do you consider the vote that you cast merely a vote for the party, or did you also mean it as a vote for a particular candidate?\" ..................................................................",
+      "help_text": "",
+      "response_options": [
+        {
+          "code": "1",
+          "label": "RESPONDENT EXERCISED CANDIDATE PREFERENCE"
+        },
+        {
+          "code": "2",
+          "label": "RESPONDENT DID NOT EXERCISE CANDIDATE PREFERENCE"
+        },
+        {
+          "code": "6",
+          "label": "RESPONDENT CAST INVALID BALLOT"
+        },
+        {
+          "code": "7",
+          "label": "VOLUNTEERED: REFUSED"
+        },
+        {
+          "code": "8",
+          "label": "VOLUNTEERED: DON'T KNOW"
+        },
+        {
+          "code": "9",
+          "label": "MISSING"
+        }
+      ],
+      "missing_codes": [
+        "7",
+        "8",
+        "9"
+      ],
+      "target_variables": [
+        "F3011_LH_PF"
+      ],
+      "source_line": 1433
+    },
+    {
+      "item_id": "Q10UH-a",
+      "normalized_id": "Q10UHA",
+      "aliases": [
+        "Q10UH_a",
+        "Q10UHA",
+        "Q10UHa"
+      ],
+      "section": "cses_module",
+      "item_type": "party_vote_item",
+      "title": "CURRENT UPPER HOUSE ELECTION: DID RESPONDENT CAST A BALLOT [IF APPLICABLE]",
+      "text": "",
+      "notes": "This item should ascertain whether or not the respondent cast a ballot, regardless of whether or not it was valid. .................................................................. [IF APPLICABLE]",
+      "help_text": "",
+      "response_options": [
+        {
+          "code": "1",
+          "label": "RESPONDENT CAST A BALLOT"
+        },
+        {
+          "code": "5",
+          "label": "RESPONDENT DID NOT CAST A BALLOT"
+        },
+        {
+          "code": "6",
+          "label": "VOLUNTEERED: RESPONDENT NOT REGISTERED ON ELECTORAL LISTS"
+        },
+        {
+          "code": "7",
+          "label": "VOLUNTEERED: REFUSED"
+        },
+        {
+          "code": "8",
+          "label": "VOLUNTEERED: DON'T KNOW"
+        },
+        {
+          "code": "9",
+          "label": "MISSING"
+        }
+      ],
+      "missing_codes": [
+        "7",
+        "8",
+        "9"
+      ],
+      "target_variables": [],
+      "source_line": 1467
+    },
+    {
+      "item_id": "Q10UH-b",
+      "normalized_id": "Q10UHB",
+      "aliases": [
+        "Q10UHb",
+        "Q10UHB",
+        "Q10UH_b"
+      ],
+      "section": "cses_module",
+      "item_type": "party_vote_item",
+      "title": "CURRENT UPPER HOUSE ELECTION: VOTE CHOICE - PARTY LIST [IF APPLICABLE]",
+      "text": "",
+      "notes": "If applicable and respondent cast a ballot in the legislative election. This item should report the respondent's vote choice for party list. .................................................................. 01-95. [PLEASE PROVIDE PARTY/CANDIDATE CODES]",
+      "help_text": "",
+      "response_options": [
+        {
+          "code": "96",
+          "label": "RESPONDENT CAST INVALID BALLOT"
+        },
+        {
+          "code": "97",
+          "label": "VOLUNTEERED: REFUSED"
+        },
+        {
+          "code": "98",
+          "label": "VOLUNTEERED: DON'T KNOW"
+        },
+        {
+          "code": "99",
+          "label": "MISSING"
+        }
+      ],
+      "missing_codes": [
+        "97",
+        "98",
+        "99"
+      ],
+      "target_variables": [],
+      "source_line": 1489
+    },
+    {
+      "item_id": "Q10UH-c",
+      "normalized_id": "Q10UHC",
+      "aliases": [
+        "Q10UHc",
+        "Q10UH_c",
+        "Q10UHC"
+      ],
+      "section": "cses_module",
+      "item_type": "party_vote_item",
+      "title": "CURRENT UPPER HOUSE ELECTION: VOTE CHOICE - DISTRICT CANDIDATE [IF APPLICABLE]",
+      "text": "",
+      "notes": "If applicable and respondent cast a ballot in the legislative election. This item should report the respondent's vote choice for district candidate. If more than one candidate have one party's affiliation, please provide choice for individual candidates. For preferential voting systems, please provide the first two preferences (Q10LH-c1 and Q10LH-c2). .................................................................. 01-95. [PLEASE PROVIDE PARTY/CANDIDATE CODES]",
+      "help_text": "",
+      "response_options": [
+        {
+          "code": "96",
+          "label": "RESPONDENT CAST INVALID BALLOT"
+        },
+        {
+          "code": "97",
+          "label": "VOLUNTEERED: REFUSED"
+        },
+        {
+          "code": "98",
+          "label": "VOLUNTEERED: DON'T KNOW"
+        },
+        {
+          "code": "99",
+          "label": "MISSING"
+        }
+      ],
+      "missing_codes": [
+        "97",
+        "98",
+        "99"
+      ],
+      "target_variables": [],
+      "source_line": 1511
+    },
+    {
+      "item_id": "Q10UH-d",
+      "normalized_id": "Q10UHD",
+      "aliases": [
+        "Q10UHD",
+        "Q10UH_d",
+        "Q10UHd"
+      ],
+      "section": "cses_module",
+      "item_type": "party_vote_item",
+      "title": "CURRENT UPPER HOUSE ELECTION: DID RESPONDENT CAST CANDIDATE PREFERENCE VOTE",
+      "text": "",
+      "notes": "If an open-list electoral system was used for the legislative election in question and respondent cast a ballot. This item should report whether or not the respondent cast a preference vote for a candidate. For instance, if votes are cast for party lists, but citizens can, in addition to that, mark a preference for one or more candidates on the party list, then Q10LH-d may show answers to a question like this: \"Did you simply vote for a party or did you also express a candidate preference?\" In party list systems where voters have to vote directly for a candidate and cannot cast a vote just for the party list as such (e.g. Estonia, Finland, the Netherlands, Poland), this question should read like this: \"Do you consider the vote that you cast merely a vote for the party, or did you also mean it as a vote for a particular candidate?\" ..................................................................",
+      "help_text": "",
+      "response_options": [
+        {
+          "code": "1",
+          "label": "RESPONDENT EXERCISED CANDIDATE PREFERENCE"
+        },
+        {
+          "code": "2",
+          "label": "RESPONDENT DID NOT EXERCISE CANDIDATE PREFERENCE"
+        },
+        {
+          "code": "6",
+          "label": "RESPONDENT CAST INVALID BALLOT"
+        },
+        {
+          "code": "7",
+          "label": "VOLUNTEERED: REFUSED"
+        },
+        {
+          "code": "8",
+          "label": "VOLUNTEERED: DON'T KNOW"
+        },
+        {
+          "code": "9",
+          "label": "MISSING"
+        }
+      ],
+      "missing_codes": [
+        "7",
+        "8",
+        "9"
+      ],
+      "target_variables": [],
+      "source_line": 1537
+    },
+    {
+      "item_id": "Q11a",
+      "normalized_id": "Q11A",
+      "aliases": [
+        "Q11A"
+      ],
+      "section": "cses_module",
+      "item_type": "party_vote_item",
+      "title": "SATISIFACTION ABOUT VOTE: VOTERS FOR PARTY/CANDIDATE",
+      "text": "Are you very satisfied, fairly satisfied, not very satisfied, or not at all satisfied with your decision to vote for the party/ candidate you voted for in the last election? ..................................................................",
+      "notes": "This question should only be asked of voters who voted for a party/candidate. ..................................................................",
+      "help_text": "",
+      "response_options": [
+        {
+          "code": "1",
+          "label": "VERY SATISFIED"
+        },
+        {
+          "code": "2",
+          "label": "FAIRLY SATISFIED"
+        },
+        {
+          "code": "4",
+          "label": "NOT VERY SATISFIED"
+        },
+        {
+          "code": "5",
+          "label": "NOT AT ALL SATISFIED"
+        },
+        {
+          "code": "7",
+          "label": "VOLUNTEERED: REFUSED"
+        },
+        {
+          "code": "8",
+          "label": "VOLUNTEERED: DON'T KNOW"
+        },
+        {
+          "code": "9",
+          "label": "MISSING"
+        }
+      ],
+      "missing_codes": [
+        "7",
+        "8",
+        "9"
+      ],
+      "target_variables": [
+        "F3012_1"
+      ],
+      "source_line": 1570
+    },
+    {
+      "item_id": "Q11b",
+      "normalized_id": "Q11B",
+      "aliases": [
+        "Q11B"
+      ],
+      "section": "cses_module",
+      "item_type": "core_question",
+      "title": "SATISIFACTION ABOUT VOTE: BLANK/INVALID VOTES",
+      "text": "Are you very satisfied, fairly satisfied, not very satisfied, or not at all satisfied with your decision to vote blank/invalid in the last election? ..................................................................",
+      "notes": "This question should only be asked of voters who voted for blank/invalid. ..................................................................",
+      "help_text": "",
+      "response_options": [
+        {
+          "code": "1",
+          "label": "VERY SATISFIED"
+        },
+        {
+          "code": "2",
+          "label": "FAIRLY SATISFIED"
+        },
+        {
+          "code": "4",
+          "label": "NOT VERY SATISFIED"
+        },
+        {
+          "code": "5",
+          "label": "NOT AT ALL SATISFIED"
+        },
+        {
+          "code": "7",
+          "label": "VOLUNTEERED: REFUSED"
+        },
+        {
+          "code": "8",
+          "label": "VOLUNTEERED: DON'T KNOW"
+        },
+        {
+          "code": "9",
+          "label": "MISSING"
+        }
+      ],
+      "missing_codes": [
+        "7",
+        "8",
+        "9"
+      ],
+      "target_variables": [
+        "F3012_2"
+      ],
+      "source_line": 1594
+    },
+    {
+      "item_id": "Q11c",
+      "normalized_id": "Q11C",
+      "aliases": [
+        "Q11C"
+      ],
+      "section": "cses_module",
+      "item_type": "core_question",
+      "title": "SATISIFACTION ABOUT VOTE: NON-VOTERS",
+      "text": "Are you very satisfied, fairly satisfied, not very satisfied, or not at all satisfied with your decision not to vote in the last election? ..................................................................",
+      "notes": "This question should only be asked of non-voters. ..................................................................",
+      "help_text": "",
+      "response_options": [
+        {
+          "code": "1",
+          "label": "VERY SATISFIED"
+        },
+        {
+          "code": "2",
+          "label": "FAIRLY SATISFIED"
+        },
+        {
+          "code": "4",
+          "label": "NOT VERY SATISFIED"
+        },
+        {
+          "code": "5",
+          "label": "NOT AT ALL SATISFIED"
+        },
+        {
+          "code": "7",
+          "label": "VOLUNTEERED: REFUSED"
+        },
+        {
+          "code": "8",
+          "label": "VOLUNTEERED: DON'T KNOW"
+        },
+        {
+          "code": "9",
+          "label": "MISSING"
+        }
+      ],
+      "missing_codes": [
+        "7",
+        "8",
+        "9"
+      ],
+      "target_variables": [
+        "F3012_3"
+      ],
+      "source_line": 1618
+    },
+    {
+      "item_id": "Q12",
+      "normalized_id": "Q12",
+      "aliases": [],
+      "section": "cses_module",
+      "item_type": "core_question",
+      "title": "SATISIFACTION ABOUT VARIETY OF CHOICE",
+      "text": "Are you very satisfied, fairly satisfied, not very satisfied, or not at all satisfied with the variety of choice in the election? ..................................................................",
+      "notes": "",
+      "help_text": "",
+      "response_options": [
+        {
+          "code": "1",
+          "label": "VERY SATISFIED"
+        },
+        {
+          "code": "2",
+          "label": "FAIRLY SATISFIED"
+        },
+        {
+          "code": "4",
+          "label": "NOT VERY SATISFIED"
+        },
+        {
+          "code": "5",
+          "label": "NOT AT ALL SATISFIED"
+        },
+        {
+          "code": "7",
+          "label": "VOLUNTEERED: REFUSED"
+        },
+        {
+          "code": "8",
+          "label": "VOLUNTEERED: DON'T KNOW"
+        },
+        {
+          "code": "9",
+          "label": "MISSING"
+        }
+      ],
+      "missing_codes": [
+        "7",
+        "8",
+        "9"
+      ],
+      "target_variables": [
+        "F3013"
+      ],
+      "source_line": 1641
+    },
+    {
+      "item_id": "Q13",
+      "normalized_id": "Q13",
+      "aliases": [],
+      "section": "cses_module",
+      "item_type": "party_vote_item",
+      "title": "FAIRNESS OF ELECTION",
+      "text": "In some countries, people believe that the elections are conducted fairly. In other countries, people believe that elections are conducted unfairly. Thinking of the election that just occured in [COUNTRY], where would you place it on a scale of one to five where ONE means that the election was conducted fairly and FIVE means that the election was conducted unfairly? .................................................................. 2. 3. 4.",
+      "notes": "",
+      "help_text": "",
+      "response_options": [
+        {
+          "code": "1",
+          "label": "ELECTION WAS CONDUCTED FAIRLY"
+        },
+        {
+          "code": "5",
+          "label": "ELECTION WAS CONDUCTED UNFAIRLY"
+        },
+        {
+          "code": "7",
+          "label": "VOLUNTEERED: REFUSED"
+        },
+        {
+          "code": "8",
+          "label": "VOLUNTEERED: DON'T KNOW"
+        },
+        {
+          "code": "9",
+          "label": "MISSING"
+        }
+      ],
+      "missing_codes": [
+        "7",
+        "8",
+        "9"
+      ],
+      "target_variables": [
+        "F3014"
+      ],
+      "source_line": 1660
+    },
+    {
+      "item_id": "Q14a",
+      "normalized_id": "Q14A",
+      "aliases": [
+        "Q14A"
+      ],
+      "section": "cses_module",
+      "item_type": "party_vote_item",
+      "title": "PREVIOUS ELECTION: DID RESPONDENT CAST A BALLOT",
+      "text": "",
+      "notes": "For information about how to administer the vote choice items, please refer to the \"COLLABORATOR INSTRUCTIONS FOR THE ADMINISTRATION OF THE CSES QUESTIONNAIRE\" section which is found at the beginning of this questionnaire. This item should ascertain whether or not the respondent cast a ballot, regardless of whether or not it was valid, in the PREVIOUS election to be considered (see instructions). .................................................................. REGISTERED ON ELECTORAL LISTS",
+      "help_text": "",
+      "response_options": [
+        {
+          "code": "1",
+          "label": "RESPONDENT CAST A BALLOT"
+        },
+        {
+          "code": "5",
+          "label": "RESPONDENT DID NOT CAST A BALLOT"
+        },
+        {
+          "code": "6",
+          "label": "VOLUNTEERED: NOT ELIGIBLE TO VOTE IN LAST ELECTION OR NOT"
+        },
+        {
+          "code": "7",
+          "label": "VOLUNTEERED: REFUSED"
+        },
+        {
+          "code": "8",
+          "label": "VOLUNTEERED: DON'T KNOW"
+        },
+        {
+          "code": "9",
+          "label": "MISSING"
+        }
+      ],
+      "missing_codes": [
+        "7",
+        "8",
+        "9"
+      ],
+      "target_variables": [
+        "F3015_LH"
+      ],
+      "source_line": 1686
+    },
+    {
+      "item_id": "Q14b",
+      "normalized_id": "Q14B",
+      "aliases": [
+        "Q14B"
+      ],
+      "section": "cses_module",
+      "item_type": "party_vote_item",
+      "title": "PREVIOUS ELECTION: VOTE CHOICE - PARTY LIST",
+      "text": "",
+      "notes": "This item should ascertain whether or not the respondent cast a ballot, regardless of whether or not it was valid, in the PREVIOUS election to be considered (please see the instructions from the beginning of this questionnaire). This item should report the respondent's vote choice for party list in the PREVIOUS election. Which PREVIOUS elections to be asked about should be considered in accordance with the instructions from the beginning of this questionnaire. .................................................................. 01-95. [PLEASE PROVIDE PARTY/CANDIDATE CODES]",
+      "help_text": "",
+      "response_options": [
+        {
+          "code": "96",
+          "label": "RESPONDENT CAST INVALID BALLOT"
+        },
+        {
+          "code": "97",
+          "label": "VOLUNTEERED: REFUSED"
+        },
+        {
+          "code": "98",
+          "label": "VOLUNTEERED: DON'T KNOW"
+        },
+        {
+          "code": "99",
+          "label": "MISSING"
+        }
+      ],
+      "missing_codes": [
+        "97",
+        "98",
+        "99"
+      ],
+      "target_variables": [
+        "F3016_LH_PL"
+      ],
+      "source_line": 1712
+    },
+    {
+      "item_id": "Q14c",
+      "normalized_id": "Q14C",
+      "aliases": [
+        "Q14C"
+      ],
+      "section": "cses_module",
+      "item_type": "party_vote_item",
+      "title": "PREVIOUS ELECTION: VOTE CHOICE - DISTRICT CANDIDATE",
+      "text": "",
+      "notes": "This question should be asked if applicable and the respondent cast a ballot in the legislative election. This item should report the respondent's vote choice for district candidate in the PREVIOUS election. .................................................................. 01-95. [PLEASE PROVIDE PARTY/CANDIDATE CODES]",
+      "help_text": "",
+      "response_options": [
+        {
+          "code": "96",
+          "label": "RESPONDENT CAST INVALID BALLOT"
+        },
+        {
+          "code": "97",
+          "label": "VOLUNTEERED: REFUSED"
+        },
+        {
+          "code": "98",
+          "label": "VOLUNTEERED: DON'T KNOW"
+        },
+        {
+          "code": "99",
+          "label": "MISSING"
+        }
+      ],
+      "missing_codes": [
+        "97",
+        "98",
+        "99"
+      ],
+      "target_variables": [],
+      "source_line": 1739
+    },
+    {
+      "item_id": "Q15",
+      "normalized_id": "Q15",
+      "aliases": [],
+      "section": "cses_module",
+      "item_type": "core_question",
+      "title": "EXTERNAL EFFICACY: WHO PEOPLE VOTE FOR MAKES A BIG DIFFERENCE",
+      "text": "Some people say that no matter who people vote for, it won't make any difference to what happens. Others say that who people vote for can make a big difference to what happens. Using the scale on this card, (where ONE means that voting won't make any difference to what happens and FIVE means that voting can make a big difference), where would you place yourself? .................................................................. 2. 3. 4.",
+      "notes": "Collaborators, please be sure to include the words \"big\" and \"any\" where they appear in both the question text and the code labels. Also, a showcard is available for this question. ..................................................................",
+      "help_text": "",
+      "response_options": [
+        {
+          "code": "1",
+          "label": "WHO PEOPLE VOTE FOR WON'T MAKE ANY DIFFERENCE"
+        },
+        {
+          "code": "5",
+          "label": "WHO PEOPLE VOTE FOR CAN MAKE A BIG DIFFERENCE"
+        },
+        {
+          "code": "7",
+          "label": "VOLUNTEERED: REFUSED"
+        },
+        {
+          "code": "8",
+          "label": "VOLUNTEERED: DON'T KNOW"
+        },
+        {
+          "code": "9",
+          "label": "MISSING"
+        }
+      ],
+      "missing_codes": [
+        "7",
+        "8",
+        "9"
+      ],
+      "target_variables": [
+        "F3017"
+      ],
+      "source_line": 1760
+    },
+    {
+      "item_id": "Q16a",
+      "normalized_id": "Q16A",
+      "aliases": [
+        "Q16A"
+      ],
+      "section": "cses_module",
+      "item_type": "party_vote_item",
+      "title": "LIKE-DISLIKE - PARTY A",
+      "text": "",
+      "notes": "",
+      "help_text": "",
+      "response_options": [],
+      "missing_codes": [],
+      "target_variables": [
+        "F3018_A"
+      ],
+      "source_line": 1790
+    },
+    {
+      "item_id": "Q16b",
+      "normalized_id": "Q16B",
+      "aliases": [
+        "Q16B"
+      ],
+      "section": "cses_module",
+      "item_type": "party_vote_item",
+      "title": "LIKE-DISLIKE - PARTY B",
+      "text": "",
+      "notes": "",
+      "help_text": "",
+      "response_options": [],
+      "missing_codes": [],
+      "target_variables": [
+        "F3018_B"
+      ],
+      "source_line": 1791
+    },
+    {
+      "item_id": "Q16c",
+      "normalized_id": "Q16C",
+      "aliases": [
+        "Q16C"
+      ],
+      "section": "cses_module",
+      "item_type": "party_vote_item",
+      "title": "LIKE-DISLIKE - PARTY C",
+      "text": "",
+      "notes": "",
+      "help_text": "",
+      "response_options": [],
+      "missing_codes": [],
+      "target_variables": [
+        "F3018_C"
+      ],
+      "source_line": 1792
+    },
+    {
+      "item_id": "Q16d",
+      "normalized_id": "Q16D",
+      "aliases": [
+        "Q16D"
+      ],
+      "section": "cses_module",
+      "item_type": "party_vote_item",
+      "title": "LIKE-DISLIKE - PARTY D",
+      "text": "",
+      "notes": "",
+      "help_text": "",
+      "response_options": [],
+      "missing_codes": [],
+      "target_variables": [
+        "F3018_D"
+      ],
+      "source_line": 1793
+    },
+    {
+      "item_id": "Q16e",
+      "normalized_id": "Q16E",
+      "aliases": [
+        "Q16E"
+      ],
+      "section": "cses_module",
+      "item_type": "party_vote_item",
+      "title": "LIKE-DISLIKE - PARTY E",
+      "text": "",
+      "notes": "",
+      "help_text": "",
+      "response_options": [],
+      "missing_codes": [],
+      "target_variables": [
+        "F3018_E"
+      ],
+      "source_line": 1794
+    },
+    {
+      "item_id": "Q16f",
+      "normalized_id": "Q16F",
+      "aliases": [
+        "Q16F"
+      ],
+      "section": "cses_module",
+      "item_type": "party_vote_item",
+      "title": "LIKE-DISLIKE - PARTY F",
+      "text": "",
+      "notes": "",
+      "help_text": "",
+      "response_options": [],
+      "missing_codes": [],
+      "target_variables": [
+        "F3018_F"
+      ],
+      "source_line": 1795
+    },
+    {
+      "item_id": "Q16g",
+      "normalized_id": "Q16G",
+      "aliases": [
+        "Q16G"
+      ],
+      "section": "cses_module",
+      "item_type": "optional_question",
+      "title": "LIKE-DISLIKE - PARTY G (OPTIONAL)",
+      "text": "",
+      "notes": "",
+      "help_text": "",
+      "response_options": [],
+      "missing_codes": [],
+      "target_variables": [
+        "F3018_G"
+      ],
+      "source_line": 1796
+    },
+    {
+      "item_id": "Q16h",
+      "normalized_id": "Q16H",
+      "aliases": [
+        "Q16H"
+      ],
+      "section": "cses_module",
+      "item_type": "optional_question",
+      "title": "LIKE-DISLIKE - PARTY H (OPTIONAL)",
+      "text": "",
+      "notes": "",
+      "help_text": "",
+      "response_options": [],
+      "missing_codes": [],
+      "target_variables": [
+        "F3018_H"
+      ],
+      "source_line": 1797
+    },
+    {
+      "item_id": "Q16i",
+      "normalized_id": "Q16I",
+      "aliases": [
+        "Q16I"
+      ],
+      "section": "cses_module",
+      "item_type": "optional_question",
+      "title": "LIKE-DISLIKE - PARTY I (OPTIONAL)",
+      "text": "I'd like to know what you think about each of our political parties. After I read the name of a political party, please rate it on a scale from 0 to 10, where 0 means you strongly dislike that party and 10 means that you strongly like that party. If I come to a party you haven't heard of or you feel you do not know enough about, just say so. The first party is [PARTY A]. Using the same scale, where would you place, [PARTY B]? Using the same scale, where would you place, [PARTY C]? Using the same scale, where would you place, [PARTY D]? Using the same scale, where would you place, [PARTY E]? Using the same scale, where would you place, [PARTY F]? .................................................................. 01. 02. 03. 04. 05. 06. 07. 08. 09.",
+      "notes": "Please have the respondent rate the six parties [PARTY A through PARTY F] that received the most votes. If appropriate, the collaborator may also include up to three additional parties [PARTY G through PARTY I] that are relevant to studying the election, regardless of the number of votes received. It is important that interviewers properly record the volunteered responses \"don't know\" and \"haven't heard of\" when respondents offer either response. Also, a showcard is available for this question. ..................................................................",
+      "help_text": "",
+      "response_options": [
+        {
+          "code": "00",
+          "label": "STRONGLY DISLIKE"
+        },
+        {
+          "code": "10",
+          "label": "STRONGLY LIKE"
+        },
+        {
+          "code": "96",
+          "label": "HAVEN'T HEARD OF PARTY"
+        },
+        {
+          "code": "97",
+          "label": "VOLUNTEERED: REFUSED"
+        },
+        {
+          "code": "98",
+          "label": "DON'T KNOW ENOUGH ABOUT/DON'T KNOW WHERE TO RATE"
+        },
+        {
+          "code": "99",
+          "label": "MISSING"
+        }
+      ],
+      "missing_codes": [
+        "97",
+        "98",
+        "99"
+      ],
+      "target_variables": [
+        "F3018_I"
+      ],
+      "source_line": 1798
+    },
+    {
+      "item_id": "Q17a",
+      "normalized_id": "Q17A",
+      "aliases": [
+        "Q17A"
+      ],
+      "section": "cses_module",
+      "item_type": "party_vote_item",
+      "title": "LIKE-DISLIKE - LEADER A",
+      "text": "",
+      "notes": "",
+      "help_text": "",
+      "response_options": [],
+      "missing_codes": [],
+      "target_variables": [
+        "F3019_A"
+      ],
+      "source_line": 1849
+    },
+    {
+      "item_id": "Q17b",
+      "normalized_id": "Q17B",
+      "aliases": [
+        "Q17B"
+      ],
+      "section": "cses_module",
+      "item_type": "party_vote_item",
+      "title": "LIKE-DISLIKE - LEADER B",
+      "text": "",
+      "notes": "",
+      "help_text": "",
+      "response_options": [],
+      "missing_codes": [],
+      "target_variables": [
+        "F3019_B"
+      ],
+      "source_line": 1850
+    },
+    {
+      "item_id": "Q17c",
+      "normalized_id": "Q17C",
+      "aliases": [
+        "Q17C"
+      ],
+      "section": "cses_module",
+      "item_type": "party_vote_item",
+      "title": "LIKE-DISLIKE - LEADER C",
+      "text": "",
+      "notes": "",
+      "help_text": "",
+      "response_options": [],
+      "missing_codes": [],
+      "target_variables": [
+        "F3019_C"
+      ],
+      "source_line": 1851
+    },
+    {
+      "item_id": "Q17d",
+      "normalized_id": "Q17D",
+      "aliases": [
+        "Q17D"
+      ],
+      "section": "cses_module",
+      "item_type": "party_vote_item",
+      "title": "LIKE-DISLIKE - LEADER D",
+      "text": "",
+      "notes": "",
+      "help_text": "",
+      "response_options": [],
+      "missing_codes": [],
+      "target_variables": [
+        "F3019_D"
+      ],
+      "source_line": 1852
+    },
+    {
+      "item_id": "Q17e",
+      "normalized_id": "Q17E",
+      "aliases": [
+        "Q17E"
+      ],
+      "section": "cses_module",
+      "item_type": "party_vote_item",
+      "title": "LIKE-DISLIKE - LEADER E",
+      "text": "",
+      "notes": "",
+      "help_text": "",
+      "response_options": [],
+      "missing_codes": [],
+      "target_variables": [
+        "F3019_E"
+      ],
+      "source_line": 1853
+    },
+    {
+      "item_id": "Q17f",
+      "normalized_id": "Q17F",
+      "aliases": [
+        "Q17F"
+      ],
+      "section": "cses_module",
+      "item_type": "party_vote_item",
+      "title": "LIKE-DISLIKE - LEADER F",
+      "text": "",
+      "notes": "",
+      "help_text": "",
+      "response_options": [],
+      "missing_codes": [],
+      "target_variables": [
+        "F3019_F"
+      ],
+      "source_line": 1854
+    },
+    {
+      "item_id": "Q17g",
+      "normalized_id": "Q17G",
+      "aliases": [
+        "Q17G"
+      ],
+      "section": "cses_module",
+      "item_type": "optional_question",
+      "title": "LIKE-DISLIKE - LEADER G (OPTIONAL)",
+      "text": "",
+      "notes": "",
+      "help_text": "",
+      "response_options": [],
+      "missing_codes": [],
+      "target_variables": [
+        "F3019_G"
+      ],
+      "source_line": 1855
+    },
+    {
+      "item_id": "Q17h",
+      "normalized_id": "Q17H",
+      "aliases": [
+        "Q17H"
+      ],
+      "section": "cses_module",
+      "item_type": "optional_question",
+      "title": "LIKE-DISLIKE - LEADER H (OPTIONAL)",
+      "text": "",
+      "notes": "",
+      "help_text": "",
+      "response_options": [],
+      "missing_codes": [],
+      "target_variables": [
+        "F3019_H"
+      ],
+      "source_line": 1856
+    },
+    {
+      "item_id": "Q17i",
+      "normalized_id": "Q17I",
+      "aliases": [
+        "Q17I"
+      ],
+      "section": "cses_module",
+      "item_type": "optional_question",
+      "title": "LIKE-DISLIKE - LEADER I (OPTIONAL)",
+      "text": "And what do you think of the presidential candidates/party leaders? After I read the name of a presidential candidate/party leader, please rate them on a scale from 0 to 10, where 0 means you strongly dislike that candidate and 10 means that you strongly like that candidate. If I come to a presidential candidate/party leader you haven't heard of or you feel you do not know enough about, just say so. The first is [LEADER A]. Using the same scale, where would you place, [LEADER B]? Using the same scale, where would you place, [LEADER C]? Using the same scale, where would you place, [LEADER D]? Using the same scale, where would you place, [LEADER E]? Using the same scale, where would you place, [LEADER F]? .................................................................. 01. 02. 03. 04. 05. 06. 07. 08. 09.",
+      "notes": "This question set should be asked in all studies. Ask the questions in studies of parliamentary elections, and ask the questions in studies of presidential elections. Candidates/leaders to be rated should be the leaders of the parties rated in question set Q18a-Q18i. It is important that interviewers properly record the volunteered responses \"don't know\" and \"haven't heard of\" when respondents offer either response. Also, a showcard is available for this question. ..................................................................",
+      "help_text": "",
+      "response_options": [
+        {
+          "code": "00",
+          "label": "STRONGLY DISLIKE"
+        },
+        {
+          "code": "10",
+          "label": "STRONGLY LIKE"
+        },
+        {
+          "code": "96",
+          "label": "HAVEN'T HEARD OF LEADER"
+        },
+        {
+          "code": "97",
+          "label": "VOLUNTEERED: REFUSED"
+        },
+        {
+          "code": "98",
+          "label": "DON'T KNOW ENOUGH ABOUT/DON'T KNOW WHERE TO RATE"
+        },
+        {
+          "code": "99",
+          "label": "MISSING"
+        }
+      ],
+      "missing_codes": [
+        "97",
+        "98",
+        "99"
+      ],
+      "target_variables": [
+        "F3019_I"
+      ],
+      "source_line": 1857
+    },
+    {
+      "item_id": "Q18a",
+      "normalized_id": "Q18A",
+      "aliases": [
+        "Q18A"
+      ],
+      "section": "cses_module",
+      "item_type": "party_vote_item",
+      "title": "LEFT-RIGHT - PARTY A",
+      "text": "",
+      "notes": "",
+      "help_text": "",
+      "response_options": [],
+      "missing_codes": [],
+      "target_variables": [
+        "F3020_A"
+      ],
+      "source_line": 1909
+    },
+    {
+      "item_id": "Q18b",
+      "normalized_id": "Q18B",
+      "aliases": [
+        "Q18B"
+      ],
+      "section": "cses_module",
+      "item_type": "party_vote_item",
+      "title": "LEFT-RIGHT - PARTY B",
+      "text": "",
+      "notes": "",
+      "help_text": "",
+      "response_options": [],
+      "missing_codes": [],
+      "target_variables": [
+        "F3020_B"
+      ],
+      "source_line": 1910
+    },
+    {
+      "item_id": "Q18c",
+      "normalized_id": "Q18C",
+      "aliases": [
+        "Q18C"
+      ],
+      "section": "cses_module",
+      "item_type": "party_vote_item",
+      "title": "LEFT-RIGHT - PARTY C",
+      "text": "",
+      "notes": "",
+      "help_text": "",
+      "response_options": [],
+      "missing_codes": [],
+      "target_variables": [
+        "F3020_C"
+      ],
+      "source_line": 1911
+    },
+    {
+      "item_id": "Q18d",
+      "normalized_id": "Q18D",
+      "aliases": [
+        "Q18D"
+      ],
+      "section": "cses_module",
+      "item_type": "party_vote_item",
+      "title": "LEFT-RIGHT - PARTY D",
+      "text": "",
+      "notes": "",
+      "help_text": "",
+      "response_options": [],
+      "missing_codes": [],
+      "target_variables": [
+        "F3020_D"
+      ],
+      "source_line": 1912
+    },
+    {
+      "item_id": "Q18e",
+      "normalized_id": "Q18E",
+      "aliases": [
+        "Q18E"
+      ],
+      "section": "cses_module",
+      "item_type": "party_vote_item",
+      "title": "LEFT-RIGHT - PARTY E",
+      "text": "",
+      "notes": "",
+      "help_text": "",
+      "response_options": [],
+      "missing_codes": [],
+      "target_variables": [
+        "F3020_E"
+      ],
+      "source_line": 1913
+    },
+    {
+      "item_id": "Q18f",
+      "normalized_id": "Q18F",
+      "aliases": [
+        "Q18F"
+      ],
+      "section": "cses_module",
+      "item_type": "party_vote_item",
+      "title": "LEFT-RIGHT - PARTY F",
+      "text": "",
+      "notes": "",
+      "help_text": "",
+      "response_options": [],
+      "missing_codes": [],
+      "target_variables": [
+        "F3020_F"
+      ],
+      "source_line": 1914
+    },
+    {
+      "item_id": "Q18g",
+      "normalized_id": "Q18G",
+      "aliases": [
+        "Q18G"
+      ],
+      "section": "cses_module",
+      "item_type": "optional_question",
+      "title": "LEFT-RIGHT - PARTY G (OPTIONAL)",
+      "text": "",
+      "notes": "",
+      "help_text": "",
+      "response_options": [],
+      "missing_codes": [],
+      "target_variables": [
+        "F3020_G"
+      ],
+      "source_line": 1915
+    },
+    {
+      "item_id": "Q18h",
+      "normalized_id": "Q18H",
+      "aliases": [
+        "Q18H"
+      ],
+      "section": "cses_module",
+      "item_type": "optional_question",
+      "title": "LEFT-RIGHT - PARTY H (OPTIONAL)",
+      "text": "",
+      "notes": "",
+      "help_text": "",
+      "response_options": [],
+      "missing_codes": [],
+      "target_variables": [
+        "F3020_H"
+      ],
+      "source_line": 1916
+    },
+    {
+      "item_id": "Q18i",
+      "normalized_id": "Q18I",
+      "aliases": [
+        "Q18I"
+      ],
+      "section": "cses_module",
+      "item_type": "optional_question",
+      "title": "LEFT-RIGHT - PARTY I (OPTIONAL)",
+      "text": "In politics people sometimes talk of left and right. Where would you place [PARTY A] on a scale from 0 to 10 where 0 means the left and 10 means the right? Using the same scale, where would you place [PARTY B]? Where would you place [PARTY C]? Where would you place [PARTY D]? Where would you place [PARTY E]? Where would you place [PARTY F]? .................................................................. 01. 02. 03. 04. 05. 06. 07. 08. 09.",
+      "notes": "The parties evaluated in this question set should be the same parties as were asked about in question set Q16a-Q16i. Collaborators should ask the left-right scale questions, even if left-right is not considered to be meaningful/important/widely understood in the area being studied. If the national collaborator team feels that administering this question set will cause important or serious issues with respect to the conduct of the survey, they should discuss these issues with the CSES Secretariat in advance. Also, a showcard is available for this question. ..................................................................",
+      "help_text": "",
+      "response_options": [
+        {
+          "code": "00",
+          "label": "LEFT"
+        },
+        {
+          "code": "10",
+          "label": "RIGHT"
+        },
+        {
+          "code": "95",
+          "label": "VOLUNTEERED: HAVEN'T HEARD OF LEFT-RIGHT"
+        },
+        {
+          "code": "96",
+          "label": "VOLUNTEERED: HAVEN'T HEARD OF PARTY"
+        },
+        {
+          "code": "97",
+          "label": "VOLUNTEERED: REFUSED"
+        },
+        {
+          "code": "98",
+          "label": "VOLUNTEERED: DON'T KNOW WHERE TO PLACE"
+        },
+        {
+          "code": "99",
+          "label": "MISSING"
+        }
+      ],
+      "missing_codes": [
+        "97",
+        "98",
+        "99"
+      ],
+      "target_variables": [
+        "F3020_I"
+      ],
+      "source_line": 1917
+    },
+    {
+      "item_id": "Q19",
+      "normalized_id": "Q19",
+      "aliases": [],
+      "section": "cses_module",
+      "item_type": "core_question",
+      "title": "LEFT-RIGHT - SELF",
+      "text": "Where would you place yourself on this scale? .................................................................. 01. 02. 03. 04. 05. 06. 07. 08. 09.",
+      "notes": "Collaborators should ask the left-right scale questions, even if left-right is not considered to be meaningful/important/widely understood in the area being studied. If the national collaborator team feels that administering this question will cause important or serious issues with respect to the conduct of the survey, they should discuss these issues with the CSES Secretariat in advance. Also, a showcard is available for this question. ..................................................................",
+      "help_text": "",
+      "response_options": [
+        {
+          "code": "00",
+          "label": "LEFT"
+        },
+        {
+          "code": "10",
+          "label": "RIGHT"
+        },
+        {
+          "code": "95",
+          "label": "VOLUNTEERED: HAVEN'T HEARD OF LEFT-RIGHT"
+        },
+        {
+          "code": "97",
+          "label": "VOLUNTEERED: REFUSED"
+        },
+        {
+          "code": "98",
+          "label": "VOLUNTEERED: DON'T KNOW WHERE TO PLACE"
+        },
+        {
+          "code": "99",
+          "label": "MISSING"
+        }
+      ],
+      "missing_codes": [
+        "97",
+        "98",
+        "99"
+      ],
+      "target_variables": [
+        "F3020_R"
+      ],
+      "source_line": 1966
+    },
+    {
+      "item_id": "Q20a",
+      "normalized_id": "Q20A",
+      "aliases": [
+        "Q20A"
+      ],
+      "section": "cses_module",
+      "item_type": "optional_question",
+      "title": "OPTIONAL ALTERNATIVE SCALE - PARTY A",
+      "text": "",
+      "notes": "",
+      "help_text": "",
+      "response_options": [],
+      "missing_codes": [],
+      "target_variables": [],
+      "source_line": 2004
+    },
+    {
+      "item_id": "Q20b",
+      "normalized_id": "Q20B",
+      "aliases": [
+        "Q20B"
+      ],
+      "section": "cses_module",
+      "item_type": "optional_question",
+      "title": "OPTIONAL ALTERNATIVE SCALE - PARTY B",
+      "text": "",
+      "notes": "",
+      "help_text": "",
+      "response_options": [],
+      "missing_codes": [],
+      "target_variables": [],
+      "source_line": 2005
+    },
+    {
+      "item_id": "Q20c",
+      "normalized_id": "Q20C",
+      "aliases": [
+        "Q20C"
+      ],
+      "section": "cses_module",
+      "item_type": "optional_question",
+      "title": "OPTIONAL ALTERNATIVE SCALE - PARTY C",
+      "text": "",
+      "notes": "",
+      "help_text": "",
+      "response_options": [],
+      "missing_codes": [],
+      "target_variables": [],
+      "source_line": 2006
+    },
+    {
+      "item_id": "Q20d",
+      "normalized_id": "Q20D",
+      "aliases": [
+        "Q20D"
+      ],
+      "section": "cses_module",
+      "item_type": "optional_question",
+      "title": "OPTIONAL ALTERNATIVE SCALE - PARTY D",
+      "text": "",
+      "notes": "",
+      "help_text": "",
+      "response_options": [],
+      "missing_codes": [],
+      "target_variables": [],
+      "source_line": 2007
+    },
+    {
+      "item_id": "Q20e",
+      "normalized_id": "Q20E",
+      "aliases": [
+        "Q20E"
+      ],
+      "section": "cses_module",
+      "item_type": "optional_question",
+      "title": "OPTIONAL ALTERNATIVE SCALE - PARTY E",
+      "text": "",
+      "notes": "",
+      "help_text": "",
+      "response_options": [],
+      "missing_codes": [],
+      "target_variables": [],
+      "source_line": 2008
+    },
+    {
+      "item_id": "Q20f",
+      "normalized_id": "Q20F",
+      "aliases": [
+        "Q20F"
+      ],
+      "section": "cses_module",
+      "item_type": "optional_question",
+      "title": "OPTIONAL ALTERNATIVE SCALE - PARTY F",
+      "text": "",
+      "notes": "",
+      "help_text": "",
+      "response_options": [],
+      "missing_codes": [],
+      "target_variables": [],
+      "source_line": 2009
+    },
+    {
+      "item_id": "Q20g",
+      "normalized_id": "Q20G",
+      "aliases": [
+        "Q20G"
+      ],
+      "section": "cses_module",
+      "item_type": "optional_question",
+      "title": "OPTIONAL ALTERNATIVE SCALE - PARTY G (OPTIONAL)",
+      "text": "",
+      "notes": "",
+      "help_text": "",
+      "response_options": [],
+      "missing_codes": [],
+      "target_variables": [],
+      "source_line": 2010
+    },
+    {
+      "item_id": "Q20h",
+      "normalized_id": "Q20H",
+      "aliases": [
+        "Q20H"
+      ],
+      "section": "cses_module",
+      "item_type": "optional_question",
+      "title": "OPTIONAL ALTERNATIVE SCALE - PARTY H (OPTIONAL)",
+      "text": "",
+      "notes": "",
+      "help_text": "",
+      "response_options": [],
+      "missing_codes": [],
+      "target_variables": [],
+      "source_line": 2011
+    },
+    {
+      "item_id": "Q20i",
+      "normalized_id": "Q20I",
+      "aliases": [
+        "Q20I"
+      ],
+      "section": "cses_module",
+      "item_type": "optional_question",
+      "title": "OPTIONAL ALTERNATIVE SCALE - PARTY I (OPTIONAL)",
+      "text": "In politics people sometimes talk of [SCALE VALUE AT POINT 0] and [SCALE VALUE AT POINT 10]. Where would you place [PARTY A] on a scale from 0 to 10 where 0 means [SCALE VALUE AT POINT 0] and 10 means [SCALE VALUE AT POINT 10]? Using the same scale, where would you place [PARTY B]? Where would you place [PARTY C]? Where would you place [PARTY D]? Where would you place [PARTY E]? Where would you place [PARTY F]? .................................................................. 01. 02. 03. 04. 05. 06. 07. 08. 09.",
+      "notes": "In most national contexts, the left-right dimension will be the single best ideological summary of the current issue conflicts in a society. Where this is known not to be the case, a more pertinent dimension of ideological conflict (like the independence-integration dimension in Taiwan) might be used in addition to the left-right placement scales. So where left-right is not considered meaningful/important/widely understood, IN ADDITION TO ASKING THE LEFT-RIGHT QUESTION, the collaborator has the option of also administering a second scale (of 11 points: 0-10) which is thought to best summarize the main ideological division in the country. The parties evaluated in this question set should be the same parties as were asked about in question set Q16a-Q16i. For studies in which showcards are used, collaborators should consider using a showcard for this question. ..................................................................",
+      "help_text": "",
+      "response_options": [
+        {
+          "code": "00",
+          "label": "[SCALE VALUE AT POINT 0]"
+        },
+        {
+          "code": "10",
+          "label": "[SCALE VALUE AT POINT 10]"
+        },
+        {
+          "code": "95",
+          "label": "VOLUNTEERED: HAVEN'T HEARD OF [SCALE]"
+        },
+        {
+          "code": "96",
+          "label": "VOLUNTEERED: HAVEN'T HEARD OF PARTY"
+        },
+        {
+          "code": "97",
+          "label": "VOLUNTEERED: REFUSED"
+        },
+        {
+          "code": "98",
+          "label": "VOLUNTEERED: DON'T KNOW WHERE TO PLACE"
+        },
+        {
+          "code": "99",
+          "label": "MISSING"
+        }
+      ],
+      "missing_codes": [
+        "97",
+        "98",
+        "99"
+      ],
+      "target_variables": [],
+      "source_line": 2012
+    },
+    {
+      "item_id": "Q21",
+      "normalized_id": "Q21",
+      "aliases": [],
+      "section": "cses_module",
+      "item_type": "optional_question",
+      "title": "OPTIONAL ALTERNATIVE SCALE - SELF",
+      "text": "Where would you place yourself on this scale? .................................................................. 01. 02. 03. 04. 05. 06. 07. 08. 09.",
+      "notes": "In most national contexts, the left-right dimension will be the single best ideological summary of the current issue conflicts in a society. Where this is known not to be the case a more pertinent dimension of ideological conflict (like the independence-integration dimension in Taiwan) might be used in addition to the left-right placement scales. So where left-right is not considered meaningful/important/widely understood, IN ADDITION TO ASKING THE LEFT-RIGHT QUESTION, the collaborator has the option of also administering a second scale (of 11 points: 0-10) which is thought to best summarize the main ideological division in the country. For studies in which showcards are used, collaborators should consider using a showcard for this question. ..................................................................",
+      "help_text": "",
+      "response_options": [
+        {
+          "code": "00",
+          "label": "[SCALE VALUE AT POINT 0]"
+        },
+        {
+          "code": "10",
+          "label": "[SCALE VALUE AT POINT 10]"
+        },
+        {
+          "code": "95",
+          "label": "VOLUNTEERED: HAVEN'T HEARD OF [SCALE]"
+        },
+        {
+          "code": "97",
+          "label": "VOLUNTEERED: REFUSED"
+        },
+        {
+          "code": "98",
+          "label": "VOLUNTEERED: DON'T KNOW WHERE TO PLACE"
+        },
+        {
+          "code": "99",
+          "label": "MISSING"
+        }
+      ],
+      "missing_codes": [
+        "97",
+        "98",
+        "99"
+      ],
+      "target_variables": [],
+      "source_line": 2067
+    },
+    {
+      "item_id": "Q22",
+      "normalized_id": "Q22",
+      "aliases": [],
+      "section": "cses_module",
+      "item_type": "core_question",
+      "title": "SATISFACTION WITH DEMOCRATIC PROCESS",
+      "text": "On the whole, are you very satisfied, fairly satisfied, not very satisfied, or not at all satisfied with the way democracy works in [COUNTRY]? ..................................................................",
+      "notes": "",
+      "help_text": "",
+      "response_options": [
+        {
+          "code": "1",
+          "label": "VERY SATISFIED"
+        },
+        {
+          "code": "2",
+          "label": "FAIRLY SATISFIED"
+        },
+        {
+          "code": "4",
+          "label": "NOT VERY SATISFIED"
+        },
+        {
+          "code": "5",
+          "label": "NOT AT ALL SATISFIED"
+        },
+        {
+          "code": "7",
+          "label": "VOLUNTEERED: REFUSED"
+        },
+        {
+          "code": "8",
+          "label": "VOLUNTEERED: DON'T KNOW"
+        },
+        {
+          "code": "9",
+          "label": "MISSING"
+        }
+      ],
+      "missing_codes": [
+        "7",
+        "8",
+        "9"
+      ],
+      "target_variables": [
+        "F3022"
+      ],
+      "source_line": 2110
+    },
+    {
+      "item_id": "Q23a",
+      "normalized_id": "Q23A",
+      "aliases": [
+        "Q23A"
+      ],
+      "section": "cses_module",
+      "item_type": "party_vote_item",
+      "title": "ARE YOU CLOSE TO ANY POLITICAL PARTY",
+      "text": "Do you usually think of yourself as close to any particular party? ..................................................................",
+      "notes": "This question set (Q23a/Q23b/Q23c/Q23d) are the last questions in this section. When a skip instruction indicates \"GO TO QUESTION AFTER Q23d\" this means to skip the remaining questions in the Q23a/Q23b/Q23c/Q23d set and proceed to the next section of the survey. ..................................................................",
+      "help_text": "",
+      "response_options": [
+        {
+          "code": "1",
+          "label": "YES -> GO TO Q23c"
+        },
+        {
+          "code": "5",
+          "label": "NO"
+        },
+        {
+          "code": "7",
+          "label": "VOLUNTEERED: REFUSED"
+        },
+        {
+          "code": "8",
+          "label": "VOLUNTEERED: DON'T KNOW"
+        },
+        {
+          "code": "9",
+          "label": "MISSING"
+        }
+      ],
+      "missing_codes": [
+        "7",
+        "8",
+        "9"
+      ],
+      "target_variables": [
+        "F3023_1"
+      ],
+      "source_line": 2130
+    },
+    {
+      "item_id": "Q23b",
+      "normalized_id": "Q23B",
+      "aliases": [
+        "Q23B"
+      ],
+      "section": "cses_module",
+      "item_type": "party_vote_item",
+      "title": "DO YOU FEEL CLOSER TO ONE PARTY",
+      "text": "Do you feel yourself a little closer to one of the political parties than the others? ..................................................................",
+      "notes": "",
+      "help_text": "",
+      "response_options": [
+        {
+          "code": "1",
+          "label": "YES"
+        },
+        {
+          "code": "5",
+          "label": "NO -> GO TO QUESTION AFTER Q23d"
+        },
+        {
+          "code": "7",
+          "label": "VOLUNTEERED: REFUSED -> GO TO QUESTION AFTER Q23d"
+        },
+        {
+          "code": "8",
+          "label": "VOLUNTEERED: DON'T KNOW -> GO TO QUESTION AFTER Q23d"
+        },
+        {
+          "code": "9",
+          "label": "MISSING"
+        }
+      ],
+      "missing_codes": [
+        "7",
+        "8",
+        "9"
+      ],
+      "target_variables": [
+        "F3023_2"
+      ],
+      "source_line": 2153
+    },
+    {
+      "item_id": "Q23c",
+      "normalized_id": "Q23C",
+      "aliases": [
+        "Q23C"
+      ],
+      "section": "cses_module",
+      "item_type": "party_vote_item",
+      "title": "WHICH PARTY DO YOU FEEL CLOSEST TO",
+      "text": "Which party do you feel closest to? .................................................................. 01-95. [PLEASE PROVIDE PARTY CODES]",
+      "notes": "Only respondents who answered \"YES\" at Q25a or Q25b should receive this question. Other respondents should be coded as MISSING for this question. ..................................................................",
+      "help_text": "",
+      "response_options": [
+        {
+          "code": "97",
+          "label": "VOLUNTEERED: REFUSED -> GO TO QUESTION AFTER Q23d"
+        },
+        {
+          "code": "98",
+          "label": "VOLUNTEERED: DON'T KNOW -> GO TO QUESTION AFTER Q23d"
+        },
+        {
+          "code": "99",
+          "label": "MISSING"
+        }
+      ],
+      "missing_codes": [
+        "97",
+        "98",
+        "99"
+      ],
+      "target_variables": [
+        "F3023_3"
+      ],
+      "source_line": 2170
+    },
+    {
+      "item_id": "Q23d",
+      "normalized_id": "Q23D",
+      "aliases": [
+        "Q23D"
+      ],
+      "section": "cses_module",
+      "item_type": "party_vote_item",
+      "title": "DEGREE OF CLOSENESS TO THIS PARTY",
+      "text": "Do you feel very close to this party, somewhat close, or not very close? ..................................................................",
+      "notes": "Only respondents who mentioned a party at Q23c should receive this question. Other respondents should be coded as MISSING for this question. ..................................................................",
+      "help_text": "",
+      "response_options": [
+        {
+          "code": "1",
+          "label": "VERY CLOSE"
+        },
+        {
+          "code": "2",
+          "label": "SOMEWHAT CLOSE"
+        },
+        {
+          "code": "3",
+          "label": "NOT VERY CLOSE"
+        },
+        {
+          "code": "7",
+          "label": "VOLUNTEERED: REFUSED"
+        },
+        {
+          "code": "8",
+          "label": "VOLUNTEERED: DON'T KNOW"
+        },
+        {
+          "code": "9",
+          "label": "MISSING"
+        }
+      ],
+      "missing_codes": [
+        "7",
+        "8",
+        "9"
+      ],
+      "target_variables": [
+        "F3023_4"
+      ],
+      "source_line": 2190
+    },
+    {
+      "item_id": "Q24",
+      "normalized_id": "Q24",
+      "aliases": [],
+      "section": "cses_module",
+      "item_type": "core_question",
+      "title": "PERCENTAGE OF WOMEN IN PARLIAMENT",
+      "text": "The current percentage of women in parliament after the most recent election is [PERCENTAGE] percent. Thinking about this percentage, would you say that it is too high, too low, or about right? ..................................................................",
+      "notes": "Where [PERCENTAGE] appears in the question text, please substitute in the percent of women in parliament that emerged from the election. ..................................................................",
+      "help_text": "",
+      "response_options": [
+        {
+          "code": "1",
+          "label": "TOO HIGH"
+        },
+        {
+          "code": "2",
+          "label": "TOO LOW"
+        },
+        {
+          "code": "3",
+          "label": "ABOUT RIGHT"
+        },
+        {
+          "code": "7",
+          "label": "VOLUNTEERED: REFUSED"
+        },
+        {
+          "code": "8",
+          "label": "VOLUNTEERED: DON'T KNOW"
+        },
+        {
+          "code": "9",
+          "label": "MISSING"
+        }
+      ],
+      "missing_codes": [
+        "7",
+        "8",
+        "9"
+      ],
+      "target_variables": [
+        "F3024"
+      ],
+      "source_line": 2213
+    },
+    {
+      "item_id": "Q25a",
+      "normalized_id": "Q25A",
+      "aliases": [
+        "Q25A"
+      ],
+      "section": "cses_module",
+      "item_type": "core_question",
+      "title": "BETTER SUITED TO LEAD IN PANDEMIC: MEN/WOMEN",
+      "text": "Who is better suited to lead the country during a public health crisis: always male political leaders, usually male political leaders, usually female political leaders, always female political leaders, or both equally? ..................................................................",
+      "notes": "If possible, collaborators should randomize the order in which the two questions are asked within this (Q25) battery. ..................................................................",
+      "help_text": "",
+      "response_options": [
+        {
+          "code": "1",
+          "label": "ALWAYS MALE POLITICAL LEADERS"
+        },
+        {
+          "code": "2",
+          "label": "USUALLY MALE POLITICAL LEADERS"
+        },
+        {
+          "code": "3",
+          "label": "USUALLY FEMALE POLITICAL LEADERS"
+        },
+        {
+          "code": "4",
+          "label": "ALWAYS FEMALE POLITICAL LEADERS"
+        },
+        {
+          "code": "5",
+          "label": "BOTH EQUALLY"
+        },
+        {
+          "code": "7",
+          "label": "VOLUNTEERED: REFUSED"
+        },
+        {
+          "code": "8",
+          "label": "VOLUNTEERED: DON'T KNOW"
+        },
+        {
+          "code": "9",
+          "label": "MISSING"
+        }
+      ],
+      "missing_codes": [
+        "7",
+        "8",
+        "9"
+      ],
+      "target_variables": [
+        "F3025_1"
+      ],
+      "source_line": 2238
+    },
+    {
+      "item_id": "Q25b",
+      "normalized_id": "Q25B",
+      "aliases": [
+        "Q25B"
+      ],
+      "section": "cses_module",
+      "item_type": "core_question",
+      "title": "BETTER SUITED TO LEAD IN ECONOMIC CRISIS: MEN/WOMEN",
+      "text": "Who is better suited to lead the country during an economic crisis: always male political leaders, usually male political leaders, usually female political leaders, always female political leaders, or both equally? ..................................................................",
+      "notes": "If possible, collaborators should randomize the order in which the two questions are asked within this (Q25) battery. ..................................................................",
+      "help_text": "",
+      "response_options": [
+        {
+          "code": "1",
+          "label": "ALWAYS MALE POLITICAL LEADERS"
+        },
+        {
+          "code": "2",
+          "label": "USUALLY MALE POLITICAL LEADERS"
+        },
+        {
+          "code": "3",
+          "label": "USUALLY FEMALE POLITICAL LEADERS"
+        },
+        {
+          "code": "4",
+          "label": "ALWAYS FEMALE POLITICAL LEADERS"
+        },
+        {
+          "code": "5",
+          "label": "BOTH EQUALLY"
+        },
+        {
+          "code": "7",
+          "label": "VOLUNTEERED: REFUSED"
+        },
+        {
+          "code": "8",
+          "label": "VOLUNTEERED: DON'T KNOW"
+        },
+        {
+          "code": "9",
+          "label": "MISSING"
+        }
+      ],
+      "missing_codes": [
+        "7",
+        "8",
+        "9"
+      ],
+      "target_variables": [
+        "F3025_2"
+      ],
+      "source_line": 2264
+    },
+    {
+      "item_id": "Q26a",
+      "normalized_id": "Q26A",
+      "aliases": [
+        "Q26A"
+      ],
+      "section": "cses_module",
+      "item_type": "core_question",
+      "title": "TREATMENT OF GROUPS",
+      "text": "How fairly or not do you think that all groups in society are treated in [COUNTRY]: very fairly, quite fairly, not very fairly, or not well at all fairly? ..................................................................",
+      "notes": "",
+      "help_text": "",
+      "response_options": [
+        {
+          "code": "1",
+          "label": "VERY FAIRLY"
+        },
+        {
+          "code": "2",
+          "label": "QUITE FAIRLY"
+        },
+        {
+          "code": "3",
+          "label": "NOT VERY FAIRLY"
+        },
+        {
+          "code": "4",
+          "label": "NOT AT ALL FAIRLY"
+        },
+        {
+          "code": "7",
+          "label": "VOLUNTEERED: REFUSED"
+        },
+        {
+          "code": "8",
+          "label": "VOLUNTEERED: DON'T KNOW"
+        },
+        {
+          "code": "9",
+          "label": "MISSING"
+        }
+      ],
+      "missing_codes": [
+        "7",
+        "8",
+        "9"
+      ],
+      "target_variables": [
+        "F3026"
+      ],
+      "source_line": 2290
+    },
+    {
+      "item_id": "Q26b",
+      "normalized_id": "Q26B",
+      "aliases": [
+        "Q26B"
+      ],
+      "section": "cses_module",
+      "item_type": "core_question",
+      "title": "POLITICAL SYSTEM AND HEALTHCARE",
+      "text": "How well do you think that our political system guarantees adequate healthcare for all citizens: very well, quite well, not very well, or not well at all? ..................................................................",
+      "notes": "",
+      "help_text": "",
+      "response_options": [
+        {
+          "code": "1",
+          "label": "VERY WELL"
+        },
+        {
+          "code": "2",
+          "label": "QUITE WELL"
+        },
+        {
+          "code": "3",
+          "label": "NOT VERY WELL"
+        },
+        {
+          "code": "4",
+          "label": "NOT WELL AT ALL"
+        },
+        {
+          "code": "7",
+          "label": "VOLUNTEERED: REFUSED"
+        },
+        {
+          "code": "8",
+          "label": "VOLUNTEERED: DON'T KNOW"
+        },
+        {
+          "code": "9",
+          "label": "MISSING"
+        }
+      ],
+      "missing_codes": [
+        "7",
+        "8",
+        "9"
+      ],
+      "target_variables": [
+        "F3027"
+      ],
+      "source_line": 2310
+    },
+    {
+      "item_id": "Q27a",
+      "normalized_id": "Q27A",
+      "aliases": [
+        "Q27A"
+      ],
+      "section": "cses_module",
+      "item_type": "core_question",
+      "title": "CORONAVIRUS: AFFECT ON UNITED SOCIETY",
+      "text": "How did the coronavirus pandemic affect how united society is in [COUNTRY]: very positively, fairly positively, not at all, fairly negatively or very negatively? ..................................................................",
+      "notes": "We are aware that the coronavirus pandemic may become less important over time than it was when we designed the questionnaire. If this has occurred, please have the interviewer read the following clause prior to this question (Q27a): \"Thinking back to the coronavirus pandemic...\" ..................................................................",
+      "help_text": "",
+      "response_options": [
+        {
+          "code": "1",
+          "label": "VERY POSITIVELY"
+        },
+        {
+          "code": "2",
+          "label": "FAIRLY POSITIVELY"
+        },
+        {
+          "code": "3",
+          "label": "NOT AT ALL"
+        },
+        {
+          "code": "4",
+          "label": "FAIRLY NEGATIVELY"
+        },
+        {
+          "code": "5",
+          "label": "VERY NEGATIVELY"
+        },
+        {
+          "code": "7",
+          "label": "VOLUNTEERED: REFUSED"
+        },
+        {
+          "code": "8",
+          "label": "VOLUNTEERED: DON'T KNOW"
+        },
+        {
+          "code": "9",
+          "label": "MISSING"
+        }
+      ],
+      "missing_codes": [
+        "7",
+        "8",
+        "9"
+      ],
+      "target_variables": [
+        "F3028_1"
+      ],
+      "source_line": 2330
+    },
+    {
+      "item_id": "Q27b",
+      "normalized_id": "Q27B",
+      "aliases": [
+        "Q27B"
+      ],
+      "section": "cses_module",
+      "item_type": "core_question",
+      "title": "CORONAVIRUS: FUNCTIONING OF DEMOCRACY",
+      "text": "How did the coronavirus pandemic affect the functioning of democracy here in [COUNTRY]: very positively, fairly positively, not at all, fairly negatively or very negatively? ..................................................................",
+      "notes": "",
+      "help_text": "",
+      "response_options": [
+        {
+          "code": "1",
+          "label": "VERY POSITIVELY"
+        },
+        {
+          "code": "2",
+          "label": "FAIRLY POSITIVELY"
+        },
+        {
+          "code": "3",
+          "label": "NOT AT ALL"
+        },
+        {
+          "code": "4",
+          "label": "FAIRLY NEGATIVELY"
+        },
+        {
+          "code": "5",
+          "label": "VERY NEGATIVELY"
+        },
+        {
+          "code": "7",
+          "label": "VOLUNTEERED: REFUSED"
+        },
+        {
+          "code": "8",
+          "label": "VOLUNTEERED: DON'T KNOW"
+        },
+        {
+          "code": "9",
+          "label": "MISSING"
+        }
+      ],
+      "missing_codes": [
+        "7",
+        "8",
+        "9"
+      ],
+      "target_variables": [
+        "F3028_2"
+      ],
+      "source_line": 2358
+    },
+    {
+      "item_id": "Q27c",
+      "normalized_id": "Q27C",
+      "aliases": [
+        "Q27C"
+      ],
+      "section": "cses_module",
+      "item_type": "core_question",
+      "title": "CORONAVIRUS: PANDEMIC - PERSONAL FINANCES",
+      "text": "How has the coronavirus pandemic affected your personal economic situation: very positively, fairly positively, not at all, fairly negatively, or very negatively? ..................................................................",
+      "notes": "",
+      "help_text": "",
+      "response_options": [
+        {
+          "code": "1",
+          "label": "VERY POSITIVELY"
+        },
+        {
+          "code": "2",
+          "label": "FAIRLY POSITIVELY"
+        },
+        {
+          "code": "3",
+          "label": "NOT AT ALL"
+        },
+        {
+          "code": "4",
+          "label": "FAIRLY NEGATIVELY"
+        },
+        {
+          "code": "5",
+          "label": "VERY NEGATIVELY"
+        },
+        {
+          "code": "7",
+          "label": "VOLUNTEERED: REFUSED"
+        },
+        {
+          "code": "8",
+          "label": "VOLUNTEERED: DON'T KNOW"
+        },
+        {
+          "code": "9",
+          "label": "MISSING"
+        }
+      ],
+      "missing_codes": [
+        "7",
+        "8",
+        "9"
+      ],
+      "target_variables": [
+        "F3028_3"
+      ],
+      "source_line": 2379
+    },
+    {
+      "item_id": "Q27d",
+      "normalized_id": "Q27D",
+      "aliases": [
+        "Q27D"
+      ],
+      "section": "cses_module",
+      "item_type": "core_question",
+      "title": "CORONAVIRUS: PANDEMIC - CONTRACTED COVID",
+      "text": "To the best of your knowledge, have you or anyone living with you been infected with the coronavirus? .................................................................. =========================================================================== ))) CSES MODULE 6 QUESTIONNAIRE: DEMOGRAPHIC VARIABLES ===========================================================================",
+      "notes": "Collaborators are asked to provide data on background (demographic) characteristics of respondents, coded to an agreed upon set of standards as indicated in this section. There is great international variation in the ways that collaborators will go about soliciting information on the background characteristics of their respondents. The objective here is not standardization of the way collaborators ask these background questions, but instead, standardization to a common, cross-national scheme for coding each variable.",
+      "help_text": "",
+      "response_options": [
+        {
+          "code": "1",
+          "label": "YES"
+        },
+        {
+          "code": "5",
+          "label": "NO"
+        },
+        {
+          "code": "7",
+          "label": "VOLUNTEERED: REFUSED"
+        },
+        {
+          "code": "8",
+          "label": "VOLUNTEERED: DON'T KNOW"
+        },
+        {
+          "code": "9",
+          "label": "MISSING"
+        }
+      ],
+      "missing_codes": [
+        "7",
+        "8",
+        "9"
+      ],
+      "target_variables": [
+        "F3028_4"
+      ],
+      "source_line": 2400
+    },
+    {
+      "item_id": "D01a",
+      "normalized_id": "D01A",
+      "aliases": [
+        "D01A",
+        "D1a"
+      ],
+      "section": "demographic",
+      "item_type": "demographic_coding_standard",
+      "title": "DATE OF BIRTH OF RESPONDENT - MONTH",
+      "text": "",
+      "notes": "",
+      "help_text": "",
+      "response_options": [],
+      "missing_codes": [],
+      "target_variables": [],
+      "source_line": 2432
+    },
+    {
+      "item_id": "D01b",
+      "normalized_id": "D01B",
+      "aliases": [
+        "D01B",
+        "D1b"
+      ],
+      "section": "demographic",
+      "item_type": "demographic_coding_standard",
+      "title": "DATE OF BIRTH OF RESPONDENT - YEAR",
+      "text": "",
+      "notes": "These variables should report the month of birth, and year of birth, of the respondent. .................................................................. MONTH YEAR 1800-2021. YEAR 9999. MISSING",
+      "help_text": "",
+      "response_options": [
+        {
+          "code": "01",
+          "label": "JANUARY"
+        },
+        {
+          "code": "02",
+          "label": "FEBRUARY"
+        },
+        {
+          "code": "03",
+          "label": "MARCH"
+        },
+        {
+          "code": "04",
+          "label": "APRIL"
+        },
+        {
+          "code": "05",
+          "label": "MAY"
+        },
+        {
+          "code": "06",
+          "label": "JUNE"
+        },
+        {
+          "code": "07",
+          "label": "JULY"
+        },
+        {
+          "code": "08",
+          "label": "AUGUST"
+        },
+        {
+          "code": "09",
+          "label": "SEPTEMBER"
+        },
+        {
+          "code": "10",
+          "label": "OCTOBER"
+        },
+        {
+          "code": "11",
+          "label": "NOVEMBER"
+        },
+        {
+          "code": "12",
+          "label": "DECEMBER"
+        },
+        {
+          "code": "99",
+          "label": "MISSING"
+        }
+      ],
+      "missing_codes": [
+        "99"
+      ],
+      "target_variables": [
+        "F2001_Y"
+      ],
+      "source_line": 2433
+    },
+    {
+      "item_id": "D02",
+      "normalized_id": "D02",
+      "aliases": [
+        "D2"
+      ],
+      "section": "demographic",
+      "item_type": "demographic_coding_standard",
+      "title": "GENDER",
+      "text": "",
+      "notes": "This item should report the gender of the respondent. ..................................................................",
+      "help_text": "",
+      "response_options": [
+        {
+          "code": "1",
+          "label": "MALE"
+        },
+        {
+          "code": "2",
+          "label": "FEMALE"
+        },
+        {
+          "code": "5",
+          "label": "OTHER"
+        },
+        {
+          "code": "7",
+          "label": "VOLUNTEERED: REFUSED"
+        },
+        {
+          "code": "9",
+          "label": "MISSING"
+        }
+      ],
+      "missing_codes": [
+        "7",
+        "9"
+      ],
+      "target_variables": [
+        "F2002"
+      ],
+      "source_line": 2466
+    },
+    {
+      "item_id": "D03",
+      "normalized_id": "D03",
+      "aliases": [
+        "D3"
+      ],
+      "section": "demographic",
+      "item_type": "demographic_coding_standard",
+      "title": "EDUCATION",
+      "text": "",
+      "notes": "This item should report the respondent's highest level of education that has been completed. Please classify respondents according to UNESCO's 2011 International Standard Classification of Education (ISCED 2011). An English-language description of the ISCED 2011 standard can be found here: http://www.uis.unesco.org/Education/Documents/isced-2011-en.pdf ..................................................................",
+      "help_text": "",
+      "response_options": [
+        {
+          "code": "96",
+          "label": "NONE (NO EDUCATION)"
+        },
+        {
+          "code": "01",
+          "label": "ISCED LEVEL 0 - EARLY CHILDHOOD EDUCATION"
+        },
+        {
+          "code": "02",
+          "label": "ISCED LEVEL 1 - PRIMARY"
+        },
+        {
+          "code": "03",
+          "label": "ISCED LEVEL 2 - LOWER SECONDARY"
+        },
+        {
+          "code": "04",
+          "label": "ISCED LEVEL 3 - UPPER SECONDARY"
+        },
+        {
+          "code": "05",
+          "label": "ISCED LEVEL 4 - POST-SECONDARY NON-TERTIARY"
+        },
+        {
+          "code": "06",
+          "label": "ISCED LEVEL 5 - SHORT-CYCLE TERTIARY"
+        },
+        {
+          "code": "07",
+          "label": "ISCED LEVEL 6 - BACHELOR OR EQUIVALENT"
+        },
+        {
+          "code": "08",
+          "label": "ISCED LEVEL 7 - MASTER OR EQUIVALENT"
+        },
+        {
+          "code": "09",
+          "label": "ISCED LEVEL 8 - DOCTORAL OR EQUIVALENT"
+        },
+        {
+          "code": "97",
+          "label": "VOLUNTEERED: REFUSED"
+        },
+        {
+          "code": "98",
+          "label": "VOLUNTEERED: DON'T KNOW"
+        },
+        {
+          "code": "99",
+          "label": "MISSING"
+        }
+      ],
+      "missing_codes": [
+        "97",
+        "98",
+        "99"
+      ],
+      "target_variables": [
+        "F2003"
+      ],
+      "source_line": 2482
+    },
+    {
+      "item_id": "D04",
+      "normalized_id": "D04",
+      "aliases": [
+        "D4"
+      ],
+      "section": "demographic",
+      "item_type": "demographic_coding_standard",
+      "title": "MARITAL OR CIVIL UNION STATUS",
+      "text": "",
+      "notes": "This variable reports the respondent's current marital or civil union status. For instance, a person who is both divorced and living as married would be coded 1. .................................................................. WITH LEGAL SPOUSE)",
+      "help_text": "",
+      "response_options": [
+        {
+          "code": "1",
+          "label": "MARRIED OR LIVING TOGETHER AS MARRIED"
+        },
+        {
+          "code": "2",
+          "label": "WIDOWED"
+        },
+        {
+          "code": "3",
+          "label": "DIVORCED OR SEPARATED (MARRIED BUT SEPARATED / NOT LIVING"
+        },
+        {
+          "code": "4",
+          "label": "SINGLE, NEVER MARRIED"
+        },
+        {
+          "code": "7",
+          "label": "VOLUNTEERED: REFUSED"
+        },
+        {
+          "code": "8",
+          "label": "VOLUNTEERED: DON'T KNOW"
+        },
+        {
+          "code": "9",
+          "label": "MISSING"
+        }
+      ],
+      "missing_codes": [
+        "7",
+        "8",
+        "9"
+      ],
+      "target_variables": [
+        "F2004"
+      ],
+      "source_line": 2515
+    },
+    {
+      "item_id": "D05",
+      "normalized_id": "D05",
+      "aliases": [
+        "D5"
+      ],
+      "section": "demographic",
+      "item_type": "demographic_coding_standard",
+      "title": "UNION MEMBERSHIP",
+      "text": "",
+      "notes": "This item should indicate whether or not the respondent is a member of a union. ..................................................................",
+      "help_text": "",
+      "response_options": [
+        {
+          "code": "1",
+          "label": "R IS MEMBER OF A UNION"
+        },
+        {
+          "code": "2",
+          "label": "R IS NOT A MEMBER OF A UNION"
+        },
+        {
+          "code": "7",
+          "label": "VOLUNTEERED: REFUSED"
+        },
+        {
+          "code": "8",
+          "label": "VOLUNTEERED: DON'T KNOW"
+        },
+        {
+          "code": "9",
+          "label": "MISSING"
+        }
+      ],
+      "missing_codes": [
+        "7",
+        "8",
+        "9"
+      ],
+      "target_variables": [
+        "F2005"
+      ],
+      "source_line": 2536
+    },
+    {
+      "item_id": "D06",
+      "normalized_id": "D06",
+      "aliases": [
+        "D6"
+      ],
+      "section": "demographic",
+      "item_type": "demographic_coding_standard",
+      "title": "CURRENT EMPLOYMENT STATUS",
+      "text": "",
+      "notes": "This item should indicate the respondent's current employment status. Respondents who are temporarily unemployed are coded UNEMPLOYED. Respondents on \"workfare\" or enrolled in a government job training program are coded EMPLOYED. .................................................................. IN LABOR FORCE: NOT IN LABOR FORCE:",
+      "help_text": "",
+      "response_options": [
+        {
+          "code": "01",
+          "label": "EMPLOYED - FULL TIME (32 OR MORE HOURS WEEKLY)"
+        },
+        {
+          "code": "02",
+          "label": "EMPLOYED - PART TIME (15 TO LESS THAN 32 HOURS WEEKLY)"
+        },
+        {
+          "code": "03",
+          "label": "EMPLOYED - LESS THAN 15 HOURS"
+        },
+        {
+          "code": "04",
+          "label": "HELPING FAMILY MEMBER"
+        },
+        {
+          "code": "05",
+          "label": "UNEMPLOYED"
+        },
+        {
+          "code": "06",
+          "label": "STUDENT, IN SCHOOL, IN VOCATIONAL TRAINING"
+        },
+        {
+          "code": "07",
+          "label": "RETIRED"
+        },
+        {
+          "code": "08",
+          "label": "HOUSEWIFE, HOMEMAKER, HOME DUTIES"
+        },
+        {
+          "code": "09",
+          "label": "PERMANENTLY DISABLED"
+        },
+        {
+          "code": "10",
+          "label": "OTHERS, NOT IN LABOR FORCE"
+        },
+        {
+          "code": "97",
+          "label": "VOLUNTEERED: REFUSED"
+        },
+        {
+          "code": "98",
+          "label": "VOLUNTEERED: DON'T KNOW"
+        },
+        {
+          "code": "99",
+          "label": "MISSING"
+        }
+      ],
+      "missing_codes": [
+        "97",
+        "98",
+        "99"
+      ],
+      "target_variables": [
+        "F2006"
+      ],
+      "source_line": 2553
+    },
+    {
+      "item_id": "D07",
+      "normalized_id": "D07",
+      "aliases": [
+        "D7"
+      ],
+      "section": "demographic",
+      "item_type": "demographic_coding_standard",
+      "title": "MAIN OCCUPATION",
+      "text": "",
+      "notes": "This item should report the respondent's main occupation, that is, the job at which the respondent spends most of the time or if the respondent spends an equal amount of time on two jobs, it is the one from which the respondent earns the most money. For respondents who are currently employed, this variable reports their current occupation. For respondents who are retired or not currently working, code last occupation. Please classify respondents according to the TWO-digit version of the 2008 International Standard Classification of Occupations (ISCO-08). An English-language description of the ISCO-08 standard can be found here: http:// www.ilo.org/public/english/bureau/stat/isco/docs/resol08.pdf .................................................................. ISCO-08 Two Digit Classification System: MANAGERS PROFESSIONALS TECHNICIANS AND ASSOCIATE PROFESSIONALS CLERICAL SUPPORT WORKERS SERVICE AND SALES WORKERS SKILLED AGRICULTURAL, FORESTRY AND FISHERY WORKERS CRAFT AND RELATED TRADES WORKERS related trades workers PLANT AND MACHINE OPERATORS, AND ASSEMBLERS ELEMENTARY OCCUPATIONS ARMED FORCES OCCUPATIONS",
+      "help_text": "",
+      "response_options": [
+        {
+          "code": "11",
+          "label": "Chief executives, senior officials and legislators"
+        },
+        {
+          "code": "12",
+          "label": "Administrative and commercial managers"
+        },
+        {
+          "code": "13",
+          "label": "Production and specialized services managers"
+        },
+        {
+          "code": "14",
+          "label": "Hospitality, retail and other services managers"
+        },
+        {
+          "code": "21",
+          "label": "Science and engineering professionals"
+        },
+        {
+          "code": "22",
+          "label": "Health professionals"
+        },
+        {
+          "code": "23",
+          "label": "Teaching professionals"
+        },
+        {
+          "code": "24",
+          "label": "Business and administration professionals"
+        },
+        {
+          "code": "25",
+          "label": "Information and communications technology professionals"
+        },
+        {
+          "code": "26",
+          "label": "Legal, social and cultural professionals"
+        },
+        {
+          "code": "31",
+          "label": "Science and engineering associate professionals"
+        },
+        {
+          "code": "32",
+          "label": "Health associate professionals"
+        },
+        {
+          "code": "33",
+          "label": "Business and administration associate professionals"
+        },
+        {
+          "code": "34",
+          "label": "Legal, social, cultural and related associate professionals"
+        },
+        {
+          "code": "35",
+          "label": "Information and communications technicians"
+        },
+        {
+          "code": "41",
+          "label": "General and keyboard clerks"
+        },
+        {
+          "code": "42",
+          "label": "Customer services clerks"
+        },
+        {
+          "code": "43",
+          "label": "Numerical and material recording clerks"
+        },
+        {
+          "code": "44",
+          "label": "Other clerical support workers"
+        },
+        {
+          "code": "51",
+          "label": "Personal service workers"
+        },
+        {
+          "code": "52",
+          "label": "Sales workers"
+        },
+        {
+          "code": "53",
+          "label": "Personal care workers"
+        },
+        {
+          "code": "54",
+          "label": "Protective services workers"
+        },
+        {
+          "code": "61",
+          "label": "Market-oriented skilled agricultural workers"
+        },
+        {
+          "code": "62",
+          "label": "Market-oriented skilled forestry, fishing and hunting workers"
+        },
+        {
+          "code": "63",
+          "label": "Subsistence farmers, fishers, hunters and gatherers"
+        },
+        {
+          "code": "71",
+          "label": "Building and related trades workers, excluding electricians"
+        },
+        {
+          "code": "72",
+          "label": "Metal, machinery and related trades workers"
+        },
+        {
+          "code": "73",
+          "label": "Handicraft and printing workers"
+        },
+        {
+          "code": "74",
+          "label": "Electrical and electronic trades workers"
+        },
+        {
+          "code": "75",
+          "label": "Food processing, wood working, garment and other craft and"
+        },
+        {
+          "code": "81",
+          "label": "Stationary plant and machine operators"
+        },
+        {
+          "code": "82",
+          "label": "Assemblers"
+        },
+        {
+          "code": "83",
+          "label": "Drivers and mobile plant operators"
+        },
+        {
+          "code": "91",
+          "label": "Cleaners and helpers"
+        },
+        {
+          "code": "92",
+          "label": "Agricultural, forestry and fishery laborers"
+        },
+        {
+          "code": "93",
+          "label": "Laborers in mining, construction, manufacturing and transport"
+        },
+        {
+          "code": "94",
+          "label": "Food preparation assistants"
+        },
+        {
+          "code": "95",
+          "label": "Street and related sales and service workers"
+        },
+        {
+          "code": "96",
+          "label": "Refuse workers and other elementary workers"
+        },
+        {
+          "code": "01",
+          "label": "Commissioned armed forces officers"
+        },
+        {
+          "code": "02",
+          "label": "Non-commissioned armed forces officers"
+        },
+        {
+          "code": "03",
+          "label": "Armed forces occupations, other ranks"
+        }
+      ],
+      "missing_codes": [],
+      "target_variables": [
+        "F2007"
+      ],
+      "source_line": 2588
+    },
+    {
+      "item_id": "D07a",
+      "normalized_id": "D07A",
+      "aliases": [
+        "D7a",
+        "D07A"
+      ],
+      "section": "demographic",
+      "item_type": "demographic_coding_standard",
+      "title": "SOCIO ECONOMIC STATUS",
+      "text": "",
+      "notes": "This item should report the respondent's socio economic status. The categories are intended to distinguish among the following groups: engaged in non-manual labor: Managers, salaried professionals, office workers, sales personnel, and proprietors are generally included in the category. manual labor. excluding self-employed farming. Included, for example, are entrepreneurs, shop keepers, professionals like lawyers, medical doctors, etc. ..................................................................",
+      "help_text": "",
+      "response_options": [
+        {
+          "code": "01",
+          "label": "White collar: broad occupational grouping of workers"
+        },
+        {
+          "code": "02",
+          "label": "Worker: broad occupational grouping of workers engaged in"
+        },
+        {
+          "code": "03",
+          "label": "Farmer: Normally persons self-employed in farming."
+        },
+        {
+          "code": "04",
+          "label": "Self-employed: Self-employed occupations of all kinds,"
+        },
+        {
+          "code": "1",
+          "label": "WHITE COLLAR"
+        },
+        {
+          "code": "2",
+          "label": "WORKER"
+        },
+        {
+          "code": "3",
+          "label": "FARMER"
+        },
+        {
+          "code": "4",
+          "label": "SELF-EMPLOYED"
+        },
+        {
+          "code": "7",
+          "label": "VOLUNTEERED: REFUSED"
+        },
+        {
+          "code": "8",
+          "label": "VOLUNTEERED: DON'T KNOW"
+        },
+        {
+          "code": "9",
+          "label": "MISSING"
+        }
+      ],
+      "missing_codes": [
+        "7",
+        "8",
+        "9"
+      ],
+      "target_variables": [
+        "F2008"
+      ],
+      "source_line": 2677
+    },
+    {
+      "item_id": "D08",
+      "normalized_id": "D08",
+      "aliases": [
+        "D8"
+      ],
+      "section": "demographic",
+      "item_type": "demographic_coding_standard",
+      "title": "EMPLOYMENT TYPE - PUBLIC OR PRIVATE",
+      "text": "",
+      "notes": "This item should report whether respondent's employment is in the public, private, mixed or non-profit sector. ..................................................................",
+      "help_text": "",
+      "response_options": [
+        {
+          "code": "1",
+          "label": "PUBLIC SECTOR"
+        },
+        {
+          "code": "2",
+          "label": "PRIVATE SECTOR"
+        },
+        {
+          "code": "3",
+          "label": "MIXED"
+        },
+        {
+          "code": "4",
+          "label": "\"THIRD SECTOR\"/NON-PROFIT SECTOR"
+        },
+        {
+          "code": "7",
+          "label": "VOLUNTEERED: REFUSED"
+        },
+        {
+          "code": "8",
+          "label": "VOLUNTEERED: DON'T KNOW"
+        },
+        {
+          "code": "9",
+          "label": "MISSING"
+        }
+      ],
+      "missing_codes": [
+        "7",
+        "8",
+        "9"
+      ],
+      "target_variables": [
+        "F2009"
+      ],
+      "source_line": 2713
+    },
+    {
+      "item_id": "D09",
+      "normalized_id": "D09",
+      "aliases": [
+        "D9"
+      ],
+      "section": "demographic",
+      "item_type": "demographic_coding_standard",
+      "title": "HOUSEHOLD INCOME",
+      "text": "",
+      "notes": "This item should report the annual household income for the respondent's household. In previous modules of the CSES, we asked that this variable be provided in quintiles. We are no longer asking for this. We are now instead asking for collaborators to provide the original, raw data for household income in whatever format that the information was collected. If the information was collected using multiple questions, please provide the data for all of the original questions. When providing this information to CSES, please identify which currency was used (for example \"Euros,\" \"Thai Bhat,\" et cetera). Please also include codes for \"VOLUNTEERED: REFUSED,\" \"VOLUNTEERED: DON'T KNOW,\" and \"MISSING,\" as appropriate. ..................................................................",
+      "help_text": "",
+      "response_options": [],
+      "missing_codes": [],
+      "target_variables": [
+        "F2010_2"
+      ],
+      "source_line": 2732
+    },
+    {
+      "item_id": "D10",
+      "normalized_id": "D10",
+      "aliases": [],
+      "section": "demographic",
+      "item_type": "demographic_coding_standard",
+      "title": "RELIGIOUS DENOMINATION",
+      "text": "",
+      "notes": "This item should report the respondent's religious denomination. Collaborators, please offer \"NONE\" as an option for respondents. This appears below as code 8300. .................................................................. CHRISTIANITY 1000. CHRISTIAN (NO DENOMINATION GIVEN) CATHOLIC 1101. ROMAN CATHOLIC 1102. EASTERN (GREEK RITE) CATHOLIC CHURCHES 1199. CATHOLIC, OTHER [SEE ELECTION STUDY NOTES] PROTESTANT 1200. PROTESTANT, NO DENOMINATION GIVEN 1201. ADVENTIST 1203. BAPTIST 1204. CONGREGATIONAL 1205. EUROPEAN FREE CHURCH (ANABAPTISTS, MENNONITES) 1206. HOLINESS 1207. FUNDAMENTALIST 1208. LUTHERAN 1209. METHODIST 1210. PENTECOSTAL 1211. PRESBYTERIAN 1212. CALVINIST 1213. SALVATION ARMY/SALVATIONIST 1214. CHRISTIAN BRETHEN 1215. CHURCHES OF CHRIST 1216. REFORMED CHURCHES 1217. PROTESTANT CHURCH OF THE NETHERLANDS 1298. PROTESTANT, OTHER [SEE ELECTION STUDY NOTES] 1299. PROTESTANT, OTHER [SEE ELECTION STUDY NOTES] ANGLICAN 1300. EPISCOPALIAN, ANGLICAN, CHURCH OF ENGLAND, CHURCH OF IRELAND INDEPENDENTS-NON-AFFILIATED 1401. INDEPENDENT-FUNDAMENTALIST 1410. APOSTOLIC 1420. UNITED CHURCHES 1499. INDEPENDENT, OTHER [SEE ELECTION STUDY NOTES] NON-TRADITIONAL PROTESTANTS 1501. CHRISTIAN SCIENTISTS 1502. MORMONS, CHURCH OF LATTER DAY SAINTS 1503. UNITARIAN UNIVERSALISTS 1504. JEHOVAH'S WITNESSES 1599. NON-TRADITIONAL PROTESTANT, OTHER [SEE ELECTION STUDY NOTES] ORTHODOX 1600. EASTERN ORTHODOX 1699. ORTHODOX, OTHER [SEE ELECTION STUDY NOTES] JEWISH 2000. JEWISH ISLAM 3000. MUSLIM; MOHAMMEDAN; ISLAM (NO DENOMINATION GIVEN) 3100. SUNNI 3200. SHI'ISM 3210. ISMA'ILIS 3211. DRUSE BUDDHISM 4000. BUDDHIST 4100. THERAVADA 4200. MAHAYANA HINDUISM AND OTHER RELIGIONS OF INDIA 5000. HINDU 5010. PARSIISM 5020. VAISHNAVISM 5030. SHAIVISM 5040. SHAKTISM 5500. JAINISM 5600. SIKHISM INDIGENOUS RELIGIONS OF EAST ASIA 6100. CONFUCIANISM 6200. TAOISM 6300. SHINTO 6400. NEW RELIGIONSISTS 6401. I-KUAN-TAO 6500. TRADITIONAL FOLK BELIEF/NICHIREN SHSHU ETHNORELIGIONS/OTHER BELIEVER 7100. PAGAN, HEATHEN, TRIBAL RELIGIONSIST, TRADITIONAL RELIGIONIST, ANIMISM, SHAMANISM 7110. RATANA, MAORI 7200. SPIRITISM 7500. BAHAI 7900. EHTNORELIGIONIST, OTHER [SEE ELECTION STUDY NOTES] 7901. EHTNORELIGIONIST, OTHER [SEE ELECTION STUDY NOTES] NON BELIEVERS 8100. AGNOSTIC 8200. ATHEIST 8300. NONE 9600. OTHER: NOT SPECIFIED 9997. VOLUNTEERED: REFUSED 9998. VOLUNTEERED: DON'T KNOW 9999. MISSING",
+      "help_text": "",
+      "response_options": [],
+      "missing_codes": [],
+      "target_variables": [
+        "F2011"
+      ],
+      "source_line": 2756
+    },
+    {
+      "item_id": "D11",
+      "normalized_id": "D11",
+      "aliases": [],
+      "section": "demographic",
+      "item_type": "demographic_coding_standard",
+      "title": "RELIGIOUS SERVICES ATTENDANCE",
+      "text": "",
+      "notes": "This variable should report the frequency with which the respondent attends religious services. The response should exclude special occasions such as weddings and funerals. ..................................................................",
+      "help_text": "",
+      "response_options": [
+        {
+          "code": "1",
+          "label": "NEVER"
+        },
+        {
+          "code": "2",
+          "label": "ONCE A YEAR"
+        },
+        {
+          "code": "3",
+          "label": "TWO TO ELEVEN TIMES A YEAR"
+        },
+        {
+          "code": "4",
+          "label": "ONCE A MONTH"
+        },
+        {
+          "code": "5",
+          "label": "TWO OR MORE TIMES A MONTH"
+        },
+        {
+          "code": "6",
+          "label": "ONCE A WEEK/MORE THAN ONCE A WEEK"
+        },
+        {
+          "code": "7",
+          "label": "VOLUNTEERED: REFUSED"
+        },
+        {
+          "code": "8",
+          "label": "VOLUNTEERED: DON'T KNOW"
+        },
+        {
+          "code": "9",
+          "label": "MISSING"
+        }
+      ],
+      "missing_codes": [
+        "7",
+        "8",
+        "9"
+      ],
+      "target_variables": [
+        "F2012"
+      ],
+      "source_line": 2872
+    },
+    {
+      "item_id": "D12",
+      "normalized_id": "D12",
+      "aliases": [],
+      "section": "demographic",
+      "item_type": "demographic_coding_standard",
+      "title": "RACE",
+      "text": "",
+      "notes": "This item should report the respondent's race. The item should be coded according to national standards. .................................................................. 001-996. [PLEASE PROVIDE RACE CODE LABELS]",
+      "help_text": "",
+      "response_options": [
+        {
+          "code": "997",
+          "label": "VOLUNTEERED: REFUSED"
+        },
+        {
+          "code": "998",
+          "label": "VOLUNTEERED: DON'T KNOW"
+        },
+        {
+          "code": "999",
+          "label": "MISSING"
+        }
+      ],
+      "missing_codes": [
+        "997",
+        "998",
+        "999"
+      ],
+      "target_variables": [],
+      "source_line": 2896
+    },
+    {
+      "item_id": "D13",
+      "normalized_id": "D13",
+      "aliases": [],
+      "section": "demographic",
+      "item_type": "demographic_coding_standard",
+      "title": "ETHNICITY",
+      "text": "",
+      "notes": "This variable reports the ethnic identity of respondents. .................................................................. 001-996. [PLEASE PROVIDE ETHNICITY CODE LABELS]",
+      "help_text": "",
+      "response_options": [
+        {
+          "code": "997",
+          "label": "VOLUNTEERED: REFUSED"
+        },
+        {
+          "code": "998",
+          "label": "VOLUNTEERED: DON'T KNOW"
+        },
+        {
+          "code": "999",
+          "label": "MISSING"
+        }
+      ],
+      "missing_codes": [
+        "997",
+        "998",
+        "999"
+      ],
+      "target_variables": [],
+      "source_line": 2912
+    },
+    {
+      "item_id": "D14",
+      "normalized_id": "D14",
+      "aliases": [],
+      "section": "demographic",
+      "item_type": "demographic_coding_standard",
+      "title": "COUNTRY OF BIRTH",
+      "text": "",
+      "notes": "This item should indicate the respondent's country of birth. .................................................................. 001-996. [COUNTRY OF BIRTH]",
+      "help_text": "",
+      "response_options": [
+        {
+          "code": "997",
+          "label": "VOLUNTEERED: REFUSED"
+        },
+        {
+          "code": "998",
+          "label": "VOLUNTEERED: DON'T KNOW"
+        },
+        {
+          "code": "999",
+          "label": "MISSING"
+        }
+      ],
+      "missing_codes": [
+        "997",
+        "998",
+        "999"
+      ],
+      "target_variables": [
+        "F2015"
+      ],
+      "source_line": 2927
+    },
+    {
+      "item_id": "D15",
+      "normalized_id": "D15",
+      "aliases": [],
+      "section": "demographic",
+      "item_type": "demographic_coding_standard",
+      "title": "WAS EITHER BIOLOGICAL PARENT BORN OUTSIDE OF THE COUNTRY",
+      "text": "Was either or both of your parents born outside of [COUNTRY]? ..................................................................",
+      "notes": "",
+      "help_text": "If the respondent expresses any uncertainty, the interviewer can clarify that we are asking about biological parents by using a phrase such as \"that is, your biological parents\". ..................................................................",
+      "response_options": [
+        {
+          "code": "1",
+          "label": "YES"
+        },
+        {
+          "code": "5",
+          "label": "NO"
+        },
+        {
+          "code": "7",
+          "label": "VOLUNTEERED: REFUSED"
+        },
+        {
+          "code": "8",
+          "label": "VOLUNTEERED: DON'T KNOW"
+        },
+        {
+          "code": "9",
+          "label": "MISSING"
+        }
+      ],
+      "missing_codes": [
+        "7",
+        "8",
+        "9"
+      ],
+      "target_variables": [
+        "F2016"
+      ],
+      "source_line": 2942
+    },
+    {
+      "item_id": "D16",
+      "normalized_id": "D16",
+      "aliases": [],
+      "section": "demographic",
+      "item_type": "demographic_coding_standard",
+      "title": "LANGUAGE USUALLY SPOKEN AT HOME",
+      "text": "",
+      "notes": "This variable reports the language usually spoken in the respondent's household. If more than one language is spoken at home, this variable should report the language spoken most of the time. ..................................................................",
+      "help_text": "",
+      "response_options": [
+        {
+          "code": "001",
+          "label": "AFRIKAANS"
+        },
+        {
+          "code": "002",
+          "label": "ALBANIAN, ARVANITIKA"
+        },
+        {
+          "code": "003",
+          "label": "ALBANIAN, GHEG"
+        },
+        {
+          "code": "004",
+          "label": "ALBANIAN, TOSK"
+        },
+        {
+          "code": "005",
+          "label": "ALLEMANNISCH"
+        },
+        {
+          "code": "006",
+          "label": "ALSATIAN"
+        },
+        {
+          "code": "007",
+          "label": "ARABIC, JUDEO-MOROCCAN"
+        },
+        {
+          "code": "008",
+          "label": "ARABIC, LEVANTINE (ISRAEL)"
+        },
+        {
+          "code": "009",
+          "label": "ARMENIAN"
+        },
+        {
+          "code": "201",
+          "label": "ASHANTI (GHANA)"
+        },
+        {
+          "code": "237",
+          "label": "ASYRIAN"
+        },
+        {
+          "code": "010",
+          "label": "AVAR (RUSSIA)"
+        },
+        {
+          "code": "011",
+          "label": "AWADHI (INDIA)"
+        },
+        {
+          "code": "012",
+          "label": "AYMARA, CENTRAL (ARGENTINA, PERU)"
+        },
+        {
+          "code": "231",
+          "label": "AZERI"
+        },
+        {
+          "code": "013",
+          "label": "BASQUE"
+        },
+        {
+          "code": "234",
+          "label": "BALKAR"
+        },
+        {
+          "code": "014",
+          "label": "BELORUSSIAN"
+        },
+        {
+          "code": "015",
+          "label": "BEMBA (ZAMBIA)"
+        },
+        {
+          "code": "016",
+          "label": "BENGALI, BANGLADESHI, BANGLA (INDIA)"
+        },
+        {
+          "code": "017",
+          "label": "BHOJPURI (INDIA)"
+        },
+        {
+          "code": "244",
+          "label": "BICOLANO (PHILIPPINES)"
+        },
+        {
+          "code": "265",
+          "label": "BISAYA (PHILIPPINES)"
+        },
+        {
+          "code": "270",
+          "label": "B'LAAN (PHILIPPINES)"
+        },
+        {
+          "code": "202",
+          "label": "BLUCH (PAKISTAN)"
+        },
+        {
+          "code": "263",
+          "label": "BOHOLANO (PHILIPPINES)"
+        },
+        {
+          "code": "018",
+          "label": "BOSNIAN"
+        },
+        {
+          "code": "019",
+          "label": "BRETON"
+        },
+        {
+          "code": "020",
+          "label": "BULGARIAN"
+        },
+        {
+          "code": "260",
+          "label": "CAGAYANO (PHILIPPINES)"
+        },
+        {
+          "code": "258",
+          "label": "CANTILAGNON (PHILIPPINES)"
+        },
+        {
+          "code": "273",
+          "label": "CAPIZNON (PHILIPPINES)"
+        },
+        {
+          "code": "021",
+          "label": "CATALAN"
+        },
+        {
+          "code": "241",
+          "label": "CEBUANO (PHILIPPINES)"
+        },
+        {
+          "code": "276",
+          "label": "CENTRAL THAI"
+        },
+        {
+          "code": "022",
+          "label": "CHECHEN (RUSSIA)"
+        },
+        {
+          "code": "203",
+          "label": "CHINESE, CANTONESE"
+        },
+        {
+          "code": "023",
+          "label": "CHINESE, HAKKA"
+        },
+        {
+          "code": "024",
+          "label": "CHINESE, MANDARIN"
+        },
+        {
+          "code": "025",
+          "label": "CHINESE, MIN NAN"
+        },
+        {
+          "code": "026",
+          "label": "CHUVASH (RUSSIA)"
+        },
+        {
+          "code": "027",
+          "label": "CROATIAN"
+        },
+        {
+          "code": "028",
+          "label": "CZECH"
+        },
+        {
+          "code": "029",
+          "label": "DANISH"
+        },
+        {
+          "code": "030",
+          "label": "DECCAN (INDIA)"
+        },
+        {
+          "code": "204",
+          "label": "DORIC (SCOTLAND)"
+        },
+        {
+          "code": "031",
+          "label": "DUTCH"
+        },
+        {
+          "code": "032",
+          "label": "ENGLISH"
+        },
+        {
+          "code": "033",
+          "label": "ERZYA (RUSSIA)"
+        },
+        {
+          "code": "205",
+          "label": "ESAN (NIGERIA)"
+        },
+        {
+          "code": "034",
+          "label": "ESTONIAN"
+        },
+        {
+          "code": "206",
+          "label": "EWE (GHANA)"
+        },
+        {
+          "code": "209",
+          "label": "FARSI (IRAN)"
+        },
+        {
+          "code": "035",
+          "label": "FINNISH"
+        },
+        {
+          "code": "036",
+          "label": "FRENCH"
+        },
+        {
+          "code": "037",
+          "label": "FRISIAN, WESTERN (NETHERLANDS)"
+        },
+        {
+          "code": "038",
+          "label": "FULACUNDA (SENEGAL)"
+        },
+        {
+          "code": "207",
+          "label": "GA (GHANA)"
+        },
+        {
+          "code": "039",
+          "label": "GAELIC, IRISH"
+        },
+        {
+          "code": "208",
+          "label": "GAELIC (SCOTLAND)"
+        },
+        {
+          "code": "040",
+          "label": "GAGAUZ (MOLDOVA)"
+        },
+        {
+          "code": "041",
+          "label": "GALICIAN"
+        },
+        {
+          "code": "042",
+          "label": "GASCON"
+        },
+        {
+          "code": "043",
+          "label": "GEORGIAN"
+        },
+        {
+          "code": "044",
+          "label": "GERMAN, STANDARD"
+        },
+        {
+          "code": "045",
+          "label": "GREEK"
+        },
+        {
+          "code": "046",
+          "label": "GUARANI, PARAGUAYAN"
+        },
+        {
+          "code": "047",
+          "label": "GUJARATI (SOUTH AFRICA, INDIA)"
+        },
+        {
+          "code": "048",
+          "label": "HEBREW"
+        },
+        {
+          "code": "266",
+          "label": "HIGAONON (PHILIPPINES)"
+        },
+        {
+          "code": "274",
+          "label": "HILIGAYNON (PHILIPPINES)"
+        },
+        {
+          "code": "049",
+          "label": "HUNGARIAN"
+        },
+        {
+          "code": "051",
+          "label": "HINDI"
+        },
+        {
+          "code": "050",
+          "label": "ICELANDIC"
+        },
+        {
+          "code": "259",
+          "label": "IFUGAO (PHILIPPINES)"
+        },
+        {
+          "code": "242",
+          "label": "ILOCANO (PHILIPPINES)"
+        },
+        {
+          "code": "243",
+          "label": "ILONGGO (PHILIPPINES)"
+        },
+        {
+          "code": "210",
+          "label": "INDONESIAN"
+        },
+        {
+          "code": "211",
+          "label": "IRANIAN"
+        },
+        {
+          "code": "254",
+          "label": "IRANUN (PHILIPPINES)"
+        },
+        {
+          "code": "278",
+          "label": "ISAN THAI"
+        },
+        {
+          "code": "052",
+          "label": "ITALIAN"
+        },
+        {
+          "code": "249",
+          "label": "ITAWES (PHILIPPINES)"
+        },
+        {
+          "code": "212",
+          "label": "IWO (UGANDA)"
+        },
+        {
+          "code": "053",
+          "label": "JAKATI (MOLDOVA)"
+        },
+        {
+          "code": "213",
+          "label": "JAMAICAN PATOIS"
+        },
+        {
+          "code": "275",
+          "label": "JAMINDANON (PHILIPPINES)"
+        },
+        {
+          "code": "054",
+          "label": "JAPANESE"
+        },
+        {
+          "code": "280",
+          "label": "KAMAE (THAILAND)"
+        },
+        {
+          "code": "257",
+          "label": "KAMAYO (PHILIPPINES)"
+        },
+        {
+          "code": "055",
+          "label": "KANNADA (INDIA)"
+        },
+        {
+          "code": "056",
+          "label": "KAONDE (ZAMBIA)"
+        },
+        {
+          "code": "245",
+          "label": "KAPAMPANGAN (PHILIPPINES)"
+        },
+        {
+          "code": "057",
+          "label": "KARAIM (LITHUANIA)"
+        },
+        {
+          "code": "261",
+          "label": "KARAY-AY (PHILIPPINES)"
+        },
+        {
+          "code": "233",
+          "label": "KARBADIN"
+        },
+        {
+          "code": "058",
+          "label": "KIRMANJKI (TURKEY)"
+        },
+        {
+          "code": "235",
+          "label": "KOMI"
+        },
+        {
+          "code": "279",
+          "label": "KORATCH (THAILAND)"
+        },
+        {
+          "code": "066",
+          "label": "KOREAN"
+        },
+        {
+          "code": "232",
+          "label": "KURDISH"
+        },
+        {
+          "code": "059",
+          "label": "KURMANJI (TURKEY)"
+        },
+        {
+          "code": "060",
+          "label": "LADINO (ISRAEL)"
+        },
+        {
+          "code": "061",
+          "label": "LALA-BISA (ZAMBIA)"
+        },
+        {
+          "code": "062",
+          "label": "LAMBA (ZAMBIA)"
+        },
+        {
+          "code": "277",
+          "label": "LANNA THAI"
+        },
+        {
+          "code": "063",
+          "label": "LATVIAN"
+        },
+        {
+          "code": "064",
+          "label": "LENJE (ZAMBIA)"
+        },
+        {
+          "code": "065",
+          "label": "LESSER ANTILLEAN CREOLE"
+        },
+        {
+          "code": "268",
+          "label": "LEYTENO (PHILIPPINES)"
+        },
+        {
+          "code": "067",
+          "label": "LIGURIAN"
+        },
+        {
+          "code": "068",
+          "label": "LITHUANIAN"
+        },
+        {
+          "code": "069",
+          "label": "LOMBARD"
+        },
+        {
+          "code": "070",
+          "label": "LOZI (ZAMBIA)"
+        },
+        {
+          "code": "071",
+          "label": "LUNDA (ZAMBIA)"
+        },
+        {
+          "code": "072",
+          "label": "LUVALE (ZAMBIA)"
+        },
+        {
+          "code": "073",
+          "label": "MACEDONIAN"
+        },
+        {
+          "code": "251",
+          "label": "MAGUINDANAON (PHILIPPINES)"
+        },
+        {
+          "code": "074",
+          "label": "MAITHILI (INDIA)"
+        },
+        {
+          "code": "229",
+          "label": "MALLORQUIN"
+        },
+        {
+          "code": "267",
+          "label": "MALAUEG (PHILIPPINES)"
+        },
+        {
+          "code": "075",
+          "label": "MALAY"
+        },
+        {
+          "code": "076",
+          "label": "MALAYALAM (INDIA)"
+        },
+        {
+          "code": "077",
+          "label": "MALINKE (SENEGAL)"
+        },
+        {
+          "code": "214",
+          "label": "MALTESE"
+        },
+        {
+          "code": "253",
+          "label": "MANOBO (PHILIPPINES)"
+        },
+        {
+          "code": "250",
+          "label": "MASBATENO (PHILIPPINES)"
+        },
+        {
+          "code": "215",
+          "label": "MENDE (SIERRA LEONE)"
+        },
+        {
+          "code": "216",
+          "label": "MIRPUARY/MIRPUIR (PAKISTAN)"
+        },
+        {
+          "code": "217",
+          "label": "MNADINGGO (GAMBIA)"
+        },
+        {
+          "code": "078",
+          "label": "MAMBWE-LUNGU (ZAMBIA)"
+        },
+        {
+          "code": "079",
+          "label": "MANDINKA (SENEGAL)"
+        },
+        {
+          "code": "080",
+          "label": "MAORI"
+        },
+        {
+          "code": "081",
+          "label": "MAPUDUNGUN (CHILE)"
+        },
+        {
+          "code": "082",
+          "label": "MARATHI (INDIA)"
+        },
+        {
+          "code": "083",
+          "label": "MBOWE (ZAMBIA)"
+        },
+        {
+          "code": "084",
+          "label": "MINGRELIAN (GEORGIA)"
+        },
+        {
+          "code": "085",
+          "label": "MONTENEGRIAN"
+        },
+        {
+          "code": "255",
+          "label": "MUSLIM (PHILIPPINES)"
+        },
+        {
+          "code": "086",
+          "label": "MWANGA (ZAMBIA)"
+        },
+        {
+          "code": "087",
+          "label": "NEAPOLITAN-CALABRESE"
+        },
+        {
+          "code": "088",
+          "label": "NORWEGIAN"
+        },
+        {
+          "code": "089",
+          "label": "NSENGA (ZAMBIA)"
+        },
+        {
+          "code": "090",
+          "label": "NYANJA (ZAMBIA)"
+        },
+        {
+          "code": "091",
+          "label": "NYIHA (ZAMBIA)"
+        },
+        {
+          "code": "092",
+          "label": "ORIYA (INDIA)"
+        },
+        {
+          "code": "093",
+          "label": "OSETIN (GEORGIA)"
+        },
+        {
+          "code": "218",
+          "label": "PAHARI (PAKISTAN)"
+        },
+        {
+          "code": "246",
+          "label": "PANGASINENSE (PHILIPPINES)"
+        },
+        {
+          "code": "094",
+          "label": "PANJABI, EASTERN (INDIA)"
+        },
+        {
+          "code": "236",
+          "label": "PERSIAN"
+        },
+        {
+          "code": "095",
+          "label": "PIEMONTESE"
+        },
+        {
+          "code": "096",
+          "label": "POLISH"
+        },
+        {
+          "code": "097",
+          "label": "PORTUGUESE"
+        },
+        {
+          "code": "098",
+          "label": "PROVENCAL"
+        },
+        {
+          "code": "248",
+          "label": "PULANGI-ON (PHILIPPINES)"
+        },
+        {
+          "code": "219",
+          "label": "PUSHTO (PAKISTAN)"
+        },
+        {
+          "code": "099",
+          "label": "QUECHUA, ANCASH, HUAYLAS"
+        },
+        {
+          "code": "100",
+          "label": "QUECHUA, SOUTH BOLIVIAN (ARGENTINA)"
+        },
+        {
+          "code": "101",
+          "label": "QUECH UA, AYACUCHO"
+        },
+        {
+          "code": "102",
+          "label": "QUICHUA, HIGHLAND, IMBABURA"
+        },
+        {
+          "code": "103",
+          "label": "ROMANI, BALKAN"
+        },
+        {
+          "code": "104",
+          "label": "ROMANI, CARPATHIAN"
+        },
+        {
+          "code": "105",
+          "label": "ROMANI, VLACH"
+        },
+        {
+          "code": "106",
+          "label": "RUMANIAN"
+        },
+        {
+          "code": "107",
+          "label": "RUMANIAN, ISTRO"
+        },
+        {
+          "code": "108",
+          "label": "RUMANIAN, MACEDO"
+        },
+        {
+          "code": "109",
+          "label": "RUSSIAN"
+        },
+        {
+          "code": "110",
+          "label": "SARDINIAN, LOGUDORESE"
+        },
+        {
+          "code": "220",
+          "label": "SARAKI (PAKISTAN)"
+        },
+        {
+          "code": "111",
+          "label": "SCHWYZERDUTSCH (SWITZERLAND)"
+        },
+        {
+          "code": "112",
+          "label": "SERB"
+        },
+        {
+          "code": "113",
+          "label": "SERBO-CROATIAN"
+        },
+        {
+          "code": "114",
+          "label": "SERERE-SINE (SENEGAL)"
+        },
+        {
+          "code": "264",
+          "label": "SIBANIN (PHILIPPINES)"
+        },
+        {
+          "code": "115",
+          "label": "SICILIAN"
+        },
+        {
+          "code": "116",
+          "label": "SINDHI (SINGAPORE, INDIA)"
+        },
+        {
+          "code": "272",
+          "label": "SIPIANON (PHILIPPINES)"
+        },
+        {
+          "code": "117",
+          "label": "SLOVAK"
+        },
+        {
+          "code": "118",
+          "label": "SLOVENIAN"
+        },
+        {
+          "code": "221",
+          "label": "SOMALI"
+        },
+        {
+          "code": "262",
+          "label": "SORIGAONON (PHILIPPINES)"
+        },
+        {
+          "code": "119",
+          "label": "SOTHO, NORTHERN (SOUTH AFRICA)"
+        },
+        {
+          "code": "120",
+          "label": "SOTHO, SOUTHERN (SOUTH AFRICA)"
+        },
+        {
+          "code": "281",
+          "label": "SOUTHERN THAI"
+        },
+        {
+          "code": "121",
+          "label": "SPANISH"
+        },
+        {
+          "code": "222",
+          "label": "SWAHILI"
+        },
+        {
+          "code": "122",
+          "label": "SWATI (SOUTH AFRICA)"
+        },
+        {
+          "code": "123",
+          "label": "SWEDISH"
+        },
+        {
+          "code": "240",
+          "label": "TAGALOG (PHILIPPINES)"
+        },
+        {
+          "code": "256",
+          "label": "TAGON-ON (PHILIPPINES)"
+        },
+        {
+          "code": "124",
+          "label": "TAMIL (INDIA)"
+        },
+        {
+          "code": "125",
+          "label": "TATAR (RUSSIA)"
+        },
+        {
+          "code": "269",
+          "label": "T'BOLI (PHILIPPINES)"
+        },
+        {
+          "code": "126",
+          "label": "TELUGU (INDIA)"
+        },
+        {
+          "code": "127",
+          "label": "TIBETAN"
+        },
+        {
+          "code": "128",
+          "label": "TICANESE (SWITZERLAND)"
+        },
+        {
+          "code": "252",
+          "label": "TIRURAY (PHILIPPINES_"
+        },
+        {
+          "code": "129",
+          "label": "TONGA (ZAMBIA)"
+        },
+        {
+          "code": "130",
+          "label": "TOUCOULEUR (SENEGAL)"
+        },
+        {
+          "code": "131",
+          "label": "TSONGA (SOUTH AFRICA)"
+        },
+        {
+          "code": "132",
+          "label": "TSWANA (SOUTH AFRICA)"
+        },
+        {
+          "code": "133",
+          "label": "TUMBUKA (ZAMBIA)"
+        },
+        {
+          "code": "134",
+          "label": "TURKISH"
+        },
+        {
+          "code": "223",
+          "label": "TWI (GHANA)"
+        },
+        {
+          "code": "135",
+          "label": "UKRAINIAN"
+        },
+        {
+          "code": "224",
+          "label": "UGANDAN"
+        },
+        {
+          "code": "230",
+          "label": "UDMURT"
+        },
+        {
+          "code": "136",
+          "label": "URDU (INDIA)"
+        },
+        {
+          "code": "228",
+          "label": "VALENCIANO"
+        },
+        {
+          "code": "225",
+          "label": "VIETNAMESE"
+        },
+        {
+          "code": "137",
+          "label": "VENETIAN"
+        },
+        {
+          "code": "247",
+          "label": "WARAY (PHILIPPINES)"
+        },
+        {
+          "code": "139",
+          "label": "WELSH"
+        },
+        {
+          "code": "140",
+          "label": "WOLOF (SENEGAL)"
+        },
+        {
+          "code": "138",
+          "label": "XHOSA (SOUTH AFRICA)"
+        },
+        {
+          "code": "141",
+          "label": "YAHUDIC (ISRAEL)"
+        },
+        {
+          "code": "142",
+          "label": "YIDDISH"
+        },
+        {
+          "code": "226",
+          "label": "YORUBA (NIGERIA)"
+        },
+        {
+          "code": "271",
+          "label": "ZAMBAL (PHILIPPINES)"
+        },
+        {
+          "code": "143",
+          "label": "ZULU"
+        },
+        {
+          "code": "996",
+          "label": "OTHER: NOT SPECIFIED"
+        },
+        {
+          "code": "997",
+          "label": "VOLUNTEERED: REFUSED"
+        },
+        {
+          "code": "998",
+          "label": "VOLUNTEERED: DON'T KNOW"
+        },
+        {
+          "code": "999",
+          "label": "MISSING"
+        }
+      ],
+      "missing_codes": [
+        "997",
+        "998",
+        "999"
+      ],
+      "target_variables": [
+        "F2017"
+      ],
+      "source_line": 2963
+    },
+    {
+      "item_id": "D17",
+      "normalized_id": "D17",
+      "aliases": [],
+      "section": "demographic",
+      "item_type": "demographic_coding_standard",
+      "title": "REGION OF RESIDENCE",
+      "text": "",
+      "notes": "This variable reports the respondent's region of residence using coding categories not more detailed than the autonomous regions in Spain, or the Laender in Germany. Regions are usually (but not always) based upon the social, cultural, or historical differences (though some correspond to administrative regions) that manifest themselves in political cleavages. .................................................................. 01-80. [PLEASE PROVIDE REGION CODE LABELS]",
+      "help_text": "",
+      "response_options": [
+        {
+          "code": "99",
+          "label": "MISSING"
+        }
+      ],
+      "missing_codes": [
+        "99"
+      ],
+      "target_variables": [
+        "F2018"
+      ],
+      "source_line": 3228
+    },
+    {
+      "item_id": "D18",
+      "normalized_id": "D18",
+      "aliases": [],
+      "section": "demographic",
+      "item_type": "demographic_coding_standard",
+      "title": "PRIMARY ELECTORAL DISTRICT",
+      "text": "",
+      "notes": "This item should indicate the respondent's primary electoral district. Wherever possible, this variable should use official district identification numbers. The goal of this variable, wherever possible, is to identify electoral constituencies, the definition of which is \"the smallest unit for which there is representation to the national parliament.\" In other words, the point at which votes are translated into seats. .................................................................. 00001-90000. [PLEASE PROVIDE DISTRICT CODE VALUE LABELS] 99999. MISSING",
+      "help_text": "",
+      "response_options": [],
+      "missing_codes": [],
+      "target_variables": [
+        "F2019"
+      ],
+      "source_line": 3245
+    },
+    {
+      "item_id": "D19",
+      "normalized_id": "D19",
+      "aliases": [],
+      "section": "demographic",
+      "item_type": "demographic_coding_standard",
+      "title": "RURAL OR URBAN RESIDENCE",
+      "text": "",
+      "notes": "This item should distinguish respondents living in rural and urban regions. Please provide the criteria used to distinguish these different regions. ..................................................................",
+      "help_text": "",
+      "response_options": [
+        {
+          "code": "1",
+          "label": "RURAL AREA OR VILLAGE"
+        },
+        {
+          "code": "2",
+          "label": "SMALL OR MIDDLE-SIZED TOWN"
+        },
+        {
+          "code": "3",
+          "label": "SUBURBS OF LARGE TOWN OR CITY"
+        },
+        {
+          "code": "4",
+          "label": "LARGE TOWN OR CITY"
+        },
+        {
+          "code": "7",
+          "label": "VOLUNTEERED: REFUSED"
+        },
+        {
+          "code": "8",
+          "label": "VOLUNTEERED: DON'T KNOW"
+        },
+        {
+          "code": "9",
+          "label": "MISSING"
+        }
+      ],
+      "missing_codes": [
+        "7",
+        "8",
+        "9"
+      ],
+      "target_variables": [
+        "F2020"
+      ],
+      "source_line": 3267
+    },
+    {
+      "item_id": "D20",
+      "normalized_id": "D20",
+      "aliases": [],
+      "section": "demographic",
+      "item_type": "demographic_coding_standard",
+      "title": "NUMBER IN HOUSEHOLD",
+      "text": "",
+      "notes": "This variable should report the total number of persons in the household - that is, the number of persons living together in the housing unit excluding paid employees and persons who pay for rent for a room. .................................................................. 01-90. NUMBER OF PERSONS //END OF DOCUMENT",
+      "help_text": "",
+      "response_options": [
+        {
+          "code": "97",
+          "label": "VOLUNTEERED: REFUSED"
+        },
+        {
+          "code": "98",
+          "label": "VOLUNTEERED: DON'T KNOW"
+        },
+        {
+          "code": "99",
+          "label": "MISSING"
+        }
+      ],
+      "missing_codes": [
+        "97",
+        "98",
+        "99"
+      ],
+      "target_variables": [],
+      "source_line": 3288
+    }
+  ]
+}

@@ -1,0 +1,25 @@
+{
+  "schema_version": 1,
+  "source_policy": "Development benchmark metadata only; no runtime country-specific processing logic.",
+  "profiles": {
+    "email_only": {
+      "purpose": "Diagnostic benchmark from e-mail deposit only.",
+      "must_not_claim_final_success_when_required_inputs_are_absent": true,
+      "required_reports": [
+        "missing_input_report",
+        "replication_scorecard"
+      ]
+    },
+    "full_reference_inputs": {
+      "purpose": "Full functional replication benchmark from complete input materials.",
+      "acceptance": {
+        "all_workflow_steps_completed": true,
+        "stata_clean": true,
+        "schema_variable_coverage": 1.0,
+        "row_count_match": true,
+        "documentation_valid": true,
+        "no_unresolved_todos": true
+      }
+    }
+  }
+}

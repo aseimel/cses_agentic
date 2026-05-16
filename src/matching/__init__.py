@@ -11,6 +11,7 @@ try:
         MatchingResult,
         PatternMatcher,
         create_matcher,
+        CSES_TARGET_VARIABLES,
     )
 except ImportError as e:
     logger.warning(f"LLM matcher not available: {e}")
@@ -19,6 +20,51 @@ except ImportError as e:
     MatchingResult = None
     PatternMatcher = None
     create_matcher = None
+    CSES_TARGET_VARIABLES = {}
+
+# Ensemble matcher - multi-model quorum voting
+try:
+    from .ensemble_matcher import (
+        EnsembleMatcher,
+        EnsembleMapping,
+        ModelVote,
+        create_ensemble_matcher,
+    )
+except ImportError as e:
+    logger.warning(f"Ensemble matcher not available: {e}")
+    EnsembleMatcher = None
+    EnsembleMapping = None
+    ModelVote = None
+    create_ensemble_matcher = None
+
+# Recoding strategist - transformation rule generation
+try:
+    from .recoding_strategist import (
+        RecodingStrategist,
+        RecodingStrategy,
+        RecodeRule,
+        create_recoding_strategist,
+    )
+except ImportError as e:
+    logger.warning(f"Recoding strategist not available: {e}")
+    RecodingStrategist = None
+    RecodingStrategy = None
+    RecodeRule = None
+    create_recoding_strategist = None
+
+try:
+    from .decision_engine import (
+        MatchingDecision,
+        MatchingDecisionEngine,
+        SourceCandidate,
+        decision_summary,
+    )
+except ImportError as e:
+    logger.warning(f"Matching decision engine not available: {e}")
+    MatchingDecision = None
+    MatchingDecisionEngine = None
+    SourceCandidate = None
+    decision_summary = None
 
 # Party codes - should work without external deps
 try:
@@ -60,6 +106,22 @@ __all__ = [
     "MatchingResult",
     "PatternMatcher",
     "create_matcher",
+    "CSES_TARGET_VARIABLES",
+    # Ensemble Matcher
+    "EnsembleMatcher",
+    "EnsembleMapping",
+    "ModelVote",
+    "create_ensemble_matcher",
+    # Recoding Strategist
+    "RecodingStrategist",
+    "RecodingStrategy",
+    "RecodeRule",
+    "create_recoding_strategist",
+    # Matching decisions
+    "MatchingDecision",
+    "MatchingDecisionEngine",
+    "SourceCandidate",
+    "decision_summary",
     # Party Codes
     "UN_COUNTRY_CODES",
     "COUNTRY_CODE_ALPHA3",

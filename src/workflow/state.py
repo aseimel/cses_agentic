@@ -40,8 +40,8 @@ WORKFLOW_STEPS = {
         "requires_llm": True
     },
     2: {
-        "name": "Read Design Report",
-        "description": "Review design report, verify study meets CSES standards",
+        "name": "Confirm Study Design Facts",
+        "description": "Confirm evidence-backed design facts for the processing log",
         "automatable": False,
         "requires_llm": True
     },
@@ -58,8 +58,8 @@ WORKFLOW_STEPS = {
         "requires_llm": True
     },
     5: {
-        "name": "Request Election Results Table",
-        "description": "Contact macro coder for election results for party ordering",
+        "name": "Register Election Results Material",
+        "description": "Check whether standardized election-results material is available for later party order agreement",
         "automatable": False,
         "requires_llm": False
     },
@@ -131,6 +131,11 @@ WORKFLOW_STEPS = {
     }
 }
 
+# Execution order for the processor-facing workflow. Step numbers remain the
+# canonical CSES identifiers, but district review must happen before final
+# Stata execution because district merge decisions affect generated syntax.
+WORKFLOW_SEQUENCE = [0, 1, 2, 3, 4, 5, 6, 7, 9, 8, 10, 11, 12, 13, 14, 15, 16]
+
 
 # REMOVED: Old STEP_PREREQUISITES dict allowed skipping steps.
 # New rule: Step N can ONLY start if Step N-1 is COMPLETED. No exceptions.
@@ -195,9 +200,54 @@ class WorkflowState:
     # Collaborator questions with full tracking
     # Each: {id, question, context, step, timestamp, status}
     collaborator_questions: list[dict] = field(default_factory=list)
+    candidate_collaborator_questions: list[dict] = field(default_factory=list)
 
     # Variable mappings (from Step 7)
     mappings: list[dict] = field(default_factory=list)
+
+    # Standards-backed workflow metadata
+    standards_checks: dict = field(default_factory=dict)
+    wiki_sources: list[dict] = field(default_factory=list)
+    processor_decisions: list[dict] = field(default_factory=list)
+    final_readiness: dict = field(default_factory=dict)
+    evidence_index: dict = field(default_factory=dict)
+    evidence_packet_status: str = "missing"
+    evidence_packet_path: str = ""
+    evidence_manifest_path: str = ""
+    last_evidence_refresh: str = ""
+    current_phase: str = "setup"
+    phase_status: dict = field(default_factory=dict)
+    workflow_tracking: dict = field(default_factory=dict)
+    input_manifest_path: str = ""
+    primary_input_selection: dict = field(default_factory=dict)
+    matching_coverage: dict = field(default_factory=dict)
+    matching_decisions_path: str = ""
+    recoding_coverage: dict = field(default_factory=dict)
+    recoding_plans_path: str = ""
+    approval_status: dict = field(default_factory=dict)
+    election_results_intake_path: str = ""
+    party_order_review_path: str = ""
+    party_order_decision_path: str = ""
+    party_order_status: dict = field(default_factory=dict)
+    macro_context_review_path: str = ""
+    macro_context_decision_path: str = ""
+    macro_context_status: dict = field(default_factory=dict)
+    district_review_path: str = ""
+    district_merge_plan_path: str = ""
+    district_data_status: dict = field(default_factory=dict)
+    stata_execution_status: dict = field(default_factory=dict)
+    readiness_mode: str = "full_release"
+    district_excluded_by_processor: bool = False
+    benchmark_scorecard_path: str = ""
+
+    # Study-specific KB built from deposited files and deterministic data summaries
+    study_kb_status: str = "missing"
+    study_kb_path: str = ""
+    study_kb_updated_at: str = ""
+    study_kb_source_manifest: str = ""
+    study_kb_model: str = ""
+    study_kb_missing_fields: list[str] = field(default_factory=list)
+    study_kb_contradictions: list[str] = field(default_factory=list)
 
     # Question ID counter for generating unique IDs
     _question_counter: int = field(default=0, repr=False)
@@ -251,6 +301,78 @@ class WorkflowState:
             step.artifacts.append(artifact_path)
         self.updated_at = datetime.now(timezone.utc).isoformat()
 
+    def record_standards_check(self, step_num: int, result: dict):
+        """Persist a standards check result for a workflow step."""
+        self.standards_checks[str(step_num)] = result
+        for source in result.get("wiki_sources", []):
+            entry = {"step": step_num, "source": source}
+            if entry not in self.wiki_sources:
+                self.wiki_sources.append(entry)
+        self.updated_at = datetime.now(timezone.utc).isoformat()
+
+    def record_processor_decision(self, step_num: int, decision: str, context: str = ""):
+        """Record a human processor decision or override."""
+        self.processor_decisions.append({
+            "step": step_num,
+            "decision": decision,
+            "context": context,
+            "timestamp": datetime.now(timezone.utc).isoformat()
+        })
+        self.updated_at = datetime.now(timezone.utc).isoformat()
+
+    def rebase_paths(self, actual_working_dir: Path):
+        """Rebase stored absolute paths when a study folder has moved."""
+        actual_dir = str(actual_working_dir.resolve())
+        old_dir = self.working_dir or actual_dir
+        if old_dir == actual_dir:
+            return
+
+        def remap(value):
+            if not value:
+                return value
+            text = str(value)
+            try:
+                old_path = Path(old_dir)
+                new_path = Path(actual_dir)
+                try:
+                    rel_path = Path(text).relative_to(old_path)
+                    return str(new_path / rel_path)
+                except ValueError:
+                    return text.replace(str(old_path), str(new_path))
+            except Exception:
+                return text
+
+        self.working_dir = actual_dir
+        self.data_file = remap(self.data_file)
+        self.codebook_file = remap(self.codebook_file)
+        self.design_report_file = remap(self.design_report_file)
+        self.log_file = remap(self.log_file)
+        self.collaborator_questions_file = remap(self.collaborator_questions_file)
+        self.variable_tracking_file = remap(self.variable_tracking_file)
+        self.study_kb_path = remap(self.study_kb_path)
+        self.study_kb_source_manifest = remap(self.study_kb_source_manifest)
+        self.evidence_packet_path = remap(self.evidence_packet_path)
+        self.evidence_manifest_path = remap(self.evidence_manifest_path)
+        self.input_manifest_path = remap(self.input_manifest_path)
+        self.matching_decisions_path = remap(self.matching_decisions_path)
+        self.recoding_plans_path = remap(self.recoding_plans_path)
+        self.election_results_intake_path = remap(self.election_results_intake_path)
+        self.party_order_review_path = remap(self.party_order_review_path)
+        self.party_order_decision_path = remap(self.party_order_decision_path)
+        self.macro_context_review_path = remap(self.macro_context_review_path)
+        self.macro_context_decision_path = remap(self.macro_context_decision_path)
+        self.district_review_path = remap(self.district_review_path)
+        self.district_merge_plan_path = remap(self.district_merge_plan_path)
+        self.benchmark_scorecard_path = remap(self.benchmark_scorecard_path)
+        self.questionnaire_files = [remap(path) for path in self.questionnaire_files or []]
+
+        for step in self.steps.values():
+            if isinstance(step, dict):
+                artifacts = step.get("artifacts", [])
+                step["artifacts"] = [remap(path) for path in artifacts]
+            elif hasattr(step, "artifacts"):
+                step.artifacts = [remap(path) for path in step.artifacts]
+
     def add_collaborator_question(self, question: str, context: str, step_num: int) -> str:
         """
         Add a collaborator question with full tracking.
@@ -281,6 +403,28 @@ class WorkflowState:
 
         return question_id
 
+    def add_candidate_collaborator_question(self, question: str, context: str, step_num: int, missing_items: list[str] = None) -> str:
+        """
+        Record a potential collaborator question for processor review.
+
+        This does not create an outgoing collaborator question. The processor must
+        decide whether the retrieved evidence is sufficient or whether the question
+        should be promoted.
+        """
+        candidate_id = f"PCQ {len(self.candidate_collaborator_questions) + 1}"
+        entry = {
+            "id": candidate_id,
+            "question": question,
+            "context": context,
+            "step": step_num,
+            "missing_items": missing_items or [],
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "status": "processor_review"
+        }
+        self.candidate_collaborator_questions.append(entry)
+        self.updated_at = datetime.now(timezone.utc).isoformat()
+        return candidate_id
+
     def get_pending_questions(self) -> list[dict]:
         """Get all pending (unresolved) collaborator questions."""
         return [q for q in self.collaborator_questions if q.get("status") == "pending"]
@@ -305,7 +449,7 @@ class WorkflowState:
 
     def get_next_step(self) -> Optional[int]:
         """Get the next step that should be worked on."""
-        for step_num in sorted(WORKFLOW_STEPS.keys()):
+        for step_num in WORKFLOW_SEQUENCE:
             step = self.get_step(step_num)
             if step.status in [StepStatus.NOT_STARTED.value, StepStatus.IN_PROGRESS.value]:
                 return step_num
@@ -321,8 +465,14 @@ class WorkflowState:
         if step_num == 0:
             return True, "OK"
 
-        # Simple rule: previous step must be done
-        prev_step = step_num - 1
+        try:
+            position = WORKFLOW_SEQUENCE.index(step_num)
+        except ValueError:
+            return False, f"Unknown workflow step: {step_num}"
+        if position == 0:
+            return True, "OK"
+
+        prev_step = WORKFLOW_SEQUENCE[position - 1]
         prev_status = self.get_step(prev_step).status
 
         if prev_status != "completed":
@@ -375,11 +525,43 @@ class WorkflowState:
             "design_report_file": self.design_report_file,
             "log_file": self.log_file,
             "collaborator_questions_file": self.collaborator_questions_file,
+            "variable_tracking_file": self.variable_tracking_file,
             "current_step": self.current_step,
             "pending_questions": self.pending_questions,
             "collaborator_questions": self.collaborator_questions,
+            "candidate_collaborator_questions": self.candidate_collaborator_questions,
             "_question_counter": self._question_counter,
             "mappings": self.mappings,
+            "standards_checks": self.standards_checks,
+            "wiki_sources": self.wiki_sources,
+            "processor_decisions": self.processor_decisions,
+            "final_readiness": self.final_readiness,
+            "evidence_index": self.evidence_index,
+            "evidence_packet_status": self.evidence_packet_status,
+            "evidence_packet_path": self.evidence_packet_path,
+            "evidence_manifest_path": self.evidence_manifest_path,
+            "last_evidence_refresh": self.last_evidence_refresh,
+            "current_phase": self.current_phase,
+            "phase_status": self.phase_status,
+            "workflow_tracking": self.workflow_tracking,
+            "input_manifest_path": self.input_manifest_path,
+            "primary_input_selection": self.primary_input_selection,
+            "matching_coverage": self.matching_coverage,
+            "matching_decisions_path": self.matching_decisions_path,
+            "recoding_coverage": self.recoding_coverage,
+            "recoding_plans_path": self.recoding_plans_path,
+            "approval_status": self.approval_status,
+            "stata_execution_status": self.stata_execution_status,
+            "readiness_mode": self.readiness_mode,
+            "district_excluded_by_processor": self.district_excluded_by_processor,
+            "benchmark_scorecard_path": self.benchmark_scorecard_path,
+            "study_kb_status": self.study_kb_status,
+            "study_kb_path": self.study_kb_path,
+            "study_kb_updated_at": self.study_kb_updated_at,
+            "study_kb_source_manifest": self.study_kb_source_manifest,
+            "study_kb_model": self.study_kb_model,
+            "study_kb_missing_fields": self.study_kb_missing_fields,
+            "study_kb_contradictions": self.study_kb_contradictions,
             "steps": {}
         }
         for key, step in self.steps.items():
@@ -411,8 +593,8 @@ class WorkflowState:
         state_dir.mkdir(parents=True, exist_ok=True)
 
         state_file = state_dir / "state.json"
-        with open(state_file, "w") as f:
-            json.dump(self.to_dict(), f, indent=2)
+        with open(state_file, "w", encoding="utf-8") as f:
+            json.dump(self.to_dict(), f, indent=2, ensure_ascii=False)
 
         logger.info(f"Saved workflow state to {state_file}")
 
@@ -427,9 +609,10 @@ class WorkflowState:
             return None
 
         try:
-            with open(state_file) as f:
+            with open(state_file, encoding="utf-8") as f:
                 data = json.load(f)
             state = cls.from_dict(data)
+            state.rebase_paths(working_dir)
             logger.info(f"Loaded workflow state from {state_file}")
             return state
         except Exception as e:
