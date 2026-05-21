@@ -38,6 +38,9 @@ from src.matching.macro_context import (
 logger = logging.getLogger(__name__)
 
 
+CODER_VALIDATION_STEPS = {step for step in WORKFLOW_STEPS if step != 0}
+
+
 @dataclass
 class StepResult:
     """Result of executing a workflow step."""
@@ -284,6 +287,7 @@ class StepExecutor:
                 message=f"Unknown step number: {step_num}"
             )
 
+        require_processor_validation = bool(kwargs.pop("require_processor_validation", False))
         step_info = WORKFLOW_STEPS[step_num]
         step_name = step_info["name"]
 
@@ -314,16 +318,35 @@ class StepExecutor:
 
             # Update state based on result
             if result.success:
-                self.state.set_step_status(
-                    step_num,
-                    StepStatus.COMPLETED,
-                    note=result.message
-                )
+                if require_processor_validation and step_num in CODER_VALIDATION_STEPS:
+                    self.state.mark_step_needs_validation(
+                        step_num,
+                        note=(
+                            "Assistant work finished. Waiting for coder validation before continuing."
+                        ),
+                    )
+                    result.human_decision_required = True
+                    result.ready_for_next_step = False
+                    result.next_action = (
+                        "Review the step output. If it is correct, validate this step. "
+                        "If not, tell the assistant what should be corrected."
+                    )
+                else:
+                    self.state.set_step_status(
+                        step_num,
+                        StepStatus.COMPLETED,
+                        note=result.message
+                    )
                 for artifact in result.artifacts:
                     self.state.add_step_artifact(step_num, artifact)
 
                 # Log step completion
-                self.active_logger.log_step_complete(step_num, result.message, result.artifacts)
+                if require_processor_validation and step_num in CODER_VALIDATION_STEPS:
+                    self.active_logger.log_message(
+                        f"Step {step_num} prepared for coder validation: {WORKFLOW_STEPS[step_num]['name']}"
+                    )
+                else:
+                    self.active_logger.log_step_complete(step_num, result.message, result.artifacts)
             else:
                 # Log issues
                 for issue in result.issues:

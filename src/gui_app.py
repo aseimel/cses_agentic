@@ -252,6 +252,8 @@ class CSESGui(tk.Tk):
         self.send_button.pack(fill="both", expand=True)
         self.proceed_button = ttk.Button(button_stack, text="Proceed", command=self._proceed_chat)
         self.proceed_button.pack(fill="both", expand=True, pady=(6, 0))
+        self.validate_step_button = ttk.Button(button_stack, text="Validate Step", command=self._validate_current_step)
+        self.validate_step_button.pack(fill="both", expand=True, pady=(6, 0))
 
         self.status_var = tk.StringVar(value="Choose a study folder and load study.")
         ttk.Label(self.chat_tab, textvariable=self.status_var, style="Status.TLabel").pack(anchor="w", pady=(8, 0))
@@ -665,6 +667,38 @@ class CSESGui(tk.Tk):
 
     def _proceed_chat(self) -> None:
         self._send_chat_message("Proceed", clear_input=False)
+
+    def _validate_current_step(self) -> None:
+        if not self.loaded_state:
+            messagebox.showinfo("Validate step", "Load a study first.")
+            return
+        state = WorkflowState.load(Path(self.loaded_state.working_dir)) or self.loaded_state
+        next_step = state.get_next_step()
+        if next_step is None:
+            messagebox.showinfo("Validate step", "All workflow steps are complete.")
+            return
+        step = state.get_step(next_step)
+        if step.status != StepStatus.NEEDS_VALIDATION.value:
+            messagebox.showinfo("Validate step", "The current step is not waiting for coder validation.")
+            return
+        state.validate_step(next_step, note="Validated in the CSES Assistant.", validated_by="processor")
+        from src.workflow.active_logging import ActiveLogger
+
+        ActiveLogger(state).record_processor_decision(
+            next_step,
+            f"Validated Step {next_step}",
+            "Validated in the CSES Assistant.",
+        )
+        state.save()
+        self.loaded_state = state
+        if self.conversation:
+            self.conversation.state = state
+        self._append_chat(
+            "system",
+            f"Step {next_step} validated. Use Proceed when you are ready for the next step.",
+        )
+        self._refresh_sidebar(state)
+        self._refresh_corrections_panel()
 
     def _send_chat_message(self, message: str, clear_input: bool) -> None:
         if not self._selected_chat_model():
@@ -1262,7 +1296,11 @@ class CSESGui(tk.Tk):
         if review_status and "changed" in review_status.lower():
             lines.append(review_status)
         if next_step is not None:
-            lines.append(f"Next: Step {next_step} - {WORKFLOW_STEPS[next_step]['name']}")
+            step = state.get_step(next_step)
+            if step.status == StepStatus.NEEDS_VALIDATION.value:
+                lines.append(f"Needs validation: Step {next_step} - {WORKFLOW_STEPS[next_step]['name']}")
+            else:
+                lines.append(f"Next: Step {next_step} - {WORKFLOW_STEPS[next_step]['name']}")
         else:
             lines.append("Next: All steps complete")
         return "\n".join(lines)
@@ -1276,6 +1314,7 @@ class CSESGui(tk.Tk):
         markers = {
             StepStatus.NOT_STARTED.value: "[ ]",
             StepStatus.IN_PROGRESS.value: "[>]",
+            StepStatus.NEEDS_VALIDATION.value: "[?]",
             StepStatus.BLOCKED.value: "[!]",
             StepStatus.COMPLETED.value: "[x]",
             StepStatus.SKIPPED.value: "[-]",
@@ -1297,7 +1336,10 @@ class CSESGui(tk.Tk):
                 step = state.get_step(step_num)
                 step_name = WORKFLOW_STEPS[step_num]["name"]
                 marker = markers.get(step.status, "[?]")
-                next_marker = " <- next" if step_num == next_step else ""
+                if step_num == next_step and step.status == StepStatus.NEEDS_VALIDATION.value:
+                    next_marker = " <- needs validation"
+                else:
+                    next_marker = " <- next" if step_num == next_step else ""
                 lines.append(f"  {marker} Step {step_num}: {step_name}{next_marker}")
             lines.append("")
         self._set_panel_text(self.workflow_panel, "\n".join(lines).rstrip())

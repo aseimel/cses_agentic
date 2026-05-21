@@ -10,6 +10,7 @@ from __future__ import annotations
 import json
 import logging
 import os
+import re
 from pathlib import Path
 from typing import Callable
 
@@ -488,7 +489,7 @@ Rules:
 3. If a required file or fact is missing, add a collaborator question and explain the blocker.
 4. Do not skip steps or silently complete steps.
 5. Do not invent country-specific logic. Treat the current study as one generic study instance.
-6. End step-completion replies with the next step and ask "Proceed?"
+6. After finishing a step, stop for coder validation. Do not ask for simple "Proceed" until the coder has explicitly validated the step.
 7. Step 1 is not only a file inventory. Before completing Step 1, run the deposit eligibility review and report: CSES item coverage, probability sample evidence, and sample size.
 8. When unsure about CSES procedure, coding, documentation standards, study eligibility, collaborator questions, data protection, district data, party coding, or release workflow, call search_cses_wiki before deciding. Cite CSES wiki source paths when applying guidance.
 9. For workflow steps, use get_step_standards_guidance or run_step_standards_check so the user sees what was checked, what evidence was found, and what remains unresolved.
@@ -496,6 +497,7 @@ Rules:
 11. Ask as few collaborator questions as possible. Before suggesting a collaborator question, inspect available data, documentation, current log, and CSES wiki guidance. If information is still missing, use add_candidate_collaborator_question with a clear missing-items list and ask the processor whether it should become a collaborator question. Use add_collaborator_question only when the processor explicitly confirms.
 12. Before eligibility, design-report, matching, documentation, or collaborator-question decisions, use the study-specific knowledge base when available. If it is missing or stale, build_or_refresh_study_kb first.
 13. If the processor corrects a fact, source-variable match, recode, party order, macro context, district decision, or documentation note, record it as a structured processor correction. Explain what downstream work needs rerun. Do not silently overwrite an approved decision.
+14. Treat step validation as a separate human decision. A step prepared by the assistant is not workflow-complete until the processor says it has been validated.
 
 {wiki_hint}
 {study_kb_hint}
@@ -580,6 +582,13 @@ class ConversationSession:
 
     def send(self, message: str, on_tool_output: Callable[[str], None] | None = None) -> str:
         self.refresh_state()
+        validation_response = self._handle_step_validation_message(message, on_tool_output)
+        if validation_response:
+            response = sanitize_processor_text(validation_response)
+            self.history.append({"role": "user", "content": message})
+            self.history.append({"role": "assistant", "content": response})
+            self.state.save()
+            return response
         correction_response = self._handle_correction_or_rerun_message(message, on_tool_output)
         if correction_response:
             response = sanitize_processor_text(correction_response)
@@ -609,6 +618,50 @@ class ConversationSession:
     def _is_proceed_request(self, message: str) -> bool:
         normalized = " ".join((message or "").strip().lower().split())
         return normalized in {"proceed", "go ahead", "continue", "ok", "okay"}
+
+    def _handle_step_validation_message(
+        self,
+        message: str,
+        on_tool_output: Callable[[str], None] | None = None,
+    ) -> str:
+        normalized = " ".join((message or "").strip().split())
+        lower = normalized.casefold()
+        validation_phrases = [
+            "validate step",
+            "validated step",
+            "approve step",
+            "approved step",
+            "mark step",
+            "i have validated",
+            "i validated",
+            "this step is correct",
+            "step is correct",
+        ]
+        if not any(phrase in lower for phrase in validation_phrases):
+            return ""
+
+        match = re.search(r"\bstep\s+(\d+)\b", lower)
+        step_num = int(match.group(1)) if match else self.state.get_next_step()
+        if step_num is None or step_num not in WORKFLOW_STEPS:
+            return "I could not identify which step to validate."
+
+        step = self.state.get_step(step_num)
+        if _status_value(step.status) != StepStatus.NEEDS_VALIDATION.value:
+            return f"Step {step_num} is not waiting for coder validation."
+
+        note = normalized
+        self.state.validate_step(step_num, note=note, validated_by="processor")
+        self.active_logger.record_processor_decision(step_num, f"Validated Step {step_num}", note)
+        self.state.save()
+        self._notify(on_tool_output, f"Recorded coder validation for Step {step_num}")
+        next_step = self.state.get_next_step()
+        if next_step is None:
+            return f"Step {step_num} validated. All workflow steps are complete."
+        return (
+            f"Step {step_num} validated and recorded.\n\n"
+            f"Next: Step {next_step}: {WORKFLOW_STEPS[next_step]['name']}. "
+            "Use Proceed when you want the assistant to work on that step."
+        )
 
     def _handle_correction_or_rerun_message(
         self,
@@ -699,12 +752,24 @@ class ConversationSession:
         if next_step is None:
             return "All workflow steps are already complete."
         step_name = WORKFLOW_STEPS[next_step]["name"]
+        step = self.state.get_step(next_step)
+        if _status_value(step.status) == StepStatus.NEEDS_VALIDATION.value:
+            return (
+                f"Step {next_step} is ready for coder validation: {step_name}.\n\n"
+                "Please review the step output. If it is correct, use the Validate Step button "
+                f"or say: validate step {next_step}. If something is wrong, tell me the correction."
+            )
+        if _status_value(step.status) == StepStatus.BLOCKED.value:
+            return (
+                f"Step {next_step} is waiting for review: {step_name}.\n\n"
+                "Please resolve the listed issue or tell me what should be corrected before continuing."
+            )
         self._notify(on_tool_output, f"Running Step {next_step}: {step_name}")
         executor = StepExecutor(self.state)
-        result = executor.execute_step(next_step)
+        result = executor.execute_step(next_step, require_processor_validation=True)
         self.refresh_state()
         if result.success:
-            self._notify(on_tool_output, f"Completed Step {next_step}: {step_name}")
+            self._notify(on_tool_output, f"Step {next_step} is ready for coder validation")
         else:
             self._notify(on_tool_output, f"Step {next_step} needs review: {result.message}")
         return self._summarize_direct_step(next_step, result)
@@ -716,7 +781,7 @@ class ConversationSession:
             if next_step is not None
             else "all workflow steps complete"
         )
-        status = "completed" if result.success else "needs review"
+        status = "ready for coder validation" if result.success else "needs review"
         visible_issues = [
             issue for issue in result.issues
             if not _is_internal_step_issue(issue)
@@ -729,7 +794,11 @@ class ConversationSession:
             f"Step {step_num} {status}: {WORKFLOW_STEPS[step_num]['name']}\n\n"
             f"{result.message}"
             f"{review_block}\n\n"
-            f"Next: {next_step_text}. Proceed?"
+            + (
+                f"Review this step, then use Validate Step or say: validate step {step_num}."
+                if result.success
+                else f"Next: {next_step_text}."
+            )
         )
 
     def _call_with_tools(self, messages: list[dict], on_tool_output: Callable[[str], None] | None) -> str:
@@ -884,9 +953,11 @@ class ConversationSession:
                     {
                         "role": "user",
                         "content": (
-                            "The workflow step is now complete. Provide a concise final message for the processor. "
+                            "The assistant work for this workflow step is ready for coder validation. "
+                            "Provide a concise final message for the processor. "
                             "Include what was checked, key evidence found, CSES wiki or standards guidance used, "
-                            "unresolved items, and the next step. Do not call more tools."
+                            "unresolved items, and ask the processor to validate the step or provide corrections. "
+                            "Do not call more tools."
                         ),
                     }
                 )
@@ -901,7 +972,7 @@ class ConversationSession:
                     timeout=LLM_TIMEOUT_SECONDS,
                 )
                 content = response.choices[0].message.content or ""
-                return content.strip() or "The workflow step is complete. Proceed?"
+                return content.strip() or "This step is ready for coder validation. Please validate it or provide corrections."
 
             response = runner.response(
                 ModelRole.AGENTIC,
@@ -1297,17 +1368,17 @@ class ConversationSession:
             turn_state.setdefault("failed_tools", []).append(f"complete_step: {artifact_error}")
             return f"BLOCKED: {artifact_error}"
 
-        self.state.set_step_status(step_num, StepStatus.COMPLETED, summary)
+        self.state.mark_step_needs_validation(
+            step_num,
+            "Assistant work finished. Waiting for coder validation before continuing.",
+        )
         self.state.save()
         turn_state["step_completed"] = True
-        self._notify(on_tool_output, f"Completed Step {step_num}: {WORKFLOW_STEPS[step_num]['name']}")
+        self._notify(on_tool_output, f"Step {step_num} is ready for coder validation")
 
-        next_step = self.state.get_next_step()
-        if next_step is None:
-            return f"SUCCESS: Completed Step {step_num}. All workflow steps are complete."
         return (
-            f"SUCCESS: Completed Step {step_num}. Next: Step {next_step} - "
-            f"{WORKFLOW_STEPS[next_step]['name']}. Stop and ask the user whether to proceed."
+            f"SUCCESS: Step {step_num} is ready for coder validation. "
+            f"Stop and ask the user to validate Step {step_num} or provide corrections."
         )
 
     def _validate_step_completion_artifacts(self, step_num: int) -> str | None:

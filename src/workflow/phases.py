@@ -41,7 +41,7 @@ def phase_status(state: WorkflowState, phase: WorkflowPhase) -> str:
         return "completed"
     if any(status == StepStatus.BLOCKED.value for status in statuses):
         return "blocked"
-    if any(status == StepStatus.IN_PROGRESS.value for status in statuses):
+    if any(status in {StepStatus.IN_PROGRESS.value, StepStatus.NEEDS_VALIDATION.value} for status in statuses):
         return "in_progress"
     if any(status == StepStatus.COMPLETED.value for status in statuses):
         return "in_progress"

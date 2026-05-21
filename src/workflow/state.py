@@ -31,6 +31,7 @@ class StepStatus(Enum):
     """Status of a workflow step."""
     NOT_STARTED = "not_started"
     IN_PROGRESS = "in_progress"
+    NEEDS_VALIDATION = "needs_validation"
     BLOCKED = "blocked"          # Waiting on something (e.g., collaborator response)
     COMPLETED = "completed"
     SKIPPED = "skipped"          # Not applicable for this study
@@ -158,6 +159,10 @@ class StepState:
     status: str = "not_started"
     started_at: Optional[str] = None
     completed_at: Optional[str] = None
+    validation_requested_at: Optional[str] = None
+    validated_at: Optional[str] = None
+    validated_by: str = ""
+    validation_note: str = ""
     notes: list[str] = field(default_factory=list)
     issues: list[str] = field(default_factory=list)
     artifacts: list[str] = field(default_factory=list)  # Files produced
@@ -220,6 +225,7 @@ class WorkflowState:
     standards_checks: dict = field(default_factory=dict)
     wiki_sources: list[dict] = field(default_factory=list)
     processor_decisions: list[dict] = field(default_factory=list)
+    step_validations: dict = field(default_factory=dict)
     final_readiness: dict = field(default_factory=dict)
     processor_decision_ledger_path: str = ""
     pending_corrections: list[dict] = field(default_factory=list)
@@ -296,13 +302,46 @@ class WorkflowState:
 
         if status == StepStatus.IN_PROGRESS and not step.started_at:
             step.started_at = datetime.now(timezone.utc).isoformat()
+        elif status == StepStatus.NEEDS_VALIDATION:
+            step.validation_requested_at = datetime.now(timezone.utc).isoformat()
+            step.completed_at = None
         elif status == StepStatus.COMPLETED:
             step.completed_at = datetime.now(timezone.utc).isoformat()
+            if not step.validated_at:
+                step.validated_at = step.completed_at
 
         if note:
             step.notes.append(f"[{datetime.now().strftime('%Y-%m-%d %H:%M')}] {note}")
 
         self.updated_at = datetime.now(timezone.utc).isoformat()
+
+    def mark_step_needs_validation(self, step_num: int, note: str = ""):
+        """Mark a finished step as waiting for coder validation."""
+        self.set_step_status(step_num, StepStatus.NEEDS_VALIDATION, note)
+
+    def validate_step(self, step_num: int, note: str = "", validated_by: str = "processor"):
+        """Record coder validation and allow the workflow to continue."""
+        step = self.get_step(step_num)
+        timestamp = datetime.now(timezone.utc).isoformat()
+        step.status = StepStatus.COMPLETED.value
+        step.completed_at = timestamp
+        step.validated_at = timestamp
+        step.validated_by = validated_by
+        step.validation_note = note
+        if note:
+            step.notes.append(f"[{datetime.now().strftime('%Y-%m-%d %H:%M')}] Coder validation: {note}")
+        self.step_validations[str(step_num)] = {
+            "step": step_num,
+            "validated_at": timestamp,
+            "validated_by": validated_by,
+            "note": note,
+        }
+        self.record_processor_decision(
+            step_num,
+            f"Validated Step {step_num}: {WORKFLOW_STEPS.get(step_num, {}).get('name', 'workflow step')}",
+            note,
+        )
+        self.updated_at = timestamp
 
     def add_step_issue(self, step_num: int, issue: str):
         """Record an issue for a step."""
@@ -556,7 +595,12 @@ class WorkflowState:
         """Get the next step that should be worked on."""
         for step_num in WORKFLOW_SEQUENCE:
             step = self.get_step(step_num)
-            if step.status in [StepStatus.NOT_STARTED.value, StepStatus.IN_PROGRESS.value]:
+            if step.status in [
+                StepStatus.NOT_STARTED.value,
+                StepStatus.IN_PROGRESS.value,
+                StepStatus.NEEDS_VALIDATION.value,
+                StepStatus.BLOCKED.value,
+            ]:
                 return step_num
         return None
 
@@ -582,6 +626,8 @@ class WorkflowState:
 
         if prev_status != "completed":
             step_name = WORKFLOW_STEPS.get(prev_step, {}).get("name", f"Step {prev_step}")
+            if prev_status == StepStatus.NEEDS_VALIDATION.value:
+                return False, f"Step {prev_step} ({step_name}) needs coder validation before the workflow can continue."
             return False, f"Cannot skip steps. Complete Step {prev_step} ({step_name}) first."
 
         return True, "OK"
@@ -597,7 +643,7 @@ class WorkflowState:
             step = self.get_step(step_num)
             if step.status == StepStatus.COMPLETED.value:
                 completed += 1
-            elif step.status == StepStatus.IN_PROGRESS.value:
+            elif step.status in {StepStatus.IN_PROGRESS.value, StepStatus.NEEDS_VALIDATION.value}:
                 in_progress += 1
             elif step.status == StepStatus.BLOCKED.value:
                 blocked += 1
@@ -640,6 +686,7 @@ class WorkflowState:
             "standards_checks": self.standards_checks,
             "wiki_sources": self.wiki_sources,
             "processor_decisions": self.processor_decisions,
+            "step_validations": self.step_validations,
             "final_readiness": self.final_readiness,
             "processor_decision_ledger_path": self.processor_decision_ledger_path,
             "pending_corrections": self.pending_corrections,
